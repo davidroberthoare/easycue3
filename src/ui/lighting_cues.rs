@@ -50,11 +50,16 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             let cue_count = app.cue_list.len();
             let mut clicked_index: Option<usize> = None;
             
+            // Calculate equal column width based on available space
+            let available_width = ui.available_width();
+            let col_width = (available_width - 24.0) / 4.0; // 4 columns, minus spacing
+            
             // Table header
             egui::Grid::new("cue_list_header")
                 .num_columns(4)
                 .spacing([8.0, 4.0])
                 .striped(false)
+                .min_col_width(col_width)
                 .show(ui, |ui| {
                     ui.label(egui::RichText::new("Q").strong());
                     ui.label(egui::RichText::new("Label").strong());
@@ -89,6 +94,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             egui::Grid::new(format!("cue_row_{}", idx))
                                 .num_columns(4)
                                 .spacing([8.0, 0.0])
+                                .min_col_width(col_width)
                                 .show(ui, |ui| {
                                     // Cue number
                                     ui.label(format!("{:.1}", cue.number));

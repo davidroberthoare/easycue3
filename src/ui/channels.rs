@@ -121,21 +121,14 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             for &(label, val) in &[("0%", 0), ("25%", 25), ("50%", 50), ("75%", 75), ("FL", 100)] {
                 if ui.button(label).clicked() {
                     if let Some(universe) = app.universes.first_mut() {
-                        // Update master and apply proportional formula
-                        app.ui_state.group_master = val;
-                        let max_base = app.ui_state.channel_base_levels.values().copied().max().unwrap_or(100);
-                        if max_base > 0 {
-                            for &ch in &app.ui_state.selected_channels {
-                                if let Some(&base_level) = app.ui_state.channel_base_levels.get(&ch) {
-                                    let output = ((val as f32) * (base_level as f32) / (max_base as f32)).round() as u8;
-                                    let _ = universe.set_channel(ch, output.min(100));
-                                }
-                            }
-                        } else {
-                            for &ch in &app.ui_state.selected_channels {
-                                let _ = universe.set_channel(ch, val);
-                            }
+                        // Set all selected channels to exactly this level
+                        for &ch in &app.ui_state.selected_channels {
+                            let _ = universe.set_channel(ch, val);
+                            // Update base level to match new value
+                            app.ui_state.channel_base_levels.insert(ch, val);
                         }
+                        // Update master to match the new level
+                        app.ui_state.group_master = val;
                     }
                 }
             }
