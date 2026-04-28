@@ -1097,6 +1097,7 @@ dependencies = [
  "egui_dock",
  "egui_extras",
  "env_logger",
+ "image",
  "log",
  "lumina-video",
  "rfd",

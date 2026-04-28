@@ -20,12 +20,22 @@ fn main() -> eframe::Result<()> {
 
     log::info!("Starting EasyCue3...");
 
+    // Load embedded application icon
+    let icon = load_icon();
+
     // Configure the native window
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("EasyCue3 - Theatrical Lighting Console")
+        .with_inner_size([1280.0, 720.0])
+        .with_min_inner_size([800.0, 600.0]);
+    
+    // Set icon if loaded successfully
+    if let Some(icon_data) = icon {
+        viewport = viewport.with_icon(icon_data);
+    }
+    
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("EasyCue3 - Theatrical Lighting Console")
-            .with_inner_size([1280.0, 720.0])
-            .with_min_inner_size([800.0, 600.0]),
+        viewport,
         persist_window: true,  // Save window position
         ..Default::default()
     };
@@ -36,4 +46,26 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|cc| Ok(Box::new(EasyCueApp::new(cc)))),
     )
+}
+
+/// Load the application icon (embedded at compile time)
+fn load_icon() -> Option<egui::IconData> {
+    let icon_bytes = include_bytes!("../assets/logo.png");
+    
+    match image::load_from_memory(icon_bytes) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            
+            Some(egui::IconData {
+                rgba: rgba.into_raw(),
+                width: width as u32,
+                height: height as u32,
+            })
+        }
+        Err(e) => {
+            log::warn!("Failed to decode embedded icon: {}", e);
+            None
+        }
+    }
 }
