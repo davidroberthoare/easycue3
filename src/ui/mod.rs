@@ -34,20 +34,26 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
 
 /// Render the dockable area
 fn render_dock_area(ctx: &Context, app: &mut EasyCueApp) {
-    egui::CentralPanel::default().show(ctx, |ui| {
-        // Temporarily take dock_state out to avoid borrow checker issues
-        let mut dock_state = std::mem::replace(
-            &mut app.dock_state,
-            egui_dock::DockState::new(vec![]),
-        );
-        
-        // Render with DockArea
-        egui_dock::DockArea::new(&mut dock_state)
-            .show_inside(ui, &mut MyTabViewer { app });
-        
-        // Put dock_state back
-        app.dock_state = dock_state;
-    });
+    // Custom frame with cobalt background
+    let frame = egui::Frame::central_panel(&ctx.style())
+        .fill(egui::Color32::from_rgb(10, 30, 55));  // Cobalt blue background
+    
+    egui::CentralPanel::default()
+        .frame(frame)
+        .show(ctx, |ui| {
+            // Temporarily take dock_state out to avoid borrow checker issues
+            let mut dock_state = std::mem::replace(
+                &mut app.dock_state,
+                egui_dock::DockState::new(vec![]),
+            );
+            
+            // Render with DockArea
+            egui_dock::DockArea::new(&mut dock_state)
+                .show_inside(ui, &mut MyTabViewer { app });
+            
+            // Put dock_state back
+            app.dock_state = dock_state;
+        });
 }
 
 /// Wrapper struct for TabViewer

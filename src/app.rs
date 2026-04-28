@@ -60,6 +60,9 @@ pub struct UiState {
     
     // Command line input
     pub command_input: String,
+    
+    // Theme initialization flag
+    pub theme_initialized: bool,
 }
 
 /// Main application state
@@ -85,8 +88,173 @@ pub struct EasyCueApp {
 }
 
 impl EasyCueApp {
+    /// Configure the cobalt dark theme
+    fn configure_cobalt_theme(ctx: &egui::Context) {
+        // Start with default dark visuals as base
+        let mut style = egui::Style {
+            visuals: egui::Visuals::dark(),
+            ..(*ctx.style()).clone()
+        };
+        
+        // Cobalt color palette (very distinctive blue tint)
+        let bg_deep = egui::Color32::from_rgb(5, 20, 40);        // Very dark blue
+        let bg_main = egui::Color32::from_rgb(10, 30, 55);       // Dark blue main
+        let bg_lighter = egui::Color32::from_rgb(20, 45, 75);    // Lighter blue panels
+        let bg_hover = egui::Color32::from_rgb(30, 60, 100);     // Bright blue hover
+        let accent_blue = egui::Color32::from_rgb(30, 150, 255); // Vivid blue accent
+        let accent_cyan = egui::Color32::from_rgb(0, 220, 255);  // Bright cyan
+        let text_bright = egui::Color32::from_rgb(255, 255, 255); // White text
+        let text_dim = egui::Color32::from_rgb(150, 190, 220);   // Blue-tinted dim text
+        let border_color = egui::Color32::from_rgb(50, 100, 150); // Blue border
+        
+        // Configure dark mode visuals
+        style.visuals = egui::Visuals {
+            dark_mode: true,
+            override_text_color: Some(text_bright),
+            
+            // Widget visuals
+            widgets: egui::style::Widgets {
+                noninteractive: egui::style::WidgetVisuals {
+                    bg_fill: bg_main,
+                    weak_bg_fill: bg_main,
+                    bg_stroke: egui::Stroke::new(1.0, border_color),
+                    fg_stroke: egui::Stroke::new(1.0, text_dim),
+                    corner_radius: egui::CornerRadius::same(4),
+                    expansion: 0.0,
+                },
+                inactive: egui::style::WidgetVisuals {
+                    bg_fill: bg_lighter,
+                    weak_bg_fill: bg_lighter,
+                    bg_stroke: egui::Stroke::new(1.0, border_color),
+                    fg_stroke: egui::Stroke::new(1.0, text_bright),
+                    corner_radius: egui::CornerRadius::same(4),
+                    expansion: 0.0,
+                },
+                hovered: egui::style::WidgetVisuals {
+                    bg_fill: bg_hover,
+                    weak_bg_fill: bg_hover,
+                    bg_stroke: egui::Stroke::new(1.0, accent_blue),
+                    fg_stroke: egui::Stroke::new(1.5, text_bright),
+                    corner_radius: egui::CornerRadius::same(4),
+                    expansion: 1.0,
+                },
+                active: egui::style::WidgetVisuals {
+                    bg_fill: accent_blue,
+                    weak_bg_fill: accent_blue,
+                    bg_stroke: egui::Stroke::new(1.0, accent_cyan),
+                    fg_stroke: egui::Stroke::new(2.0, text_bright),
+                    corner_radius: egui::CornerRadius::same(4),
+                    expansion: 1.0,
+                },
+                open: egui::style::WidgetVisuals {
+                    bg_fill: bg_hover,
+                    weak_bg_fill: bg_hover,
+                    bg_stroke: egui::Stroke::new(1.0, accent_blue),
+                    fg_stroke: egui::Stroke::new(1.0, text_bright),
+                    corner_radius: egui::CornerRadius::same(4),
+                    expansion: 0.0,
+                },
+            },
+            
+            // Selection colors
+            selection: egui::style::Selection {
+                bg_fill: accent_blue.linear_multiply(0.4),
+                stroke: egui::Stroke::new(1.0, accent_cyan),
+            },
+            
+            // Hyperlink color
+            hyperlink_color: accent_cyan,
+            
+            // Faint background color (for code blocks, etc.)
+            faint_bg_color: bg_deep,
+            
+            // Extreme background color (for tooltips, etc.)
+            extreme_bg_color: bg_deep,
+            
+            // Code background color
+            code_bg_color: bg_deep,
+            
+            // Warning color (yellow)
+            warn_fg_color: egui::Color32::from_rgb(255, 200, 0),
+            
+            // Error color (red)
+            error_fg_color: egui::Color32::from_rgb(255, 80, 80),
+            
+            // Window styling
+            window_fill: bg_main,
+            window_stroke: egui::Stroke::new(1.0, border_color),
+            window_corner_radius: egui::CornerRadius::same(6),
+            window_shadow: egui::epaint::Shadow {
+                offset: [4, 4],
+                blur: 16,
+                spread: 0,
+                color: egui::Color32::from_black_alpha(180),
+            },
+            
+            // Panel fill
+            panel_fill: bg_main,
+            
+            // Popup shadow
+            popup_shadow: egui::epaint::Shadow {
+                offset: [4, 4],
+                blur: 16,
+                spread: 0,
+                color: egui::Color32::from_black_alpha(180),
+            },
+            
+            // Resize corner size
+            resize_corner_size: 12.0,
+            
+            // Text cursor settings
+            text_cursor: egui::style::TextCursorStyle {
+                stroke: egui::Stroke::new(2.0, accent_cyan),
+                ..Default::default()
+            },
+            
+            // Clip rect margin
+            clip_rect_margin: 3.0,
+            
+            // Button frame
+            button_frame: true,
+            
+            // Collapsing header frame
+            collapsing_header_frame: false,
+            
+            // Indent has background
+            indent_has_left_vline: true,
+            
+            // Striped
+            striped: true,
+            
+            // Slider trailing fill
+            slider_trailing_fill: true,
+            
+            // Handle shape
+            handle_shape: egui::style::HandleShape::Circle,
+            
+            // Menu corner radius
+            menu_corner_radius: egui::CornerRadius::same(4),
+            
+            ..Default::default()
+        };
+        
+        // Apply larger spacing for theatrical console feel
+        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        style.spacing.button_padding = egui::vec2(8.0, 4.0);
+        style.spacing.indent = 20.0;
+        style.spacing.slider_width = 150.0;
+        
+        // Apply the style
+        ctx.set_style(style);
+        
+        log::info!("Applied cobalt dark theme");
+    }
+    
     /// Create a new application instance
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Apply cobalt theme
+        Self::configure_cobalt_theme(&cc.egui_ctx);
+        
         // Initialize with 2 universes (configurable later)
         let universes = vec![
             Universe::new(0),
@@ -223,6 +391,13 @@ impl EasyCueApp {
 
 impl eframe::App for EasyCueApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Ensure theme is applied (reapply if not marked as initialized)
+        if !self.ui_state.theme_initialized {
+            Self::configure_cobalt_theme(ctx);
+            self.ui_state.theme_initialized = true;
+            log::info!("Theme reapplied in update()");
+        }
+        
         // Handle keyboard shortcuts (checked before UI to avoid consuming events)
         let (go, back, stop, save, open, record) = ctx.input(|i| (
             i.key_pressed(egui::Key::Space) && !i.modifiers.any(),
