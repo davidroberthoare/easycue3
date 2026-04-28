@@ -38,7 +38,9 @@ impl ShowFile {
 
     /// Save to a JSON file
     pub fn save(&self, path: &std::path::Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self)?;
+        let mut to_save = self.clone();
+        to_save.modified = chrono::Utc::now().to_rfc3339();
+        let json = serde_json::to_string_pretty(&to_save)?;
         std::fs::write(path, json)?;
         log::info!("Saved show to {:?}", path);
         Ok(())
