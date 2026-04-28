@@ -46,15 +46,6 @@ pub struct UiState {
     /// Current master level for proportional group control (M in formula, 0-100)
     pub group_master: u8,
     
-    // Dialog state
-    /// Whether the save-show dialog is open
-    pub show_save_dialog: bool,
-    /// Whether the open-show dialog is open
-    pub show_open_dialog: bool,
-    /// Text input buffer for file path dialogs
-    pub file_path_input: String,
-    /// Text input buffer for show title
-    pub show_title_input: String,
     /// Status message to display to the user
     pub status_message: String,
     
@@ -281,11 +272,7 @@ impl EasyCueApp {
             playback: PlaybackEngine::new(),
             media: MediaManager::new(),
             fixtures: FixtureLibrary::new(),
-            ui_state: UiState {
-                show_title_input: "My Show".to_string(),
-                file_path_input: "shows/my_show.json".to_string(),
-                ..Default::default()
-            },
+            ui_state: UiState::default(),
             show_title: "Example Show".to_string(),
             dock_state,
         };
@@ -334,7 +321,6 @@ impl EasyCueApp {
             self.cue_list.add_cue(cue);
         }
         self.show_title = show.title.clone();
-        self.ui_state.show_title_input = show.title;
         self.ui_state.selected_cue_index = None;
         self.ui_state.status_message = format!("Loaded show from {:?}", path);
         log::info!("Loaded show: {}", self.show_title);
@@ -399,20 +385,16 @@ impl eframe::App for EasyCueApp {
         }
         
         // Handle keyboard shortcuts (checked before UI to avoid consuming events)
-        let (go, back, stop, save, open, record) = ctx.input(|i| (
+        let (go, back, stop, record) = ctx.input(|i| (
             i.key_pressed(egui::Key::Space) && !i.modifiers.any(),
             i.key_pressed(egui::Key::B)     && !i.modifiers.any(),
             i.key_pressed(egui::Key::S)     && !i.modifiers.any(),
-            i.key_pressed(egui::Key::S)     && i.modifiers.ctrl && !i.modifiers.shift,
-            i.key_pressed(egui::Key::O)     && i.modifiers.ctrl,
             i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
         ));
 
         if go  { self.playback.go(&mut self.cue_list); }
         if back { self.playback.back(&mut self.cue_list); }
         if stop { self.playback.stop(); }
-        if save { self.ui_state.show_save_dialog = true; }
-        if open { self.ui_state.show_open_dialog = true; }
         if record {
             let idx = self.record_cue();
             self.ui_state.selected_cue_index = Some(idx);

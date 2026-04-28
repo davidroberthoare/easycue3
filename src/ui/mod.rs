@@ -27,9 +27,6 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     
     // Dockable panel layout
     render_dock_area(ctx, app);
-    
-    // Dialogs (floating windows)
-    render_dialogs(ctx, app);
 }
 
 /// Render the dockable area
@@ -89,7 +86,6 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.cue_list.clear();
                     app.playback.stop();
                     app.show_title = "New Show".to_string();
-                    app.ui_state.show_title_input = "New Show".to_string();
                     app.ui_state.selected_cue_index = None;
                     app.ui_state.selected_channels.clear();
                     app.ui_state.channel_base_levels.clear();
@@ -100,11 +96,42 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     ui.close_menu();
                 }
                 if ui.button("Open… (Ctrl+O)").clicked() {
-                    app.ui_state.show_open_dialog = true;
+                    // Use native file dialog
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("EasyCue Show", &["json"])
+                        .set_directory("./shows")
+                        .pick_file()
+                    {
+                        match app.load_show(&path) {
+                            Ok(_) => {
+                                app.ui_state.status_message = format!("Loaded: {}", app.show_title);
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message = format!("Error loading: {}", e);
+                                log::error!("Failed to load show: {}", e);
+                            }
+                        }
+                    }
                     ui.close_menu();
                 }
                 if ui.button("Save (Ctrl+S)").clicked() {
-                    app.ui_state.show_save_dialog = true;
+                    // Use native file dialog
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("EasyCue Show", &["json"])
+                        .set_directory("./shows")
+                        .set_file_name(&format!("{}.json", app.show_title.to_lowercase().replace(' ', "_")))
+                        .save_file()
+                    {
+                        match app.save_show(&path, &app.show_title) {
+                            Ok(_) => {
+                                app.ui_state.status_message = format!("Saved to {:?}", path);
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message = format!("Error saving: {}", e);
+                                log::error!("Failed to save show: {}", e);
+                            }
+                        }
+                    }
                     ui.close_menu();
                 }
                 ui.separator();
@@ -220,89 +247,3 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
         });
     });
 }
-
-/// Render dialogs (file open/save)
-fn render_dialogs(ctx: &Context, app: &mut EasyCueApp) {
-    // Open show dialog
-    if app.ui_state.show_open_dialog {
-        render_open_dialog(ctx, app);
-    }
-
-    // Save show dialog
-    if app.ui_state.show_save_dialog {
-        render_save_dialog(ctx, app);
-    }
-}
-
-/// Render the open-show dialog
-fn render_open_dialog(ctx: &Context, app: &mut EasyCueApp) {
-    let mut open = app.ui_state.show_open_dialog;
-    egui::Window::new("Open Show")
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .min_width(380.0)
-        .show(ctx, |ui| {
-            ui.label("Show file path:");
-            ui.text_edit_singleline(&mut app.ui_state.file_path_input);
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if ui.button("Open").clicked() {
-                    let path = std::path::PathBuf::from(&app.ui_state.file_path_input);
-                    match app.load_show(&path) {
-                        Ok(_) => {
-                            app.ui_state.show_open_dialog = false;
-                        }
-                        Err(e) => {
-                            app.ui_state.status_message = format!("Error: {}", e);
-                            log::error!("Failed to load show: {}", e);
-                        }
-                    }
-                }
-                if ui.button("Cancel").clicked() {
-                    app.ui_state.show_open_dialog = false;
-                }
-            });
-        });
-    app.ui_state.show_open_dialog = open;
-}
-
-/// Render the save-show dialog
-fn render_save_dialog(ctx: &Context, app: &mut EasyCueApp) {
-    let mut open = app.ui_state.show_save_dialog;
-    egui::Window::new("Save Show")
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .min_width(380.0)
-        .show(ctx, |ui| {
-            ui.label("Show title:");
-            ui.text_edit_singleline(&mut app.ui_state.show_title_input);
-            ui.label("Save path:");
-            ui.text_edit_singleline(&mut app.ui_state.file_path_input);
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    let path = std::path::PathBuf::from(&app.ui_state.file_path_input);
-                    let title = app.ui_state.show_title_input.clone();
-                    match app.save_show(&path, &title) {
-                        Ok(_) => {
-                            app.show_title = title;
-                            app.ui_state.status_message =
-                                format!("Saved to {:?}", path);
-                            app.ui_state.show_save_dialog = false;
-                        }
-                        Err(e) => {
-                            app.ui_state.status_message = format!("Error: {}", e);
-                            log::error!("Failed to save show: {}", e);
-                        }
-                    }
-                }
-                if ui.button("Cancel").clicked() {
-                    app.ui_state.show_save_dialog = false;
-                }
-            });
-        });
-    app.ui_state.show_save_dialog = open;
-}
-
