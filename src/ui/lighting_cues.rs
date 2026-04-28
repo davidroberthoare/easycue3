@@ -98,15 +98,27 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     };
                     
                     // Collect responses from all columns to make entire row clickable
-                    let mut row_response: Option<egui::Response> = None;
+                    let mut row_responses = Vec::new();
                     
                     // Cue number
                     row.col(|ui| {
                         if bg_color != egui::Color32::TRANSPARENT {
                             ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
                         }
-                        let r = ui.label(format!("{:.1}", cue.number));
-                        row_response = Some(r.interact(egui::Sense::click()));
+                        // Allocate entire cell space and make it interactive
+                        let (rect, response) = ui.allocate_exact_size(
+                            ui.available_size(),
+                            egui::Sense::click()
+                        );
+                        // Draw text centered in the allocated space
+                        ui.painter().text(
+                            rect.left_center() + egui::vec2(5.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{:.1}", cue.number),
+                            egui::FontId::default(),
+                            ui.style().visuals.text_color(),
+                        );
+                        row_responses.push(response);
                     });
                     
                     // Label
@@ -115,14 +127,29 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
                         }
                         let label_text = if cue.label.is_empty() {
-                            egui::RichText::new("(untitled)").italics().color(egui::Color32::GRAY)
+                            "(untitled)".to_string()
                         } else {
-                            egui::RichText::new(&cue.label)
+                            cue.label.clone()
                         };
-                        let r = ui.label(label_text);
-                        if let Some(prev) = row_response.take() {
-                            row_response = Some(prev.union(r.interact(egui::Sense::click())));
-                        }
+                        // Allocate entire cell space and make it interactive
+                        let (rect, response) = ui.allocate_exact_size(
+                            ui.available_size(),
+                            egui::Sense::click()
+                        );
+                        // Draw text
+                        let text_color = if cue.label.is_empty() {
+                            egui::Color32::GRAY
+                        } else {
+                            ui.style().visuals.text_color()
+                        };
+                        ui.painter().text(
+                            rect.left_center() + egui::vec2(5.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            label_text,
+                            egui::FontId::default(),
+                            text_color,
+                        );
+                        row_responses.push(response);
                     });
                     
                     // Fade time
@@ -130,10 +157,19 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         if bg_color != egui::Color32::TRANSPARENT {
                             ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
                         }
-                        let r = ui.label(format!("{:.1}s", cue.fade_up));
-                        if let Some(prev) = row_response.take() {
-                            row_response = Some(prev.union(r.interact(egui::Sense::click())));
-                        }
+                        // Allocate entire cell space and make it interactive
+                        let (rect, response) = ui.allocate_exact_size(
+                            ui.available_size(),
+                            egui::Sense::click()
+                        );
+                        ui.painter().text(
+                            rect.left_center() + egui::vec2(5.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{:.1}s", cue.fade_up),
+                            egui::FontId::default(),
+                            ui.style().visuals.text_color(),
+                        );
+                        row_responses.push(response);
                     });
                     
                     // Channel count
@@ -141,20 +177,35 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         if bg_color != egui::Color32::TRANSPARENT {
                             ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
                         }
-                        let r = ui.label(format!("{}", cue.channel_values.len()));
-                        if let Some(prev) = row_response.take() {
-                            row_response = Some(prev.union(r.interact(egui::Sense::click())));
-                        }
+                        // Allocate entire cell space and make it interactive
+                        let (rect, response) = ui.allocate_exact_size(
+                            ui.available_size(),
+                            egui::Sense::click()
+                        );
+                        ui.painter().text(
+                            rect.left_center() + egui::vec2(5.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{}", cue.channel_values.len()),
+                            egui::FontId::default(),
+                            ui.style().visuals.text_color(),
+                        );
+                        row_responses.push(response);
                     });
                     
-                    // Handle click to select (entire row)
-                    if let Some(response) = row_response {
-                        if response.clicked() {
-                            clicked_index = Some(idx);
-                        }
+                    // Handle click to select (entire row) - check if any cell was clicked
+                    let row_clicked = row_responses.iter().any(|r| r.clicked());
+                    if row_clicked {
+                        clicked_index = Some(idx);
+                    }
+                    
+                    // Context menu (right-click on entire row) - use first response
+                    if let Some(first_response) = row_responses.first() {
+                        let combined_response = row_responses.iter().skip(1).fold(
+                            first_response.clone(),
+                            |acc, r| acc.union(r.clone())
+                        );
                         
-                        // Context menu (right-click on entire row)
-                        response.context_menu(|ui| {
+                        combined_response.context_menu(|ui| {
                             if ui.button("Edit").clicked() {
                                 app.ui_state.selected_cue_index = Some(idx);
                                 ui.close_menu();
