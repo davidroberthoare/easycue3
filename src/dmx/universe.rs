@@ -1,13 +1,14 @@
 //! DMX Universe representation
 //!
-//! A DMX universe consists of 512 channels (1-512), each with a value 0-255.
+//! A DMX universe consists of 512 channels (1-512), each with a value 0-100.
+//! Values are converted to DMX (0-255) only at the backend output stage.
 
 use anyhow::Result;
 
 /// A single DMX universe with 512 channels
 #[derive(Debug, Clone)]
 pub struct Universe {
-    /// DMX channel values (0-255), indexed 0-511 for channels 1-512
+    /// Channel intensity values (0-100), indexed 0-511 for channels 1-512
     channels: [u8; 512],
     /// Universe number (typically 0 or 1 for our use case)
     universe_id: u16,
@@ -27,16 +28,19 @@ impl Universe {
         self.universe_id
     }
 
-    /// Set a channel value (1-indexed: channel 1-512)
+    /// Set a channel value (1-indexed: channel 1-512, value 0-100)
     pub fn set_channel(&mut self, channel: u16, value: u8) -> Result<()> {
         if channel < 1 || channel > 512 {
             anyhow::bail!("Channel {} out of range (1-512)", channel);
+        }
+        if value > 100 {
+            anyhow::bail!("Channel value {} out of range (0-100)", value);
         }
         self.channels[(channel - 1) as usize] = value;
         Ok(())
     }
 
-    /// Get a channel value (1-indexed: channel 1-512)
+    /// Get a channel value (1-indexed: channel 1-512, returns 0-100)
     pub fn get_channel(&self, channel: u16) -> Result<u8> {
         if channel < 1 || channel > 512 {
             anyhow::bail!("Channel {} out of range (1-512)", channel);
@@ -87,31 +91,35 @@ mod tests {
     #[test]
     fn test_set_get_channel() {
         let mut universe = Universe::new(0);
-        universe.set_channel(1, 255).unwrap();
-        assert_eq!(universe.get_channel(1).unwrap(), 255);
+        universe.set_channel(1, 100).unwrap();
+        assert_eq!(universe.get_channel(1).unwrap(), 100);
         
-        universe.set_channel(512, 128).unwrap();
-        assert_eq!(universe.get_channel(512).unwrap(), 128);
+        universe.set_channel(512, 50).unwrap();
+        assert_eq!(universe.get_channel(512).unwrap(), 50);
     }
 
     #[test]
     fn test_channel_bounds() {
         let mut universe = Universe::new(0);
-        assert!(universe.set_channel(0, 255).is_err());
-        assert!(universe.set_channel(513, 255).is_err());
+        assert!(universe.set_channel(0, 100).is_err());
+        assert!(universe.set_channel(513, 100).is_err());
         assert!(universe.get_channel(0).is_err());
         assert!(universe.get_channel(513).is_err());
+        
+        // Test value bounds
+        assert!(universe.set_channel(1, 101).is_err());
+        assert!(universe.set_channel(1, 100).is_ok());
     }
 
     #[test]
     fn test_set_multiple_channels() {
         let mut universe = Universe::new(0);
-        let values = [100, 150, 200, 250];
+        let values = [40, 60, 78, 100];
         universe.set_channels(1, &values).unwrap();
         
-        assert_eq!(universe.get_channel(1).unwrap(), 100);
-        assert_eq!(universe.get_channel(2).unwrap(), 150);
-        assert_eq!(universe.get_channel(3).unwrap(), 200);
-        assert_eq!(universe.get_channel(4).unwrap(), 250);
+        assert_eq!(universe.get_channel(1).unwrap(), 40);
+        assert_eq!(universe.get_channel(2).unwrap(), 60);
+        assert_eq!(universe.get_channel(3).unwrap(), 78);
+        assert_eq!(universe.get_channel(4).unwrap(), 100);
     }
 }

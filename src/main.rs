@@ -26,12 +26,13 @@ fn main() -> eframe::Result<()> {
             .with_title("EasyCue3 - Theatrical Lighting Console")
             .with_inner_size([1280.0, 720.0])
             .with_min_inner_size([800.0, 600.0]),
+        persist_window: true,  // Save window position
         ..Default::default()
     };
 
-    // Run the application
+    // Run the application with persistence enabled
     eframe::run_native(
-        "EasyCue3",
+        "EasyCue3",  // App ID used for storing persistent data
         native_options,
         Box::new(|cc| Ok(Box::new(EasyCueApp::new(cc)))),
     )

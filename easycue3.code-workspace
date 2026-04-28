@@ -4,5 +4,15 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"cargo build": true,
+			"rustc": true,
+			"rustup": true,
+			"cargo search": true,
+			"cargo info": true,
+			"cargo run": true,
+			"cargo test": true
+		}
+	}
 }
