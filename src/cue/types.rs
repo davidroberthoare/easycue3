@@ -14,7 +14,7 @@ pub struct Cue {
     pub fade_up: f32,
     /// Fade down time in seconds (for intensity)
     pub fade_down: f32,
-    /// DMX channel values (channel number -> value)
+    /// Channel intensity values (0-100, channel number -> intensity)
     /// Only stores non-zero channels to save space
     pub channel_values: HashMap<u16, u8>,
     /// Notes/description

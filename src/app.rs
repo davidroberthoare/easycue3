@@ -5,14 +5,48 @@ use crate::dmx::{Universe, backends::{DmxBackend, VirtualBackend}};
 use crate::media::MediaManager;
 use crate::fixtures::FixtureLibrary;
 use crate::show::ShowFile;
+use egui_dock::DockState;
+use std::collections::{HashSet, HashMap};
+
+/// Panel types for the docking system
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum TabKind {
+    Channels,
+    LightingCues,
+    SoundCues,
+    Properties,
+    Controls,
+}
+
+impl std::fmt::Display for TabKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TabKind::Channels => write!(f, "Channels"),
+            TabKind::LightingCues => write!(f, "Lighting Cues"),
+            TabKind::SoundCues => write!(f, "Sound Cues"),
+            TabKind::Properties => write!(f, "Properties"),
+            TabKind::Controls => write!(f, "Controls"),
+        }
+    }
+}
 
 /// UI state flags and dialog state
 #[derive(Default)]
 pub struct UiState {
-    pub show_fixture_panel: bool,
-    pub show_media_panel: bool,
-    /// Index of the currently selected cue (for editing)
+    // Selection state
+    /// Index of the currently selected lighting cue
     pub selected_cue_index: Option<usize>,
+    /// Currently selected channels for editing (supports multi-select)
+    pub selected_channels: HashSet<u16>,
+    /// Last selected channel for shift-range selection
+    pub last_selected_channel: Option<u16>,
+    /// Stored base levels for proportional scaling (L_i in formula O_i = M * L_i)
+    /// Updated when selection changes
+    pub channel_base_levels: HashMap<u16, u8>,
+    /// Current master level for proportional group control (M in formula, 0-100)
+    pub group_master: u8,
+    
+    // Dialog state
     /// Whether the save-show dialog is open
     pub show_save_dialog: bool,
     /// Whether the open-show dialog is open
@@ -23,6 +57,9 @@ pub struct UiState {
     pub show_title_input: String,
     /// Status message to display to the user
     pub status_message: String,
+    
+    // Command line input
+    pub command_input: String,
 }
 
 /// Main application state
@@ -43,11 +80,13 @@ pub struct EasyCueApp {
     pub ui_state: UiState,
     /// Current show title
     pub show_title: String,
+    /// Docking state for the panel layout
+    pub dock_state: DockState<TabKind>,
 }
 
 impl EasyCueApp {
     /// Create a new application instance
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Initialize with 2 universes (configurable later)
         let universes = vec![
             Universe::new(0),
@@ -59,6 +98,13 @@ impl EasyCueApp {
 
         log::info!("EasyCue3 application initialized");
         log::info!("DMX Backend: {}", dmx_backend.name());
+
+        // Load dock layout from persistence or create default
+        let dock_state = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, "dock_state").unwrap_or_else(|| Self::create_default_dock_layout())
+        } else {
+            Self::create_default_dock_layout()
+        };
 
         let mut app = Self {
             universes,
@@ -73,6 +119,7 @@ impl EasyCueApp {
                 ..Default::default()
             },
             show_title: "Example Show".to_string(),
+            dock_state,
         };
 
         // Try to load example show on startup
@@ -85,6 +132,30 @@ impl EasyCueApp {
         }
 
         app
+    }
+
+    /// Create the default dock layout
+    fn create_default_dock_layout() -> DockState<TabKind> {
+        let mut dock_state = DockState::new(vec![TabKind::Channels]);
+        let tree = dock_state.main_surface_mut();
+        
+        // Top row: Channels (left) and Properties (right)
+        let [_channels, _properties] = tree.split_right(egui_dock::NodeIndex::root(), 0.7, vec![TabKind::Properties]);
+        
+        // Split entire layout horizontally to create bottom row
+        let [_top_row, bottom_row] = tree.split_below(egui_dock::NodeIndex::root(), 0.5, vec![TabKind::LightingCues]);
+        
+        // Bottom row: Lighting Cues, Sound Cues, Controls (split bottom_row further)
+        let [_lighting, sound_controls] = tree.split_right(bottom_row, 0.4, vec![TabKind::SoundCues]);
+        let [_sound, _controls] = tree.split_right(sound_controls, 0.5, vec![TabKind::Controls]);
+        
+        dock_state
+    }
+
+    /// Reset the dock layout to the default configuration
+    pub fn reset_dock_layout(&mut self) {
+        self.dock_state = Self::create_default_dock_layout();
+        log::info!("Reset UI layout to default");
     }
 
     /// Load a show file and populate the cue list
@@ -189,5 +260,11 @@ impl eframe::App for EasyCueApp {
         if self.playback.is_playing() {
             ctx.request_repaint();
         }
+    }
+
+    /// Called on shutdown to save persistent state
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, "dock_state", &self.dock_state);
+        log::info!("Saved UI layout");
     }
 }

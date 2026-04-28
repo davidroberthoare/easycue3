@@ -54,6 +54,17 @@ impl PlaybackEngine {
         false
     }
 
+    /// Jump to a specific cue by index
+    pub fn go_to_cue(&mut self, cue_list: &CueList, cue_index: usize) -> bool {
+        if let Some(cue) = cue_list.get_cue(cue_index) {
+            self.start_cue(cue);
+            // Note: We can't mutate cue_list here since we only have &CueList
+            // The caller will need to update current_index separately
+            return true;
+        }
+        false
+    }
+
     /// Stop playback
     pub fn stop(&mut self) {
         self.state = CueState::Stopped;

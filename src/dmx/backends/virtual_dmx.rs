@@ -1,9 +1,10 @@
 //! Virtual DMX backend for testing without hardware
 //!
 //! Logs DMX output to console for debugging and development.
+//! Converts 0-100 intensities to 0-255 DMX values for output.
 
 use anyhow::Result;
-use crate::dmx::{Universe, backends::DmxBackend};
+use crate::dmx::{Universe, backends::{DmxBackend, universe_to_dmx}};
 
 /// Virtual DMX backend that logs output
 pub struct VirtualBackend {
@@ -22,16 +23,20 @@ impl VirtualBackend {
 impl DmxBackend for VirtualBackend {
     fn send_universe(&mut self, universe: &Universe) -> Result<()> {
         if self.verbose {
-            // Log all non-zero channels
-            let non_zero: Vec<(usize, u8)> = universe.channels()
+            // Convert to DMX values for logging
+            let dmx_data = universe_to_dmx(universe);
+            
+            // Log all non-zero channels (showing both intensity and DMX value)
+            let non_zero: Vec<(usize, u8, u8)> = universe.channels()
                 .iter()
                 .enumerate()
                 .filter(|(_, &v)| v > 0)
-                .map(|(i, &v)| (i + 1, v))
+                .map(|(i, &intensity)| (i + 1, intensity, dmx_data[i]))
                 .collect();
             
             if !non_zero.is_empty() {
-                log::debug!("Universe {}: {:?}", universe.id(), non_zero);
+                log::debug!("Universe {} (intensity@DMX): {:?}", universe.id(), 
+                    non_zero.iter().map(|(ch, int, dmx)| format!("{}:{}@{}", ch, int, dmx)).collect::<Vec<_>>());
             }
         }
         
