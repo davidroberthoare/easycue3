@@ -38,9 +38,13 @@ impl ShowFile {
 
     /// Save to a JSON file
     pub fn save(&self, path: &std::path::Path) -> Result<()> {
-        let mut to_save = self.clone();
-        to_save.modified = chrono::Utc::now().to_rfc3339();
-        let json = serde_json::to_string_pretty(&to_save)?;
+        let modified = chrono::Utc::now().to_rfc3339();
+        // Build JSON manually with updated timestamp to avoid cloning the whole struct
+        let mut doc = serde_json::to_value(self)?;
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert("modified".to_string(), serde_json::Value::String(modified));
+        }
+        let json = serde_json::to_string_pretty(&doc)?;
         std::fs::write(path, json)?;
         log::info!("Saved show to {:?}", path);
         Ok(())

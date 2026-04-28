@@ -167,7 +167,10 @@ impl eframe::App for EasyCueApp {
         if stop { self.playback.stop(); }
         if save { self.ui_state.show_save_dialog = true; }
         if open { self.ui_state.show_open_dialog = true; }
-        if record { self.record_cue(); }
+        if record {
+            let idx = self.record_cue();
+            self.ui_state.selected_cue_index = Some(idx);
+        }
 
         // Update playback engine and apply to first universe
         if let Some(universe) = self.universes.first_mut() {
