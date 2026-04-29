@@ -4,7 +4,7 @@
 //! combining ETC EOS-style lighting control with QLab-style media playback.
 
 mod app;
-mod dmx;
+pub mod dmx;  // Public for examples and tests
 mod media;
 mod cue;
 mod ui;

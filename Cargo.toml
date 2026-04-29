@@ -41,7 +41,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }  # Ic
 
 [features]
 default = []
-usb = ["serialport"]  # Enable USB DMX interfaces (requires libudev on Linux)
+usb = ["serialport"]  # Enable USB DMX interfaces (Enttec USB Pro)
 audio = ["rodio"]  # Enable audio playback (requires ALSA on Linux)
 video = ["lumina-video"]  # Enable video playback (requires GStreamer on Linux)
 media = ["audio", "video"]  # Enable all media features
