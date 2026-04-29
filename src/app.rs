@@ -32,7 +32,6 @@ impl std::fmt::Display for TabKind {
 }
 
 /// UI state flags and dialog state
-#[derive(Default)]
 pub struct UiState {
     // Selection state
     /// Index of the currently selected lighting cue
@@ -53,6 +52,20 @@ pub struct UiState {
     // Command line input
     pub command_input: String,
     
+    // Master levels and toggles
+    /// Lighting master level (0.0 to 1.0, affects all lighting output)
+    pub lighting_master: f32,
+    /// Sound master level (0.0 to 1.0, affects all sound output)
+    pub sound_master: f32,
+    /// Previous lighting master level (for blackout toggle restore)
+    pub previous_lighting_master: f32,
+    /// Previous sound master level (for audio mute toggle restore)
+    pub previous_sound_master: f32,
+    /// Blackout toggle state
+    pub blackout_active: bool,
+    /// Audio mute toggle state
+    pub audio_mute_active: bool,
+    
     // Active pane tracking for context-aware commands
     pub active_pane: Option<TabKind>,
     
@@ -64,6 +77,30 @@ pub struct UiState {
     
     // Dialog states
     pub show_quit_confirmation: bool,
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self {
+            selected_cue_index: None,
+            selected_channels: HashSet::new(),
+            last_selected_channel: None,
+            channel_base_levels: HashMap::new(),
+            group_master: 100,
+            status_message: String::new(),
+            command_input: String::new(),
+            lighting_master: 1.0,
+            sound_master: 1.0,
+            previous_lighting_master: 1.0,
+            previous_sound_master: 1.0,
+            blackout_active: false,
+            audio_mute_active: false,
+            active_pane: None,
+            command_context: CommandContext::General,
+            theme_initialized: false,
+            show_quit_confirmation: false,
+        }
+    }
 }
 
 impl UiState {
