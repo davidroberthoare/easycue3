@@ -15,8 +15,10 @@ pub fn render_controls_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         .min_size(egui::vec2(ui.available_width(), 50.0));
     
     if ui.add(go_button).clicked() {
-        app.playback.go(&mut app.cue_list);
-        app.ui_state.status_message = "GO".to_string();
+        if let Some(universe) = app.universes.first() {
+            app.playback.go(&mut app.cue_list, universe);
+            app.ui_state.status_message = "GO".to_string();
+        }
     }
     
     ui.add_space(4.0);
@@ -27,8 +29,10 @@ pub fn render_controls_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             .min_size(egui::vec2(ui.available_width() / 2.0 - 5.0, 35.0));
         
         if ui.add(back_button).clicked() {
-            app.playback.back(&mut app.cue_list);
-            app.ui_state.status_message = "BACK".to_string();
+            if let Some(universe) = app.universes.first() {
+                app.playback.back(&mut app.cue_list, universe);
+                app.ui_state.status_message = "BACK".to_string();
+            }
         }
         
         let stop_button = egui::Button::new("⏹ STOP")
@@ -140,9 +144,13 @@ fn execute_command(app: &mut EasyCueApp) {
     
     // Parse and execute command
     if cmd == "GO" {
-        app.playback.go(&mut app.cue_list);
+        if let Some(universe) = app.universes.first() {
+            app.playback.go(&mut app.cue_list, universe);
+        }
     } else if cmd == "BACK" {
-        app.playback.back(&mut app.cue_list);
+        if let Some(universe) = app.universes.first() {
+            app.playback.back(&mut app.cue_list, universe);
+        }
     } else if cmd == "STOP" {
         app.playback.stop();
     } else if cmd == "RECORD" {
@@ -153,8 +161,10 @@ fn execute_command(app: &mut EasyCueApp) {
         if let Ok(cue_num) = cmd[3..].trim().parse::<f32>() {
             // Find cue by number
             if let Some(idx) = app.cue_list.cues().iter().position(|c| c.number == cue_num) {
-                app.playback.go_to_cue(&app.cue_list, idx);
-                app.ui_state.status_message = format!("Going to cue {}", cue_num);
+                if let Some(universe) = app.universes.first() {
+                    app.playback.go_to_cue(&app.cue_list, idx, universe);
+                    app.ui_state.status_message = format!("Going to cue {}", cue_num);
+                }
             } else {
                 app.ui_state.status_message = format!("Cue {} not found", cue_num);
             }

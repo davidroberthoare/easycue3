@@ -392,8 +392,6 @@ impl eframe::App for EasyCueApp {
             i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
         ));
 
-        if go  { self.playback.go(&mut self.cue_list); }
-        if back { self.playback.back(&mut self.cue_list); }
         if stop { self.playback.stop(); }
         if record {
             let idx = self.record_cue();
@@ -401,7 +399,12 @@ impl eframe::App for EasyCueApp {
         }
 
         // Update playback engine and apply to first universe
+        // Handle go/back within universe access since they need current state
         if let Some(universe) = self.universes.first_mut() {
+            // Handle go/back commands with access to current universe state
+            if go  { self.playback.go(&mut self.cue_list, universe); }
+            if back { self.playback.back(&mut self.cue_list, universe); }
+            
             self.playback.update(universe);
 
             // Send DMX output

@@ -31,10 +31,10 @@ impl PlaybackEngine {
     }
 
     /// Start playing a cue (GO command)
-    pub fn go(&mut self, cue_list: &mut CueList) -> bool {
+    pub fn go(&mut self, cue_list: &mut CueList, universe: &Universe) -> bool {
         if let Some(next_idx) = cue_list.next_index() {
             if let Some(cue) = cue_list.get_cue(next_idx) {
-                self.start_cue(cue);
+                self.start_cue(cue, universe);
                 cue_list.set_current_index(Some(next_idx));
                 return true;
             }
@@ -43,10 +43,10 @@ impl PlaybackEngine {
     }
 
     /// Go back to previous cue (BACK command)
-    pub fn back(&mut self, cue_list: &mut CueList) -> bool {
+    pub fn back(&mut self, cue_list: &mut CueList, universe: &Universe) -> bool {
         if let Some(prev_idx) = cue_list.previous_index() {
             if let Some(cue) = cue_list.get_cue(prev_idx) {
-                self.start_cue(cue);
+                self.start_cue(cue, universe);
                 cue_list.set_current_index(Some(prev_idx));
                 return true;
             }
@@ -55,9 +55,9 @@ impl PlaybackEngine {
     }
 
     /// Jump to a specific cue by index
-    pub fn go_to_cue(&mut self, cue_list: &CueList, cue_index: usize) -> bool {
+    pub fn go_to_cue(&mut self, cue_list: &CueList, cue_index: usize, universe: &Universe) -> bool {
         if let Some(cue) = cue_list.get_cue(cue_index) {
-            self.start_cue(cue);
+            self.start_cue(cue, universe);
             // Note: We can't mutate cue_list here since we only have &CueList
             // The caller will need to update current_index separately
             return true;
@@ -72,9 +72,13 @@ impl PlaybackEngine {
     }
 
     /// Start playing a specific cue
-    fn start_cue(&mut self, cue: &Cue) {
-        // Store current output as previous values
-        // (in a real implementation, we'd get this from the universe)
+    fn start_cue(&mut self, cue: &Cue, universe: &Universe) {
+        // Capture current live output as starting point for fade
+        // This prevents snapping when interrupting an existing fade
+        for channel in 1..=512 {
+            let value = universe.get_channel(channel).unwrap_or(0);
+            self.previous_values[(channel - 1) as usize] = value;
+        }
         
         // Set target values from cue
         self.target_values.fill(0);

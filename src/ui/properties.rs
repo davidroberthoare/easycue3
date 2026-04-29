@@ -253,8 +253,10 @@ fn render_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue_idx: usize) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         if ui.button("Go to Cue").clicked() {
-            app.playback.go_to_cue(&app.cue_list, cue_idx);
-            app.ui_state.status_message = format!("Going to cue {:.1}", cue_num);
+            if let Some(universe) = app.universes.first() {
+                app.playback.go_to_cue(&app.cue_list, cue_idx, universe);
+                app.ui_state.status_message = format!("Going to cue {:.1}", cue_num);
+            }
         }
         
         if ui.button("Update from Live").clicked() {
