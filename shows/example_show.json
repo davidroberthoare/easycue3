@@ -1,14 +1,7 @@
 {
-  "title": "Example Show",
-  "description": "A simple demonstration show with basic lighting cues",
-  "created": "2026-04-27T00:00:00Z",
-  "modified": "2026-04-27T00:00:00Z",
+  "created": "2026-04-29T01:12:56.503914071+00:00",
   "cues": [
     {
-      "number": 1.0,
-      "label": "House Lights",
-      "fade_up": 2.0,
-      "fade_down": 2.0,
       "channel_values": {
         "1": 100,
         "2": 100,
@@ -16,42 +9,49 @@
         "4": 100,
         "5": 100
       },
-      "notes": "Full house lights for pre-show"
+      "fade_down": 2.0,
+      "fade_up": 2.0,
+      "label": "House Lights",
+      "notes": "Full house lights for pre-show",
+      "number": 1.0
     },
     {
-      "number": 2.0,
-      "label": "Blackout",
-      "fade_up": 3.0,
-      "fade_down": 3.0,
       "channel_values": {},
-      "notes": "Stage blackout - all lights off"
+      "fade_down": 3.0,
+      "fade_up": 3.0,
+      "label": "Blackout",
+      "notes": "Stage blackout - all lights off",
+      "number": 2.0
     },
     {
-      "number": 3.0,
-      "label": "Warm Stage Wash",
-      "fade_up": 5.0,
-      "fade_down": 5.0,
       "channel_values": {
         "10": 78,
         "11": 78,
         "12": 78,
         "13": 78
       },
-      "notes": "Warm stage lighting for Act 1"
+      "fade_down": 5.0,
+      "fade_up": 5.0,
+      "label": "Warm Stage Wash",
+      "notes": "Warm stage lighting for Act 1",
+      "number": 3.0
     },
     {
-      "number": 4.0,
-      "label": "Spotlight Center",
-      "fade_up": 2.0,
-      "fade_down": 2.0,
       "channel_values": {
-        "20": 100,
         "10": 59,
         "11": 59,
         "12": 59,
-        "13": 59
+        "13": 59,
+        "20": 100
       },
-      "notes": "Spotlight on center stage with background wash"
+      "fade_down": 2.0,
+      "fade_up": 2.0,
+      "label": "Spotlight Center",
+      "notes": "Spotlight on center stage with background wash",
+      "number": 4.0
     }
-  ]
+  ],
+  "description": "",
+  "modified": "2026-04-29T01:12:56.504002721+00:00",
+  "title": "Example Show"
 }

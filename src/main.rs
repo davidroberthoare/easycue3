@@ -10,6 +10,7 @@ mod cue;
 mod ui;
 mod fixtures;
 mod show;
+mod command;
 
 use app::EasyCueApp;
 

@@ -5,6 +5,7 @@ use crate::dmx::{Universe, backends::{DmxBackend, VirtualBackend}};
 use crate::media::MediaManager;
 use crate::fixtures::FixtureLibrary;
 use crate::show::ShowFile;
+use crate::command::CommandContext;
 use egui_dock::DockState;
 use std::collections::{HashSet, HashMap};
 
@@ -52,8 +53,28 @@ pub struct UiState {
     // Command line input
     pub command_input: String,
     
+    // Active pane tracking for context-aware commands
+    pub active_pane: Option<TabKind>,
+    
+    // Command context (derived from active pane)
+    pub command_context: CommandContext,
+    
     // Theme initialization flag
     pub theme_initialized: bool,
+    
+    // Dialog states
+    pub show_quit_confirmation: bool,
+}
+
+impl UiState {
+    /// Update command context based on active pane
+    pub fn update_command_context(&mut self) {
+        self.command_context = match self.active_pane {
+            Some(TabKind::Channels) | Some(TabKind::LightingCues) => CommandContext::Lighting,
+            Some(TabKind::SoundCues) => CommandContext::Sound,
+            _ => CommandContext::General,
+        };
+    }
 }
 
 /// Main application state
@@ -74,6 +95,8 @@ pub struct EasyCueApp {
     pub ui_state: UiState,
     /// Current show title
     pub show_title: String,
+    /// Current file path (None if never saved)
+    pub current_file_path: Option<std::path::PathBuf>,
     /// Docking state for the panel layout
     pub dock_state: DockState<TabKind>,
 }
@@ -274,6 +297,7 @@ impl EasyCueApp {
             fixtures: FixtureLibrary::new(),
             ui_state: UiState::default(),
             show_title: "Example Show".to_string(),
+            current_file_path: None,
             dock_state,
         };
 
@@ -321,6 +345,7 @@ impl EasyCueApp {
             self.cue_list.add_cue(cue);
         }
         self.show_title = show.title.clone();
+        self.current_file_path = Some(path.to_path_buf());
         self.ui_state.selected_cue_index = None;
         self.ui_state.status_message = format!("Loaded show from {:?}", path);
         log::info!("Loaded show: {}", self.show_title);
@@ -328,7 +353,7 @@ impl EasyCueApp {
     }
 
     /// Save the current cue list to a show file
-    pub fn save_show(&self, path: &std::path::Path, title: &str) -> anyhow::Result<()> {
+    pub fn save_show(&mut self, path: &std::path::Path, title: &str) -> anyhow::Result<()> {
         let mut show = ShowFile::new(title);
         show.cues = self.cue_list.cues().to_vec();
         // Ensure the parent directory exists
@@ -338,6 +363,7 @@ impl EasyCueApp {
             }
         }
         show.save(path)?;
+        self.current_file_path = Some(path.to_path_buf());
         Ok(())
     }
 
