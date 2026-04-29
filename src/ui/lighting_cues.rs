@@ -211,7 +211,9 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                                 ui.close_menu();
                             }
                             if ui.button("Go To").clicked() {
-                                app.playback.go_to_cue(&app.cue_list, idx);
+                                if let Some(universe) = app.universes.first() {
+                                    app.playback.go_to_cue(&app.cue_list, idx, universe);
+                                }
                                 ui.close_menu();
                             }
                             if ui.button("Update from Live").clicked() {
