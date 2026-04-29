@@ -19,6 +19,12 @@ pub use controls::render_controls_panel;
 
 /// Render the main UI
 pub fn render(ctx: &Context, app: &mut EasyCueApp) {
+    // Handle global keyboard shortcuts (Cmd+S, Cmd+Q, etc.)
+    handle_global_shortcuts(ctx, app);
+    
+    // Handle keyboard input for command line (context-aware)
+    handle_keyboard_input(ctx, app);
+    
     // Top panel - menu bar
     render_menu_bar(ctx, app);
     
@@ -27,6 +33,174 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     
     // Dockable panel layout
     render_dock_area(ctx, app);
+    
+    // Modal dialogs (always on top)
+    render_quit_confirmation(ctx, app);
+}
+
+/// Handle global keyboard shortcuts
+fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
+    // Detect shortcuts inside input closure, but defer actions
+    let mut open_requested = false;
+    let mut save_requested = false;
+    let mut save_as_requested = false;
+    let mut quit_requested = false;
+    
+    ctx.input(|i| {
+        let modifiers = i.modifiers;
+        
+        // Cmd+O (Mac) or Ctrl+O (Linux/Windows) - Open
+        if modifiers.command && i.key_pressed(egui::Key::O) {
+            open_requested = true;
+        }
+        
+        // Cmd+S (Mac) or Ctrl+S (Linux/Windows) - Save
+        if modifiers.command && !modifiers.shift && i.key_pressed(egui::Key::S) {
+            save_requested = true;
+        }
+        
+        // Cmd+Shift+S - Save As
+        if modifiers.command && modifiers.shift && i.key_pressed(egui::Key::S) {
+            save_as_requested = true;
+        }
+        
+        // Cmd+Q (Mac) or Ctrl+Q (Linux/Windows) - Quit
+        if modifiers.command && i.key_pressed(egui::Key::Q) {
+            quit_requested = true;
+        }
+    });
+    
+    // Execute actions AFTER releasing input state
+    if open_requested {
+        // Use native file dialog
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("EasyCue Show", &["json"])
+            .set_directory("./shows")
+            .pick_file()
+        {
+            match app.load_show(&path) {
+                Ok(_) => {
+                    app.ui_state.status_message = format!("Loaded: {}", app.show_title);
+                    log::info!("Loaded show from {:?}", path);
+                }
+                Err(e) => {
+                    app.ui_state.status_message = format!("Error loading: {}", e);
+                    log::error!("Failed to load show: {}", e);
+                }
+            }
+        }
+    }
+    
+    if save_requested {
+        // Save - use current file path if available, otherwise prompt
+        if let Some(path) = &app.current_file_path.clone() {
+            let title = app.show_title.clone();
+            match app.save_show(path, &title) {
+                Ok(_) => {
+                    app.ui_state.status_message = format!("Saved to {:?}", path);
+                    log::info!("Saved show to {:?}", path);
+                }
+                Err(e) => {
+                    app.ui_state.status_message = format!("Error saving: {}", e);
+                    log::error!("Failed to save show: {}", e);
+                }
+            }
+        } else {
+            // No current file, show Save As dialog
+            let title = app.show_title.clone();
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("EasyCue Show", &["json"])
+                .set_directory("./shows")
+                .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
+                .save_file()
+            {
+                match app.save_show(&path, &title) {
+                    Ok(_) => {
+                        app.ui_state.status_message = format!("Saved to {:?}", path);
+                        log::info!("Saved show to {:?}", path);
+                    }
+                    Err(e) => {
+                        app.ui_state.status_message = format!("Error saving: {}", e);
+                        log::error!("Failed to save show: {}", e);
+                    }
+                }
+            }
+        }
+    }
+    
+    if save_as_requested {
+        // Save As - always show file dialog
+        let title = app.show_title.clone();
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("EasyCue Show", &["json"])
+            .set_directory("./shows")
+            .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
+            .save_file()
+        {
+            match app.save_show(&path, &title) {
+                Ok(_) => {
+                    app.ui_state.status_message = format!("Saved to {:?}", path);
+                    log::info!("Saved show to {:?}", path);
+                }
+                Err(e) => {
+                    app.ui_state.status_message = format!("Error saving: {}", e);
+                    log::error!("Failed to save show: {}", e);
+                }
+            }
+        }
+    }
+    
+    if quit_requested {
+        log::info!("Quit requested - showing confirmation");
+        app.ui_state.show_quit_confirmation = true;
+    }
+}
+
+/// Handle keyboard input for command-line operations
+fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
+    // Only process if we're in a command context
+    if !matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting | crate::command::CommandContext::Sound) {
+        return;
+    }
+    
+    // Check if text field is focused BEFORE entering ctx.input closure
+    // to avoid nested borrow issues
+    let is_text_focused = ctx.memory(|mem| mem.focused().is_some());
+    if is_text_focused {
+        return;
+    }
+    
+    ctx.input(|i| {
+        // Handle backspace
+        if i.key_pressed(egui::Key::Backspace) {
+            app.ui_state.command_input.pop();
+        }
+        
+        // Handle Enter to execute
+        if i.key_pressed(egui::Key::Enter) {
+            execute_command_line(app);
+        }
+        
+        // Handle character input in lighting context
+        if matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting) {
+            for event in &i.events {
+                if let egui::Event::Text(text) = event {
+                    // Only accept valid command characters
+                    for ch in text.chars() {
+                        if ch.is_ascii_digit() || 
+                           ch == 'a' || ch == '@' ||  // "at" operator
+                           ch == '+' || ch == ',' ||  // addition
+                           ch == '-' ||               // range or subtraction
+                           ch == 't' || ch == 'h' || ch == 'r' || ch == 'u' || // "thru"
+                           ch == 'f' || ch == 'l' || ch == 'o' // "full", "out"
+                        {
+                            app.ui_state.command_input.push(ch);
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// Render the dockable area
@@ -62,6 +236,12 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
     type Tab = TabKind;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        // Track which pane is active when mouse enters or content is clicked
+        if ui.ui_contains_pointer() {
+            self.app.ui_state.active_pane = Some(*tab);
+            self.app.ui_state.update_command_context();
+        }
+        
         match tab {
             TabKind::Channels => render_channels_panel(ui, self.app),
             TabKind::LightingCues => render_lighting_cues_panel(ui, self.app),
@@ -86,6 +266,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.cue_list.clear();
                     app.playback.stop();
                     app.show_title = "New Show".to_string();
+                    app.current_file_path = None;
                     app.ui_state.selected_cue_index = None;
                     app.ui_state.selected_channels.clear();
                     app.ui_state.channel_base_levels.clear();
@@ -115,14 +296,50 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     ui.close_menu();
                 }
                 if ui.button("Save (Ctrl+S)").clicked() {
-                    // Use native file dialog
+                    // Save - use current file path if available, otherwise prompt
+                    if let Some(path) = &app.current_file_path.clone() {
+                        let title = app.show_title.clone();
+                        match app.save_show(path, &title) {
+                            Ok(_) => {
+                                app.ui_state.status_message = format!("Saved to {:?}", path);
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message = format!("Error saving: {}", e);
+                                log::error!("Failed to save show: {}", e);
+                            }
+                        }
+                    } else {
+                        // No current file, show Save As dialog
+                        let title = app.show_title.clone();
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("EasyCue Show", &["json"])
+                            .set_directory("./shows")
+                            .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
+                            .save_file()
+                        {
+                            match app.save_show(&path, &title) {
+                                Ok(_) => {
+                                    app.ui_state.status_message = format!("Saved to {:?}", path);
+                                }
+                                Err(e) => {
+                                    app.ui_state.status_message = format!("Error saving: {}", e);
+                                    log::error!("Failed to save show: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    ui.close_menu();
+                }
+                if ui.button("Save As… (Ctrl+Shift+S)").clicked() {
+                    // Save As - always show file dialog
+                    let title = app.show_title.clone();
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("EasyCue Show", &["json"])
                         .set_directory("./shows")
-                        .set_file_name(&format!("{}.json", app.show_title.to_lowercase().replace(' ', "_")))
+                        .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
                         .save_file()
                     {
-                        match app.save_show(&path, &app.show_title) {
+                        match app.save_show(&path, &title) {
                             Ok(_) => {
                                 app.ui_state.status_message = format!("Saved to {:?}", path);
                             }
@@ -135,8 +352,9 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("Exit").clicked() {
-                    std::process::exit(0);
+                if ui.button("Exit (Ctrl+Q)").clicked() {
+                    app.ui_state.show_quit_confirmation = true;
+                    ui.close_menu();
                 }
             });
             
@@ -203,13 +421,46 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
     });
 }
 
+/// Render the quit confirmation modal dialog
+fn render_quit_confirmation(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_quit_confirmation {
+        return;
+    }
+    
+    egui::Window::new("Quit EasyCue3?")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(10.0);
+                ui.label("Are you sure you want to quit?");
+                ui.add_space(10.0);
+                
+                ui.horizontal(|ui| {
+                    if ui.button("  Cancel  ").clicked() {
+                        app.ui_state.show_quit_confirmation = false;
+                    }
+                    
+                    ui.add_space(10.0);
+                    
+                    if ui.button("  Quit  ").clicked() {
+                        log::info!("User confirmed quit");
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+                
+                ui.add_space(5.0);
+            });
+        });
+}
+
 /// Render the bottom status bar
 fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
     egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+        // Single row footer with all info
         ui.horizontal(|ui| {
-            ui.add_space(10.0);
-            
-            // Playback status indicator
+            // Left side: Playback status
             let state_text = match app.playback.state() {
                 crate::cue::CueState::Stopped => "⏹ Stopped",
                 crate::cue::CueState::Fading { progress } => {
@@ -223,27 +474,99 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
             if let Some(idx) = app.cue_list.current_index() {
                 if let Some(cue) = app.cue_list.get_cue(idx) {
                     ui.separator();
-                    ui.label(format!("Cue {:.1}: {}", cue.number, cue.label));
+                    ui.label(format!("Q{:.1}", cue.number));
                 }
             }
             
+            ui.separator();
+            
+            // Center: Command line
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
+                ui.horizontal(|ui| {
+                    // Context indicator
+                    let context_label = match app.ui_state.command_context {
+                        crate::command::CommandContext::Lighting => "💡",
+                        crate::command::CommandContext::Sound => "🔊",
+                        _ => "⌨",
+                    };
+                    ui.label(egui::RichText::new(context_label).size(16.0));
+                    
+                    // Command input
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut app.ui_state.command_input)
+                            .desired_width(280.0)
+                            .hint_text("Click channels...")
+                            .font(egui::TextStyle::Monospace)
+                    );
+                    
+                    // Handle Enter key to execute command
+                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        execute_command_line(app);
+                    }
+                    
+                    // Execute button
+                    if ui.button("⏎").clicked() {
+                        execute_command_line(app);
+                    }
+                    
+                    // Clear button
+                    if ui.button("✖").clicked() {
+                        app.ui_state.command_input.clear();
+                        app.ui_state.status_message = "Command cleared".to_string();
+                    }
+                });
+            });
+            
+            ui.separator();
+            
             // Status message
             if !app.ui_state.status_message.is_empty() {
-                ui.separator();
                 ui.label(
                     egui::RichText::new(&app.ui_state.status_message)
                         .color(egui::Color32::from_rgb(180, 180, 100)),
                 );
             }
             
-            // Right-aligned: DMX backend info
+            // Right side: DMX backend
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new(format!("DMX: {}", app.dmx_backend.name()))
+                        .small()
                         .color(egui::Color32::GRAY)
                 );
             });
         });
     });
+}
+
+/// Execute the current command line input
+fn execute_command_line(app: &mut EasyCueApp) {
+    let input = app.ui_state.command_input.trim().to_string();
+    
+    if input.is_empty() {
+        return;
+    }
+    
+    match app.ui_state.command_context {
+        crate::command::CommandContext::Lighting => {
+            match crate::command::parse_lighting_command(&input) {
+                Ok(cmd) => {
+                    crate::command::execute_command(cmd, app);
+                }
+                Err(e) => {
+                    app.ui_state.status_message = format!("Error: {}", e);
+                    log::warn!("Failed to parse command '{}': {}", input, e);
+                }
+            }
+        }
+        crate::command::CommandContext::Sound => {
+            app.ui_state.status_message = "Sound commands not yet implemented".to_string();
+        }
+        _ => {
+            app.ui_state.status_message = "No command context active".to_string();
+        }
+    }
+    
+    // Clear command input after execution
+    app.ui_state.command_input.clear();
 }

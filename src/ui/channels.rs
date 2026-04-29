@@ -139,6 +139,7 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 app.ui_state.channel_base_levels.clear();
                 app.ui_state.group_master = 100;
                 app.ui_state.last_selected_channel = None;
+                rebuild_command_from_selection(app);
             }
         }
     });
@@ -200,20 +201,24 @@ fn render_channel_box(
                 // Single channel update
                 let new_val = (value as i32 + total_change).clamp(0, 100) as u8;
                 let _ = universe.set_channel(channel, new_val);
-                // Update base level and master if this is the only selected channel
-                if is_selected {
-                    app.ui_state.channel_base_levels.insert(channel, new_val);
-                    app.ui_state.group_master = new_val;
-                }
+                
+                // Always select the dragged channel and update base levels
+                app.ui_state.selected_channels.clear();
+                app.ui_state.selected_channels.insert(channel);
+                app.ui_state.channel_base_levels.clear();
+                app.ui_state.channel_base_levels.insert(channel, new_val);
+                app.ui_state.group_master = new_val;
+                app.ui_state.last_selected_channel = Some(channel);
             }
         }
     }
     
-    // Handle click to select/deselect
+    // Handle click to select channels and update command line
     if response.clicked() {
         let modifiers = ui.input(|i| i.modifiers);
+        
         if modifiers.shift {
-            // Shift+click: select range from last selected to this channel
+            // Shift+click: add range to selection
             if let Some(last_ch) = app.ui_state.last_selected_channel {
                 let start = last_ch.min(channel);
                 let end = last_ch.max(channel);
@@ -225,14 +230,8 @@ fn render_channel_box(
                     app.ui_state.channel_base_levels.insert(ch, base_level);
                 }
                 
-                // Update master to current max
-                app.ui_state.group_master = app.ui_state.selected_channels
-                    .iter()
-                    .filter_map(|&ch| universe.get_channel(ch).ok())
-                    .max()
-                    .unwrap_or(100);
-                    
                 app.ui_state.last_selected_channel = Some(channel);
+                app.ui_state.status_message = format!("Ch {}-{}", start, end);
             } else {
                 // No previous selection, treat as regular click
                 app.ui_state.selected_channels.clear();
@@ -242,18 +241,21 @@ fn render_channel_box(
                 app.ui_state.channel_base_levels.insert(channel, base_level);
                 app.ui_state.group_master = base_level;
                 app.ui_state.last_selected_channel = Some(channel);
+                app.ui_state.status_message = format!("Ch {}", channel);
             }
         } else if modifiers.command || modifiers.ctrl {
             // Ctrl/Cmd+click: toggle selection
             if is_selected {
                 app.ui_state.selected_channels.remove(&channel);
                 app.ui_state.channel_base_levels.remove(&channel);
+                app.ui_state.status_message = format!("Ch {} removed", channel);
             } else {
                 app.ui_state.selected_channels.insert(channel);
-                // Store base level for proportional scaling
                 let base_level = universe.get_channel(channel).unwrap_or(0);
                 app.ui_state.channel_base_levels.insert(channel, base_level);
+                app.ui_state.status_message = format!("Ch {} added", channel);
             }
+            
             // Update master to current max if we have selections
             if !app.ui_state.selected_channels.is_empty() {
                 app.ui_state.group_master = app.ui_state.selected_channels
@@ -264,16 +266,19 @@ fn render_channel_box(
             }
             app.ui_state.last_selected_channel = Some(channel);
         } else {
-            // Regular click: select only this channel
+            // Regular click: replace selection with only this channel
             app.ui_state.selected_channels.clear();
             app.ui_state.selected_channels.insert(channel);
-            // Store base levels for all selected channels
             app.ui_state.channel_base_levels.clear();
             let base_level = universe.get_channel(channel).unwrap_or(0);
             app.ui_state.channel_base_levels.insert(channel, base_level);
             app.ui_state.group_master = base_level;
             app.ui_state.last_selected_channel = Some(channel);
+            app.ui_state.status_message = format!("Ch {}", channel);
         }
+        
+        // Rebuild command line from current selection
+        rebuild_command_from_selection(app);
     }
     
     // Draw the box (simplified - just filled rect with stroke)
@@ -355,4 +360,52 @@ fn render_channel_box(
         rect.center().y - value_galley.rect.height() / 2.0 + 2.0,
     );
     ui.painter().galley(value_pos, value_galley, value_color);
+}
+
+/// Rebuild the command line from the current channel selection
+fn rebuild_command_from_selection(app: &mut EasyCueApp) {
+    if app.ui_state.selected_channels.is_empty() {
+        app.ui_state.command_input.clear();
+        return;
+    }
+    
+    // Sort channels
+    let mut channels: Vec<u16> = app.ui_state.selected_channels.iter().copied().collect();
+    channels.sort_unstable();
+    
+    // Build compact representation with ranges
+    let mut result = Vec::new();
+    let mut range_start = channels[0];
+    let mut range_end = channels[0];
+    
+    for i in 1..channels.len() {
+        if channels[i] == range_end + 1 {
+            // Continue the range
+            range_end = channels[i];
+        } else {
+            // End of range, add to result
+            if range_start == range_end {
+                result.push(format!("{}", range_start));
+            } else if range_end == range_start + 1 {
+                result.push(format!("{}", range_start));
+                result.push(format!("{}", range_end));
+            } else {
+                result.push(format!("{}thru{}", range_start, range_end));
+            }
+            range_start = channels[i];
+            range_end = channels[i];
+        }
+    }
+    
+    // Add final range
+    if range_start == range_end {
+        result.push(format!("{}", range_start));
+    } else if range_end == range_start + 1 {
+        result.push(format!("{}", range_start));
+        result.push(format!("{}", range_end));
+    } else {
+        result.push(format!("{}thru{}", range_start, range_end));
+    }
+    
+    app.ui_state.command_input = result.join("+");
 }
