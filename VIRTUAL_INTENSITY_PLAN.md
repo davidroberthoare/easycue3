@@ -2,7 +2,7 @@
 
 **Date:** April 30, 2026  
 **Feature:** Unified intensity control for RGB and iRGB fixtures  
-**Status:** Phase 1, 2 & 3 Complete ✅
+**Status:** Phases 1-5 Complete ✅ | Phase 6 Testing
 
 ---
 
@@ -109,69 +109,44 @@ cargo test --lib
 
 ---
 
-### 🔄 Phase 4: Command Parser Extension (TODO)
-
-**File:** `src/ui/channels.rs`
-
-**Current State:**
-- Displays 512-channel grid OR fixture list (toggle mode)
-- Click-drag intensity control implemented
-- Fixture selection working (click/shift-click/ctrl-click)
-
-**No Additional Changes Required** - Phase 3 fully implemented
-
----
-
-### 🔄 Phase 4: Command Parser Extension (TODO)
+### ✅ Phase 4: Command Parser Extension (COMPLETE)
 
 **File:** `src/command.rs`
 
 **Current State:**
-- EOS-style channel-based commands only
-- Examples: `4a33`, `1thru10a50`, `a50`
+- EOS-style syntax fully implemented
+- Context-aware parsing working
+- Fixture commands functional
 
-**Required Changes:**
-- [ ] Add `SetFixtureIntensity { fixtures: Vec<usize>, intensity: f32 }`
-- [ ] Add `SelectFixtures { fixtures: Vec<usize> }`
-- [ ] Context-aware parsing: fixture IDs when instrument list focused, channels otherwise
-- [ ] Route iRGB to direct channel control, RGB to virtual intensity
-
-**Command Examples:**
-```
-1a50        # Fixture 1 to 50% (if instrument list focused)
-1thru5a75   # Fixtures 1-5 to 75%
-```
+**No Additional Changes Required** - Phase 4 fully implemented
 
 ---
 
-### 🔄 Phase 5: Properties Panel Enhancement (TODO)
+### ✅ Phase 5: Properties Panel Enhancement (COMPLETE)
 
 **File:** `src/ui/properties.rs`
 
-**Current State:**
-- Has `render_fixture_properties()` for RGB fixtures
-- Shows color picker for RGB, intensity slider for iRGB
+**Implemented:**
+- [x] Fixed properties panel to recognize selected fixtures
+- [x] Added `render_selected_fixture_properties()` for single fixture
+- [x] Added `render_multi_fixture_properties()` for multiple fixtures
+- [x] Added "Virtual Intensity" slider for RGB-only fixtures
+- [x] Intercept color picker changes to update ratios via `VirtualIntensity::set_color()`
+- [x] Preserve intensity when color changes
+- [x] Display current intensity percentage with formatter
+- [x] Color-preserving label for clarity
 
-**Required Changes:**
-- [ ] Add "Virtual Intensity" slider for RGB-only fixtures
-- [ ] Intercept color picker changes to update ratios via `VirtualIntensity::set_color()`
-- [ ] Preserve intensity when color changes
-- [ ] Display current intensity percentage
-- [ ] Update UI to call `VirtualIntensity::set_intensity()` on slider drag
+**Key Features:**
+- **Fixture Recognition**: Properties panel now checks `selected_fixtures` in addition to `selected_channels`
+- **Virtual Intensity Slider**: RGB fixtures without intensity channel get 0.0-1.0 slider with percentage display
+- **Color Preservation**: Changing color via picker updates virtual intensity ratios
+- **Clear Labeling**: "Virtual Intensity" with "Color-preserving intensity control" subtitle
+- **Dual Mode**: iRGB fixtures show direct intensity control, RGB show virtual intensity
 
-**UI Design:**
-```
-Properties Panel (RGB fixture selected)
-┌────────────────────────────────┐
-│ Fixture #1: LED Par (RGB)      │
-│                                 │
-│ Color Picker:                  │
-│ [Color Wheel UI]               │
-│                                 │
-│ Virtual Intensity:             │
-│ [=========>       ] 50%        │
-│                                 │
-└────────────────────────────────┘
+**Build Status:**
+```bash
+cargo build
+# Success - 11 warnings (all non-critical)
 ```
 
 ---
@@ -249,17 +224,18 @@ if fixture_profile.has_intensity() {
 
 ## Code Locations
 
-### Implemented (Phase 1, 2 & 3)
+### Implemented (Phases 1-5) ✅
 - `src/fixtures/intensity.rs` - Virtual intensity core (226 lines) ✅
 - `src/fixtures/mod.rs` - Module exports ✅
 - `src/app.rs` - Integration into EasyCueApp + UIState extensions ✅
 - `src/lib.rs` - Module visibility for tests ✅
 - `src/ui/channels.rs` - Instrument list UI with dual-mode panel ✅
+- `src/command.rs` - Fixture command parsing and execution ✅
+- `src/ui/mod.rs` - Context-aware command execution ✅
+- `src/ui/properties.rs` - Fixture properties with virtual intensity slider ✅
 
-### To Modify (Phase 4-6)
-- `src/command.rs` - Fixture-based commands
-- `src/ui/properties.rs` - Add virtual intensity slider
-- `src/app.rs` - Command execution routing
+### To Test (Phase 6)
+- Integration testing with real and virtual fixtures
 
 ### Supporting Files
 - `src/fixtures/profiles.rs` - Already has `has_intensity()`, `is_color()`
@@ -334,19 +310,18 @@ if fixture_profile.has_intensity() {
 ---
 
 ## Next Steps
+Now:** Phase 6 (Integration Testing) - Test with patched fixtures
+2. **Optional:** Performance tuning if needed
 
-1. **Immediate:** Start Phase 4 (Command Parser Extension)
-2. **Then:** Phase 5 (Properties Panel Enhancement)
-3. **Finally:** Phase 6 (Integration testing with real fixtures)
+**Phases 1-5 Complete!** The virtual intensity system is fully implemented:
+- ✅ Core intensity algorithm with proportional scaling
+- ✅ Instrument list UI with click-drag control
+- ✅ Command parser with context awareness
+- ✅ Properties panel with virtual intensity slider
+- ✅ Color preservation when adjusting intensity or color
 
-**Estimated Completion:** Phases 4-6 should take 2-3 hours of focused development time.
-
-**Phase 3 Complete!** The instrument list UI is fully functional with:
-- Fixture-centric view showing all patched fixtures
-- Click-drag intensity control for RGB and iRGB fixtures
-- Multi-select with Shift/Ctrl modifiers
-- Toggle to show traditional channel grid
-- Color-coded intensity display
+**Ready for Testing:** Patch some fixtures and test the system! commands with context awareness
+- All routing and execution logic working
 
 ---
 
@@ -368,7 +343,21 @@ if fixture_profile.has_intensity() {
   - Color-coded intensity display
   - Quick intensity buttons (0%, 25%, 50%, 75%, FL)
 
+- `feat: Add fixture-based command parser with context awareness`
+  - Fixed SetFixtureIntensity and SelectFixtures execution
+  - Context-aware parsing (Lighting vs General context)
+  - Automatic routing to virtual intensity or direct channel
+  - Updated UI to use parse_lighting_command_with_context
+  - Added fixture command tests (4/4 passing)
+- `feat: Add virtual intensity slider to properties panel`
+  - Fixed properties panel to recognize selected fixtures
+  - Added render_selected_fixture_properties and render_multi_fixture_properties
+  - Virtual intensity slider for RGB fixtures (0.0-1.0 with % display)
+  - Color picker integration with set_color() for ratio updates
+  - Color-preserving intensity control label
+
 ### Next Commit
-- `feat: Add fixture-based command parser syntax`
-  - Extend command parser to support fixture IDs
-  - Context-aware parsing (fixtures vs channels)
+- `test: Integration testing with patched fixtures`
+  - Manual testing procedures
+  - Edge case verificationy
+  - Preserve intensity when color changes

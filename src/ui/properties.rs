@@ -7,22 +7,33 @@ use crate::app::EasyCueApp;
 pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // Determine what's selected
     let has_channels = !app.ui_state.selected_channels.is_empty();
+    let has_fixtures = !app.ui_state.selected_fixtures.is_empty();
     let has_cue = app.ui_state.selected_cue_index.is_some();
     
-    if !has_channels && !has_cue {
+    if !has_channels && !has_fixtures && !has_cue {
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
             ui.label(egui::RichText::new("No Selection").color(egui::Color32::GRAY));
             ui.add_space(10.0);
-            ui.label("Select a channel or cue to view properties");
+            ui.label("Select a fixture, channel, or cue to view properties");
             ui.add_space(10.0);
-            ui.label(egui::RichText::new("Tip: Ctrl/Cmd+Click to select multiple channels").italics().small());
+            ui.label(egui::RichText::new("Tip: Ctrl/Cmd+Click to select multiple items").italics().small());
         });
         return;
     }
     
-    // Show channel properties if channels are selected
-    if has_channels {
+    // Show fixture properties if fixtures are selected (takes precedence)
+    if has_fixtures {
+        if app.ui_state.selected_fixtures.len() == 1 {
+            let fixture_id = *app.ui_state.selected_fixtures.iter().next().unwrap();
+            render_selected_fixture_properties(ui, app, fixture_id);
+        } else {
+            render_multi_fixture_properties(ui, app);
+        }
+        ui.separator();
+    }
+    // Show channel properties if channels are selected (and no fixtures)
+    else if has_channels {
         if app.ui_state.selected_channels.len() == 1 {
             let channel = *app.ui_state.selected_channels.iter().next().unwrap();
             render_single_channel_properties(ui, app, channel);
@@ -114,6 +125,37 @@ fn render_fixture_properties(
             let _ = universe.set_channel(ch, value);
         }
         ui.add_space(8.0);
+    } else if profile.is_rgb() {
+        // RGB fixture without dedicated intensity channel - use virtual intensity
+        ui.label(egui::RichText::new("Virtual Intensity").strong());
+        
+        // Get current virtual intensity
+        let current_intensity = app.virtual_intensity.get_intensity(patch.id)
+            .unwrap_or_else(|| {
+                app.virtual_intensity.calculate_intensity(patch.id, universe, &patch, &profile)
+            });
+        
+        let mut intensity = current_intensity;
+        if ui.add(egui::Slider::new(&mut intensity, 0.0..=1.0)
+            .text("%")
+            .custom_formatter(|val, _| format!("{:.0}%", val * 100.0))
+        ).changed() {
+            // Apply virtual intensity
+            let patch_clone = patch.clone();
+            let profile_clone = profile.clone();
+            if let Err(e) = app.virtual_intensity.set_intensity(
+                patch.id,
+                intensity,
+                universe,
+                &patch_clone,
+                &profile_clone,
+            ) {
+                log::error!("Failed to set virtual intensity: {}", e);
+            }
+        }
+        
+        ui.label(egui::RichText::new("Color-preserving intensity control").small().italics());
+        ui.add_space(8.0);
     }
     
     // Color picker for RGB fixtures
@@ -146,9 +188,31 @@ fn render_fixture_properties(
             let new_g = ((color.g() as f32 / 255.0) * 100.0) as u8;
             let new_b = ((color.b() as f32 / 255.0) * 100.0) as u8;
             
+            // Update RGB channels in universe
             let _ = universe.set_channel(r_ch, new_r);
             let _ = universe.set_channel(g_ch, new_g);
             let _ = universe.set_channel(b_ch, new_b);
+            
+            // For fixtures without dedicated intensity, update ALL color ratios
+            // (not just RGB) to preserve other color channels like Amber, White, UV
+            if !profile.has_intensity() {
+                let mut color_values = std::collections::HashMap::new();
+                color_values.insert(FixtureParameter::Red, new_r);
+                color_values.insert(FixtureParameter::Green, new_g);
+                color_values.insert(FixtureParameter::Blue, new_b);
+                
+                // Read other color channels from universe to preserve them
+                for param_mapping in profile.color_parameters() {
+                    if !matches!(param_mapping.parameter, FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue) {
+                        let ch = patch.start_address + param_mapping.channel_offset;
+                        if let Ok(value) = universe.get_channel(ch) {
+                            color_values.insert(param_mapping.parameter.clone(), value);
+                        }
+                    }
+                }
+                
+                app.virtual_intensity.set_color(patch.id, color_values);
+            }
         }
         
         ui.add_space(8.0);
@@ -163,6 +227,12 @@ fn render_fixture_properties(
                     ui.label("Red:");
                     if ui.add(egui::Slider::new(&mut r_val, 0..=100)).changed() {
                         let _ = universe.set_channel(r_ch, r_val);
+                        // Update virtual intensity state if applicable
+                        if !profile.has_intensity() {
+                            let patch_clone = patch.clone();
+                            let profile_clone = profile.clone();
+                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
+                        }
                     }
                     ui.end_row();
                     
@@ -170,6 +240,12 @@ fn render_fixture_properties(
                     ui.label("Green:");
                     if ui.add(egui::Slider::new(&mut g_val, 0..=100)).changed() {
                         let _ = universe.set_channel(g_ch, g_val);
+                        // Update virtual intensity state if applicable
+                        if !profile.has_intensity() {
+                            let patch_clone = patch.clone();
+                            let profile_clone = profile.clone();
+                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
+                        }
                     }
                     ui.end_row();
                     
@@ -177,6 +253,12 @@ fn render_fixture_properties(
                     ui.label("Blue:");
                     if ui.add(egui::Slider::new(&mut b_val, 0..=100)).changed() {
                         let _ = universe.set_channel(b_ch, b_val);
+                        // Update virtual intensity state if applicable
+                        if !profile.has_intensity() {
+                            let patch_clone = patch.clone();
+                            let profile_clone = profile.clone();
+                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
+                        }
                     }
                     ui.end_row();
                     
@@ -187,6 +269,10 @@ fn render_fixture_properties(
                         ui.label("Amber:");
                         if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
                             let _ = universe.set_channel(ch, val);
+                            // Update virtual intensity state
+                            let patch_clone = patch.clone();
+                            let profile_clone = profile.clone();
+                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
                         }
                         ui.end_row();
                     }
@@ -197,6 +283,10 @@ fn render_fixture_properties(
                         ui.label("White:");
                         if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
                             let _ = universe.set_channel(ch, val);
+                            // Update virtual intensity state
+                            let patch_clone = patch.clone();
+                            let profile_clone = profile.clone();
+                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
                         }
                         ui.end_row();
                     }
@@ -207,6 +297,10 @@ fn render_fixture_properties(
                         ui.label("UV:");
                         if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
                             let _ = universe.set_channel(ch, val);
+                            // Update virtual intensity state
+                            let patch_clone = patch.clone();
+                            let profile_clone = profile.clone();
+                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
                         }
                         ui.end_row();
                     }
@@ -387,6 +481,51 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         });
     }
+}
+
+/// Render properties for a single selected fixture
+fn render_selected_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp, fixture_id: usize) {
+    // Get the patch and profile for this fixture
+    let Some(patch) = app.fixtures.patch_list().get_patch(fixture_id) else {
+        ui.label("Fixture not found");
+        return;
+    };
+    let patch = patch.clone();
+    
+    let Some(profile) = app.fixtures.get_profile(&patch.profile_id) else {
+        ui.label(format!("Profile '{}' not found", patch.profile_id));
+        return;
+    };
+    let profile = profile.clone();
+    
+    // Render full fixture properties
+    render_fixture_properties(ui, app, &patch, &profile, patch.start_address);
+}
+
+/// Render properties for multiple selected fixtures
+fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
+    let fixture_count = app.ui_state.selected_fixtures.len();
+    
+    ui.label(egui::RichText::new(format!("{} Fixtures Selected", fixture_count)).strong());
+    
+    ui.add_space(10.0);
+    
+    // Show list of selected fixtures
+    ui.collapsing("Selected Fixtures", |ui| {
+        let mut sorted_fixtures: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
+        sorted_fixtures.sort();
+        
+        for fixture_id in sorted_fixtures {
+            if let Some(patch) = app.fixtures.patch_list().get_patch(fixture_id) {
+                if let Some(profile) = app.fixtures.get_profile(&patch.profile_id) {
+                    ui.label(format!("[#{}] {} ({})", fixture_id, patch.label, profile.name));
+                }
+            }
+        }
+    });
+    
+    ui.add_space(10.0);
+    ui.label(egui::RichText::new("Tip: Select a single fixture to edit properties").small().italics());
 }
 
 /// Render properties for a selected cue

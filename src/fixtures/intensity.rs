@@ -360,4 +360,113 @@ mod tests {
         assert_eq!(universe.get_channel(11).unwrap(), 0);
         assert_eq!(universe.get_channel(12).unwrap(), 0);
     }
+    
+    #[test]
+    fn test_multi_color_fixture_intensity() {
+        // Test RGBAWUV fixture preserves all colors when adjusting intensity
+        use crate::fixtures::profiles::ParameterMapping;
+        
+        let mut universe = Universe::new(1);
+        let mut vi = VirtualIntensity::new();
+        
+        // RGBAWUV fixture at channel 1-6
+        let profile = FixtureProfile {
+            id: "test_rgbawuv".to_string(),
+            name: "Test RGBAWUV".to_string(),
+            manufacturer: None,
+            channel_count: 6,
+            parameters: vec![
+                ParameterMapping { 
+                    parameter: FixtureParameter::Red, 
+                    channel_offset: 0, 
+                    default_value: None,
+                    description: None,
+                },
+                ParameterMapping { 
+                    parameter: FixtureParameter::Green, 
+                    channel_offset: 1, 
+                    default_value: None,
+                    description: None,
+                },
+                ParameterMapping { 
+                    parameter: FixtureParameter::Blue, 
+                    channel_offset: 2, 
+                    default_value: None,
+                    description: None,
+                },
+                ParameterMapping { 
+                    parameter: FixtureParameter::Amber, 
+                    channel_offset: 3, 
+                    default_value: None,
+                    description: None,
+                },
+                ParameterMapping { 
+                    parameter: FixtureParameter::White, 
+                    channel_offset: 4, 
+                    default_value: None,
+                    description: None,
+                },
+                ParameterMapping { 
+                    parameter: FixtureParameter::Uv, 
+                    channel_offset: 5, 
+                    default_value: None,
+                    description: None,
+                },
+            ],
+            notes: None,
+        };
+        
+        let patch = Patch {
+            id: 1,
+            start_address: 1,
+            profile_id: "test_rgbawuv".to_string(),
+            label: "Test".to_string(),
+            universe: 1,
+            notes: String::new(),
+        };
+        
+        // Set initial color values: r=55, g=20, b=30, a=66, w=44, uv=10
+        let mut colors = HashMap::new();
+        colors.insert(FixtureParameter::Red, 55);
+        colors.insert(FixtureParameter::Green, 20);
+        colors.insert(FixtureParameter::Blue, 30);
+        colors.insert(FixtureParameter::Amber, 66);
+        colors.insert(FixtureParameter::White, 44);
+        colors.insert(FixtureParameter::Uv, 10);
+        
+        vi.set_color(1, colors);
+        vi.apply_to_universe(1, &mut universe, &patch, &profile).unwrap();
+        
+        // Verify initial values
+        assert_eq!(universe.get_channel(1).unwrap(), 55);
+        assert_eq!(universe.get_channel(2).unwrap(), 20);
+        assert_eq!(universe.get_channel(3).unwrap(), 30);
+        assert_eq!(universe.get_channel(4).unwrap(), 66);
+        assert_eq!(universe.get_channel(5).unwrap(), 44);
+        assert_eq!(universe.get_channel(6).unwrap(), 10);
+        
+        // Reduce intensity to 50%
+        vi.set_intensity(1, 0.5, &mut universe, &patch, &profile).unwrap();
+        
+        // All colors should scale proportionally (not just red!)
+        // Ratios: r=55/66=0.833, g=20/66=0.303, b=30/66=0.455, a=66/66=1.0, w=44/66=0.667, uv=10/66=0.152
+        // At 50%: r=41, g=15, b=22, a=50, w=33, uv=7
+        assert_eq!(universe.get_channel(1).unwrap(), 41);  // Red
+        assert_eq!(universe.get_channel(2).unwrap(), 15);  // Green
+        assert_eq!(universe.get_channel(3).unwrap(), 22);  // Blue
+        assert_eq!(universe.get_channel(4).unwrap(), 50);  // Amber
+        assert_eq!(universe.get_channel(5).unwrap(), 33);  // White
+        assert_eq!(universe.get_channel(6).unwrap(), 7);   // UV
+        
+        // Increase intensity to 75%
+        vi.set_intensity(1, 0.75, &mut universe, &patch, &profile).unwrap();
+        
+        // At 75%: r=62, g=22, b=34, a=75, w=50, uv=11
+        assert_eq!(universe.get_channel(1).unwrap(), 62);  // Red
+        assert_eq!(universe.get_channel(2).unwrap(), 22);  // Green  
+        assert_eq!(universe.get_channel(3).unwrap(), 34);  // Blue
+        assert_eq!(universe.get_channel(4).unwrap(), 75);  // Amber
+        assert_eq!(universe.get_channel(5).unwrap(), 50);  // White
+        assert_eq!(universe.get_channel(6).unwrap(), 11);  // UV
+    }
 }

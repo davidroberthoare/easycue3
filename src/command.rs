@@ -336,17 +336,19 @@ pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
             
             for &fixture_id in &fixtures {
                 // Find the patch for this fixture
-                if let Some(patch) = app.fixture_library.get_patch_list().get_patch(fixture_id) {
+                if let Some(patch) = app.fixtures.patch_list().get_patch(fixture_id) {
+                    let patch_clone = patch.clone();
                     // Get the fixture profile to determine if it has intensity channel
-                    if let Some(profile) = app.fixture_library.get_profile(&patch.profile_id) {
+                    if let Some(profile) = app.fixtures.get_profile(&patch.profile_id) {
+                        let profile_clone = profile.clone();
                         if let Some(universe) = app.universes.first_mut() {
                             if profile.has_intensity() {
                                 // iRGB fixture: Set intensity channel directly
                                 if let Some(intensity_param) = profile.parameters.iter()
                                     .find(|p| p.parameter == crate::fixtures::profiles::FixtureParameter::Intensity) 
                                 {
-                                    let channel = patch.start_address + intensity_param.offset;
-                                    let dmx_value = (intensity * 100.0) as u8;
+                                    let channel = patch.start_address + intensity_param.channel_offset;
+                                    let dmx_value = (intensity * 100.0).round() as u8;
                                     if let Err(e) = universe.set_channel(channel, dmx_value) {
                                         log::error!("Failed to set fixture {} intensity channel {}: {}", fixture_id, channel, e);
                                         error_count += 1;
@@ -354,13 +356,14 @@ pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
                                         success_count += 1;
                                     }
                                 }
-                            } else {
+                            } else if profile.is_rgb() {
                                 // RGB fixture: Use virtual intensity
                                 if let Err(e) = app.virtual_intensity.set_intensity(
                                     fixture_id, 
                                     intensity, 
-                                    &app.fixture_library, 
-                                    universe
+                                    universe,
+                                    &patch_clone,
+                                    &profile_clone,
                                 ) {
                                     log::error!("Failed to set fixture {} virtual intensity: {}", fixture_id, e);
                                     error_count += 1;
@@ -386,7 +389,7 @@ pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
             }
             
             let fixture_list = format_fixture_list(&fixtures);
-            let intensity_percent = (intensity * 100.0) as u8;
+            let intensity_percent = (intensity * 100.0).round() as u8;
             if error_count == 0 {
                 app.ui_state.status_message = format!("Fixture {} @ {}%", fixture_list, intensity_percent);
                 log::info!("Set fixture {} to {}%", fixture_list, intensity_percent);
