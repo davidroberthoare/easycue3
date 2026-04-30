@@ -1,27 +1,319 @@
-//! Lighting channels panel - manual DMX control
+//! Instrument list panel - fixture-centric intensity control
 
 use egui::{Ui, Sense, Vec2, Pos2, Color32, Stroke};
 use crate::app::EasyCueApp;
+use crate::fixtures::profiles::FixtureParameter;
 
-/// Render the lighting channels panel with per-channel sliders
+/// Render the instrument list panel with per-fixture intensity controls
 pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
-    // Channel display controls
+    // View mode controls
     ui.horizontal(|ui| {
         ui.label("View:");
-        if ui.button("All (1-512)").clicked() {
-            // Future: Set view range
+        
+        // Toggle between fixture list and channel grid
+        let mut show_unpatched = app.ui_state.show_unpatched_channels;
+        if ui.checkbox(&mut show_unpatched, "Show Unpatched Channels").changed() {
+            app.ui_state.show_unpatched_channels = show_unpatched;
         }
-        if ui.button("Active Only").clicked() {
-            // Future: Filter to non-zero channels
-        }
-        if ui.button("Groups").clicked() {
-            // Future: Show channel groups
+        
+        if !show_unpatched {
+            if ui.button("Select All").clicked() {
+                // Select all patched fixtures
+                for patch in app.fixtures.patch_list().patches() {
+                    app.ui_state.selected_fixtures.insert(patch.id);
+                }
+            }
+            
+            if !app.ui_state.selected_fixtures.is_empty() {
+                if ui.button("Clear Selection").clicked() {
+                    app.ui_state.selected_fixtures.clear();
+                    app.ui_state.last_selected_fixture = None;
+                }
+            }
         }
     });
     
     ui.separator();
     
+    if app.ui_state.show_unpatched_channels {
+        // Show traditional channel grid for unpatched channels
+        render_channel_grid(ui, app);
+    } else {
+        // Show instrument list for patched fixtures
+        render_instrument_list(ui, app);
+    }
+}
+
+/// Render the instrument list - fixture-centric view
+fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
+    let patches: Vec<_> = app.fixtures.patch_list().patches().to_vec();
+    
+    if patches.is_empty() {
+        ui.centered_and_justified(|ui| {
+            ui.label("No fixtures patched. Use the Patching panel to add fixtures.");
+        });
+        return;
+    }
+    
     // Calculate available height for scrollable area
+    let footer_height = 40.0;
+    let max_scroll_height = ui.available_height() - footer_height - 10.0;
+    
+    // Scrollable area for fixture list
+    egui::ScrollArea::vertical()
+        .id_salt("instrument_scroll")
+        .auto_shrink([false, false])
+        .max_height(max_scroll_height)
+        .show(ui, |ui| {
+            // Render each patched fixture
+            for patch in &patches {
+                let profile = match app.fixtures.get_profile(&patch.profile_id) {
+                    Some(p) => p.clone(),
+                    None => {
+                        ui.label(format!("⚠ Fixture #{}: Unknown profile '{}'", patch.id, patch.profile_id));
+                        continue;
+                    }
+                };
+                
+                render_fixture_row(ui, app, patch, &profile);
+                ui.add_space(2.0);
+            }
+        });
+    
+    ui.separator();
+    
+    // Quick actions for selected fixtures
+    if !app.ui_state.selected_fixtures.is_empty() {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("{} selected", app.ui_state.selected_fixtures.len()));
+            ui.separator();
+            
+            // Quick intensity buttons for selection
+            for &(label, val) in &[("0%", 0.0), ("25%", 0.25), ("50%", 0.5), ("75%", 0.75), ("FL", 1.0)] {
+                if ui.button(label).clicked() {
+                    set_selected_fixtures_intensity(app, val);
+                }
+            }
+        });
+    } else {
+        ui.label("Click fixtures to select. Shift-click for range, Ctrl-click to toggle.");
+    }
+}
+
+/// Set intensity for all selected fixtures
+fn set_selected_fixtures_intensity(app: &mut EasyCueApp, intensity: f32) {
+    let selected: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
+    
+    if let Some(universe) = app.universes.first_mut() {
+        for fixture_id in selected {
+            let patch = match app.fixtures.patch_list().get_patch(fixture_id) {
+                Some(p) => p.clone(),
+                None => continue,
+            };
+            
+            let profile = match app.fixtures.get_profile(&patch.profile_id) {
+                Some(p) => p,
+                None => continue,
+            };
+            
+            // Route to appropriate intensity system
+            if profile.has_intensity() {
+                // iRGB: Direct intensity channel control
+                if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Intensity) {
+                    let channel = patch.start_address + offset;
+                    let dmx_value = (intensity * 100.0).round() as u8;
+                    let _ = universe.set_channel(channel, dmx_value);
+                }
+            } else if profile.is_rgb() {
+                // RGB: Virtual intensity system
+                let _ = app.virtual_intensity.set_intensity(
+                    fixture_id,
+                    intensity,
+                    universe,
+                    &patch,
+                    profile,
+                );
+            }
+        }
+    }
+    
+    app.ui_state.status_message = format!("Set {} fixtures to {}%", 
+        app.ui_state.selected_fixtures.len(), 
+        (intensity * 100.0).round() as u8
+    );
+}
+
+/// Render a single fixture row with intensity control
+fn render_fixture_row(
+    ui: &mut Ui,
+    app: &mut EasyCueApp,
+    patch: &crate::fixtures::Patch,
+    profile: &crate::fixtures::FixtureProfile,
+) {
+    let fixture_id = patch.id;
+    let is_selected = app.ui_state.selected_fixtures.contains(&fixture_id);
+    
+    // Get current intensity
+    let current_intensity = if let Some(universe) = app.universes.first() {
+        if profile.has_intensity() {
+            // iRGB: Read from intensity channel
+            if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Intensity) {
+                let channel = patch.start_address + offset;
+                universe.get_channel(channel).unwrap_or(0) as f32 / 100.0
+            } else {
+                0.0
+            }
+        } else if profile.is_rgb() {
+            // RGB: Get virtual intensity
+            app.virtual_intensity.get_intensity(fixture_id).unwrap_or_else(|| {
+                // Calculate from universe if not cached
+                if let Some(universe) = app.universes.first() {
+                    app.virtual_intensity.calculate_intensity(fixture_id, universe, patch, profile)
+                } else {
+                    0.0
+                }
+            })
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+    
+    // Row background
+    let row_height = 40.0;
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), row_height),
+        Sense::click_and_drag()
+    );
+    
+    // Handle selection
+    if response.clicked() {
+        let modifiers = ui.input(|i| i.modifiers);
+        
+        if modifiers.shift {
+            // Shift-click: add range to selection
+            if let Some(last_id) = app.ui_state.last_selected_fixture {
+                let patches = app.fixtures.patch_list().patches();
+                let start_idx = patches.iter().position(|p| p.id == last_id);
+                let end_idx = patches.iter().position(|p| p.id == fixture_id);
+                
+                if let (Some(start), Some(end)) = (start_idx, end_idx) {
+                    let (start, end) = if start <= end { (start, end) } else { (end, start) };
+                    for patch in &patches[start..=end] {
+                        app.ui_state.selected_fixtures.insert(patch.id);
+                    }
+                }
+            }
+            app.ui_state.last_selected_fixture = Some(fixture_id);
+        } else if modifiers.command || modifiers.ctrl {
+            // Ctrl/Cmd-click: toggle selection
+            if is_selected {
+                app.ui_state.selected_fixtures.remove(&fixture_id);
+            } else {
+                app.ui_state.selected_fixtures.insert(fixture_id);
+            }
+            app.ui_state.last_selected_fixture = Some(fixture_id);
+        } else {
+            // Regular click: replace selection
+            app.ui_state.selected_fixtures.clear();
+            app.ui_state.selected_fixtures.insert(fixture_id);
+            app.ui_state.last_selected_fixture = Some(fixture_id);
+        }
+    }
+    
+    // Handle intensity drag
+    if response.dragged() {
+        let drag_delta = response.drag_delta();
+        let change_y = (-drag_delta.y / 2.0) / 100.0; // Convert to intensity delta
+        let change_x = (drag_delta.x / 2.0) / 100.0;
+        let total_change = change_y + change_x;
+        
+        if total_change.abs() > 0.001 {
+            let new_intensity = (current_intensity + total_change).clamp(0.0, 1.0);
+            
+            // Always select the dragged fixture
+            if !is_selected {
+                app.ui_state.selected_fixtures.clear();
+                app.ui_state.selected_fixtures.insert(fixture_id);
+                app.ui_state.last_selected_fixture = Some(fixture_id);
+            }
+            
+            // Apply to all selected fixtures
+            set_selected_fixtures_intensity(app, new_intensity);
+        }
+    }
+    
+    // Draw background
+    let bg_color = if is_selected {
+        Color32::from_rgb(50, 70, 90)
+    } else if current_intensity > 0.0 {
+        Color32::from_rgb(35, 35, 35)
+    } else {
+        Color32::from_rgb(25, 25, 25)
+    };
+    
+    ui.painter().rect_filled(rect, 2.0, bg_color);
+    
+    // Draw border
+    let border_color = if is_selected {
+        Color32::from_rgb(100, 150, 200)
+    } else {
+        Color32::from_rgb(50, 50, 50)
+    };
+    ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, border_color), egui::epaint::StrokeKind::Middle);
+    
+    // Draw fixture info
+    let text_color = if current_intensity > 0.0 {
+        Color32::WHITE
+    } else {
+        Color32::GRAY
+    };
+    
+    let text_pos = Pos2::new(rect.min.x + 10.0, rect.min.y + 8.0);
+    
+    // Line 1: [#ID] Label (Type)
+    let line1 = format!("[#{}] {} ({})", 
+        fixture_id, 
+        patch.label, 
+        profile.name
+    );
+    ui.painter().text(
+        text_pos,
+        egui::Align2::LEFT_TOP,
+        line1,
+        egui::FontId::proportional(14.0),
+        text_color,
+    );
+    
+    // Line 2: Intensity value
+    let intensity_pct = (current_intensity * 100.0).round() as u8;
+    let line2 = format!("Intensity: {}%", intensity_pct);
+    let line2_pos = Pos2::new(rect.min.x + 10.0, rect.min.y + 24.0);
+    
+    let intensity_color = if intensity_pct == 0 {
+        Color32::from_rgb(100, 100, 100)
+    } else if intensity_pct == 100 {
+        Color32::from_rgb(255, 100, 100)
+    } else if intensity_pct >= 75 {
+        Color32::from_rgb(255, 255, 100)
+    } else if intensity_pct >= 50 {
+        Color32::from_rgb(150, 255, 150)
+    } else {
+        Color32::from_rgb(150, 200, 255)
+    };
+    
+    ui.painter().text(
+        line2_pos,
+        egui::Align2::LEFT_TOP,
+        line2,
+        egui::FontId::monospace(12.0),
+        intensity_color,
+    );
+}
+
+/// Render the traditional channel grid (for unpatched channels)
+fn render_channel_grid(ui: &mut Ui, app: &mut EasyCueApp) {
     // Reserve space for footer (~40px) + separator + padding
     let footer_height = 40.0;
     let max_scroll_height = ui.available_height() - footer_height - 10.0;

@@ -2,7 +2,7 @@
 
 **Date:** April 30, 2026  
 **Feature:** Unified intensity control for RGB and iRGB fixtures  
-**Status:** Phase 1 & 2 Complete ✅
+**Status:** Phase 1, 2 & 3 Complete ✅
 
 ---
 
@@ -78,25 +78,47 @@ cargo build
 
 ---
 
-### 🔄 Phase 3: Instrument List UI (TODO)
+### ✅ Phase 3: Instrument List UI (COMPLETE)
+
+**File:** `src/ui/channels.rs`
+
+**Implemented:**
+- [x] Replaced channel grid with fixture-centric instrument list
+- [x] Display format: `[#ID] Label (Type) - Intensity: XX%`
+- [x] Click-drag intensity control (vertical/horizontal)
+- [x] Added "Show Unpatched Channels" toggle button
+- [x] Tracked `selected_fixtures: HashSet<usize>` in `UIState`
+- [x] Implemented fixture selection (click/shift-click/ctrl-click)
+- [x] Quick intensity buttons for selected fixtures (0%, 25%, 50%, 75%, FL)
+- [x] Dual-mode panel: instrument list (default) and channel grid (toggle)
+
+**Key Features:**
+- **Instrument List Mode**: Shows all patched fixtures with intensity controls
+- **Channel Grid Mode**: Traditional 512-channel view (via toggle)
+- **Intensity Control**: Works for both RGB (virtual) and iRGB (direct) fixtures
+- **Selection System**: Multi-select with Shift/Ctrl modifiers
+- **Visual Feedback**: Color-coded intensity levels, selection highlighting
+
+**Build Status:**
+```bash
+cargo build
+# Success - 7 warnings (all non-critical, unused code)
+cargo test --lib
+# 15 tests pass (including all fixture/intensity tests)
+```
+
+---
+
+### 🔄 Phase 4: Command Parser Extension (TODO)
 
 **File:** `src/ui/channels.rs`
 
 **Current State:**
-- Displays 512-channel grid
-- Channel-centric interface
+- Displays 512-channel grid OR fixture list (toggle mode)
+- Click-drag intensity control implemented
+- Fixture selection working (click/shift-click/ctrl-click)
 
-**Required Changes:**
-- [ ] Replace channel grid with fixture list (patched fixtures only)
-- [ ] Display format: `[#ID] Label (Type) - Intensity: XX%`
-- [ ] Click-drag intensity control (vertical or horizontal)
-- [ ] Add "Show Unpatched Channels" toggle button
-- [ ] Track `selected_fixtures: HashSet<usize>` in `UIState`
-- [ ] Implement fixture selection (click/shift-click/ctrl-click)
-
-**Dependencies:**
-- `FixtureLibrary::find_by_id()` method (may need to add)
-- Access to `virtual_intensity` from `EasyCueApp`
+**No Additional Changes Required** - Phase 3 fully implemented
 
 ---
 
@@ -227,17 +249,17 @@ if fixture_profile.has_intensity() {
 
 ## Code Locations
 
-### Implemented (Phase 1 & 2)
-- `src/fixtures/intensity.rs` - Virtual intensity core (226 lines)
-- `src/fixtures/mod.rs` - Module exports
-- `src/app.rs` - Integration into EasyCueApp
-- `src/lib.rs` - Module visibility for tests
+### Implemented (Phase 1, 2 & 3)
+- `src/fixtures/intensity.rs` - Virtual intensity core (226 lines) ✅
+- `src/fixtures/mod.rs` - Module exports ✅
+- `src/app.rs` - Integration into EasyCueApp + UIState extensions ✅
+- `src/lib.rs` - Module visibility for tests ✅
+- `src/ui/channels.rs` - Instrument list UI with dual-mode panel ✅
 
-### To Modify (Phase 3-6)
-- `src/ui/channels.rs` - Channel grid → Instrument list
-- `src/ui/properties.rs` - Add virtual intensity slider
+### To Modify (Phase 4-6)
 - `src/command.rs` - Fixture-based commands
-- `src/app.rs` - UIState for fixture selection
+- `src/ui/properties.rs` - Add virtual intensity slider
+- `src/app.rs` - Command execution routing
 
 ### Supporting Files
 - `src/fixtures/profiles.rs` - Already has `has_intensity()`, `is_color()`
@@ -313,11 +335,18 @@ if fixture_profile.has_intensity() {
 
 ## Next Steps
 
-1. **Immediate:** Start Phase 3 (Instrument List UI)
-2. **Then:** Phase 4 (Command Parser) in parallel with Phase 5 (Properties Panel)
+1. **Immediate:** Start Phase 4 (Command Parser Extension)
+2. **Then:** Phase 5 (Properties Panel Enhancement)
 3. **Finally:** Phase 6 (Integration testing with real fixtures)
 
-**Estimated Completion:** Phases 3-6 should take 2-3 hours of focused development time.
+**Estimated Completion:** Phases 4-6 should take 2-3 hours of focused development time.
+
+**Phase 3 Complete!** The instrument list UI is fully functional with:
+- Fixture-centric view showing all patched fixtures
+- Click-drag intensity control for RGB and iRGB fixtures
+- Multi-select with Shift/Ctrl modifiers
+- Toggle to show traditional channel grid
+- Color-coded intensity display
 
 ---
 
@@ -330,8 +359,16 @@ if fixture_profile.has_intensity() {
   - Added unit tests (3/3 passing)
   - Adjusted for 0-100 DMX range compatibility
 
-### Next Commit
 - `feat: Implement instrument list UI with intensity control`
-  - Convert channels panel to fixture-centric interface
-  - Add click-drag intensity control
-  - Track fixture selection state
+  - Converted channels panel to fixture-centric interface
+  - Added click-drag intensity control for fixtures
+  - Implemented fixture selection state tracking
+  - Added toggle for traditional channel grid view
+  - Multi-select with Shift/Ctrl modifiers
+  - Color-coded intensity display
+  - Quick intensity buttons (0%, 25%, 50%, 75%, FL)
+
+### Next Commit
+- `feat: Add fixture-based command parser syntax`
+  - Extend command parser to support fixture IDs
+  - Context-aware parsing (fixtures vs channels)

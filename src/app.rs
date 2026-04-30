@@ -51,6 +51,14 @@ pub struct UiState {
     /// Current master level for proportional group control (M in formula, 0-100)
     pub group_master: u8,
     
+    // Fixture selection state (for instrument list)
+    /// Currently selected fixtures (by fixture ID)
+    pub selected_fixtures: HashSet<usize>,
+    /// Last selected fixture for shift-range selection
+    pub last_selected_fixture: Option<usize>,
+    /// Toggle to show unpatched channels in instrument list
+    pub show_unpatched_channels: bool,
+    
     /// Status message to display to the user
     pub status_message: String,
     
@@ -104,6 +112,9 @@ impl Default for UiState {
             last_selected_channel: None,
             channel_base_levels: HashMap::new(),
             group_master: 100,
+            selected_fixtures: HashSet::new(),
+            last_selected_fixture: None,
+            show_unpatched_channels: false,
             status_message: String::new(),
             command_input: String::new(),
             lighting_master: 1.0,
