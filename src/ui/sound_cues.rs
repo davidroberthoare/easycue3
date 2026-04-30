@@ -244,9 +244,10 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                     let cue_label = app.audio_cue_list.get_cue(idx).map(|c| c.label.clone()).unwrap_or_default();
                     let cue_filename = app.audio_cue_list.get_cue(idx).map(|c| c.filename()).unwrap_or_default();
                     
-                    // Check file existence (cached to avoid expensive I/O every frame)
+                    // Check file existence using resolved path (cached to avoid expensive I/O every frame)
                     let cue_path = app.audio_cue_list.get_cue(idx).map(|c| c.audio_path.clone());
-                    let cue_exists = if let Some(path) = &cue_path {
+                    let resolved_path = app.audio_cue_list.get_cue(idx).map(|c| c.resolved_path());
+                    let cue_exists = if let Some(path) = &resolved_path {
                         // Check cache first
                         if let Some(&exists) = app.ui_state.audio_file_cache.get(path) {
                             exists

@@ -4,9 +4,27 @@ use anyhow::{Context, Result};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::fs::File;
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// Resolve an audio file path, falling back to the media/ directory if needed
+fn resolve_audio_path(path: &Path) -> PathBuf {
+    // If path is absolute or exists as-is, use it
+    if path.is_absolute() || path.exists() {
+        return path.to_path_buf();
+    }
+    
+    // Try prepending "media/" directory
+    let media_path = PathBuf::from("media").join(path);
+    if media_path.exists() {
+        log::debug!("Resolved audio path: {} -> {}", path.display(), media_path.display());
+        return media_path;
+    }
+    
+    // Fall back to original path (will fail when opened, with proper error message)
+    path.to_path_buf()
+}
 
 /// Audio player state (Note: Cannot derive Debug due to rodio types)
 pub struct AudioPlayer {
@@ -48,9 +66,12 @@ impl AudioPlayer {
         // Stop any current playback
         self.stop();
         
+        // Resolve the audio file path (fallback to media/ if needed)
+        let resolved_path = resolve_audio_path(path);
+        
         // Open and decode the audio file
-        let file = File::open(path)
-            .context(format!("Failed to open audio file: {}", path.display()))?;
+        let file = File::open(&resolved_path)
+            .context(format!("Failed to open audio file: {}", resolved_path.display()))?;
         let source = Decoder::new(BufReader::new(file))
             .context("Failed to decode audio file")?;
         
@@ -69,7 +90,7 @@ impl AudioPlayer {
         // Add the source to the sink
         sink.append(source);
         
-        // Store the sink
+        // Store the sinkresolved_
         *self.sink.lock().unwrap() = Some(sink);
         
         log::info!("Playing audio file: {}", path.display());

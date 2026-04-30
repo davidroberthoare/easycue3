@@ -13,7 +13,10 @@ pub struct AudioCue {
     /// Optional text label
     pub label: String,
     
-    /// Path to audio file (relative to show file directory)
+    /// Path to audio file
+    /// - If relative (e.g., "sample1.mp3"), automatically resolved from the "media/" directory
+    /// - If absolute, used as-is
+    /// - When saving, paths in the media/ directory are automatically simplified to just the filename
     pub audio_path: PathBuf,
     
     /// Volume level (0.0 to 1.0)
@@ -66,6 +69,46 @@ impl AudioCue {
             .and_then(|n| n.to_str())
             .unwrap_or("(unknown)")
             .to_string()
+    }
+    
+    /// Canonicalize the audio path for saving
+    /// Strips the "media/" prefix if present, so files in the media directory
+    /// are saved as just the filename (e.g., "sample1.mp3" instead of "media/sample1.mp3")
+    pub fn canonical_path(&self) -> PathBuf {
+        // Check if path starts with "media/"
+        if let Ok(stripped) = self.audio_path.strip_prefix("media") {
+            stripped.to_path_buf()
+        } else {
+            self.audio_path.clone()
+        }
+    }
+    
+    /// Resolve the audio path to an actual filesystem path
+    /// Falls back to the "media/" directory if the path doesn't exist as-is
+    pub fn resolved_path(&self) -> PathBuf {
+        // If path is absolute or exists as-is, use it
+        if self.audio_path.is_absolute() || self.audio_path.exists() {
+            return self.audio_path.clone();
+        }
+        
+        // Try prepending "media/" directory
+        let media_path = PathBuf::from("media").join(&self.audio_path);
+        if media_path.exists() {
+            return media_path;
+        }
+        
+        // Fall back to original path
+        self.audio_path.clone()
+    }
+    
+    /// Set the audio path from a full path, automatically simplifying if it's in the media directory
+    pub fn set_path(&mut self, path: PathBuf) {
+        // If the path is in the media directory, strip the prefix for cleaner show files
+        if let Ok(stripped) = path.strip_prefix("media") {
+            self.audio_path = stripped.to_path_buf();
+        } else {
+            self.audio_path = path;
+        }
     }
 }
 
