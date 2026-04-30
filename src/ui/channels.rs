@@ -27,51 +27,54 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let max_scroll_height = ui.available_height() - footer_height - 10.0;
     
     // Scrollable area for channel display - continuous grid with grouping by 5s
+    // Use virtual scrolling to only render visible rows for performance
+    let available_width = ui.available_width() - 10.0; // Margin for scrollbar and safety
+    let box_width = 50.0;
+    let group_size = 5;
+    let group_spacing = 10.0; // Extra space between groups of 5
+    let channel_spacing = 2.0; // Space between individual channels
+    
+    // Calculate width of one group of 5 channels (including internal spacing)
+    // Group = 5 boxes + 4 spaces between them
+    let group_width = (box_width * group_size as f32) + (channel_spacing * (group_size - 1) as f32);
+    
+    // Calculate how many COMPLETE groups can fit across
+    // For N groups: width = N * group_width + (N-1) * group_spacing
+    let mut groups_per_row = 1;
+    loop {
+        let width_needed = (groups_per_row + 1) as f32 * group_width 
+                         + groups_per_row as f32 * group_spacing; // N+1 groups need N gaps
+        if width_needed <= available_width {
+            groups_per_row += 1;
+            if groups_per_row >= 20 { // reasonable upper limit
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    
+    let channels_per_row = groups_per_row * group_size;
+    let row_height = 55.0 + 2.0; // Box height + vertical spacing
+    let total_rows = (512 + channels_per_row - 1) / channels_per_row; // Ceiling division
+    
+    // Use show_rows for virtual scrolling - only renders visible rows!
     egui::ScrollArea::vertical()
         .id_salt("channels_scroll")
         .auto_shrink([false, false])
         .max_height(max_scroll_height)
-        .show(ui, |ui| {
-            let available_width = ui.available_width() - 10.0; // Margin for scrollbar and safety
-            let box_width = 50.0;
-            let group_size = 5;
-            let group_spacing = 10.0; // Extra space between groups of 5
-            let channel_spacing = 2.0; // Space between individual channels
-            
-            // Calculate width of one group of 5 channels (including internal spacing)
-            // Group = 5 boxes + 4 spaces between them
-            let group_width = (box_width * group_size as f32) + (channel_spacing * (group_size - 1) as f32);
-            
-            // Calculate how many COMPLETE groups can fit across
-            // For N groups: width = N * group_width + (N-1) * group_spacing
-            let mut groups_per_row = 1;
-            loop {
-                let width_needed = (groups_per_row + 1) as f32 * group_width 
-                                 + groups_per_row as f32 * group_spacing; // N+1 groups need N gaps
-                if width_needed <= available_width {
-                    groups_per_row += 1;
-                    if groups_per_row >= 20 { // reasonable upper limit
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            
-            let channels_per_row = groups_per_row * group_size;
-            
-            // Layout all 512 channels in the responsive grid
-            let mut channel = 1u16;
-            while channel <= 512 {
+        .show_rows(ui, row_height, total_rows, |ui, row_range| {
+            for row_idx in row_range {
+                let channel_start = (row_idx * channels_per_row + 1) as u16;
+                let channel_end = ((row_idx + 1) * channels_per_row).min(512) as u16;
+                
                 ui.horizontal(|ui| {
-                    let row_end = (channel + channels_per_row as u16 - 1).min(512);
-                    
-                    for ch in channel..=row_end {
+                    for ch in channel_start..=channel_end {
                         render_channel_box(ui, app, ch);
                         
                         // Add spacing between channels and extra spacing between groups
-                        if ch < row_end {
-                            if (ch - channel + 1) % group_size as u16 == 0 {
+                        if ch < channel_end {
+                            if (ch - channel_start + 1) % group_size as u16 == 0 {
                                 ui.add_space(group_spacing); // Extra space after each group of 5
                             } else {
                                 ui.add_space(channel_spacing); // Normal spacing between channels
@@ -81,7 +84,6 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 });
                 
                 ui.add_space(2.0); // Vertical spacing between rows
-                channel += channels_per_row as u16;
             }
         });
     

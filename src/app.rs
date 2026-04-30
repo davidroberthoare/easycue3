@@ -693,6 +693,7 @@ impl eframe::App for EasyCueApp {
         }
 
         // Apply master level and blackout before sending (separate borrow)
+        let dmx_send_start = std::time::Instant::now();
         if let Some(universe) = self.universes.first() {
             let output_universe = self.apply_masters(universe);
             
@@ -701,18 +702,28 @@ impl eframe::App for EasyCueApp {
                 log::error!("DMX output error: {}", e);
             }
         }
-
+        let dmx_send_time = dmx_send_start.elapsed();
+        
         // Render UI
+        let ui_render_start = std::time::Instant::now();
         crate::ui::render(ctx, self);
+        let ui_render_time = ui_render_start.elapsed();
         
         // Debug UI overlay (FPS counter, frame time)
         if self.ui_state.show_debug_ui {
             egui::Window::new("🐛 Debug Info")
                 .default_pos([10.0, 10.0])
-                .default_width(250.0)
+                .default_width(280.0)
                 .show(ctx, |ui| {
                     ui.label(format!("FPS: {:.1}", ctx.input(|i| 1.0 / i.stable_dt)));
                     ui.label(format!("Frame time: {:.2}ms", ctx.input(|i| i.stable_dt * 1000.0)));
+                    ui.separator();
+                    
+                    // Performance breakdown
+                    ui.label(egui::RichText::new("Performance:").strong());
+                    ui.label(format!("  DMX send: {:.2}ms", dmx_send_time.as_secs_f64() * 1000.0));
+                    ui.label(format!("  UI render: {:.2}ms", ui_render_time.as_secs_f64() * 1000.0));
+                    
                     ui.separator();
                     
                     #[cfg(feature = "audio")]
