@@ -2,6 +2,8 @@
 
 use crate::cue::{Cue, CueList, PlaybackEngine};
 use crate::dmx::{Universe, backends::{DmxBackend, VirtualBackend}};
+#[cfg(feature = "usb")]
+use crate::dmx::backends::EnttecUsbProBackend;
 use crate::media::MediaManager;
 use crate::fixtures::FixtureLibrary;
 use crate::show::ShowFile;
@@ -77,6 +79,10 @@ pub struct UiState {
     
     // Dialog states
     pub show_quit_confirmation: bool,
+    pub show_device_selector: bool,
+    
+    // Device selector state
+    pub selected_usb_port: String,
 }
 
 impl Default for UiState {
@@ -99,6 +105,8 @@ impl Default for UiState {
             command_context: CommandContext::General,
             theme_initialized: false,
             show_quit_confirmation: false,
+            show_device_selector: false,
+            selected_usb_port: String::new(),
         }
     }
 }
@@ -312,8 +320,37 @@ impl EasyCueApp {
             Universe::new(1),
         ];
 
-        // Use virtual backend by default (no hardware required)
-        let dmx_backend = Box::new(VirtualBackend::new(true)) as Box<dyn DmxBackend>;
+        // Try to auto-detect Enttec USB device, fall back to Virtual
+        let dmx_backend: Box<dyn DmxBackend> = {
+            #[cfg(feature = "usb")]
+            {
+                match EnttecUsbProBackend::list_ports() {
+                    Ok(ports) if !ports.is_empty() => {
+                        // Try to connect to first available port
+                        match EnttecUsbProBackend::new(&ports[0]) {
+                            Ok(backend) => {
+                                log::info!("✓ Connected to Enttec DMXUSB Pro at {}", ports[0]);
+                                Box::new(backend)
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to connect to Enttec device: {}", e);
+                                log::info!("Falling back to Virtual DMX");
+                                Box::new(VirtualBackend::new(true))
+                            }
+                        }
+                    }
+                    _ => {
+                        log::info!("No Enttec USB device found, using Virtual DMX");
+                        Box::new(VirtualBackend::new(true))
+                    }
+                }
+            }
+            #[cfg(not(feature = "usb"))]
+            {
+                log::info!("USB support not enabled, using Virtual DMX");
+                Box::new(VirtualBackend::new(true))
+            }
+        };
 
         log::info!("EasyCue3 application initialized");
         log::info!("DMX Backend: {}", dmx_backend.name());
@@ -404,6 +441,47 @@ impl EasyCueApp {
         Ok(())
     }
 
+    /// Apply lighting master and blackout to universe before output
+    /// Returns a new Universe with the master levels applied
+    pub fn apply_masters(&self, universe: &Universe) -> Universe {
+        let mut output = universe.clone();
+        
+        // If blackout is active, zero all channels
+        if self.ui_state.blackout_active {
+            output.clear();
+            return output;
+        }
+        
+        // Apply lighting master (0.0 to 1.0) to all channels
+        if self.ui_state.lighting_master < 1.0 {
+            for ch in 1..=512 {
+                if let Ok(value) = universe.get_channel(ch) {
+                    if value > 0 {
+                        let scaled = (value as f32 * self.ui_state.lighting_master).round() as u8;
+                        let _ = output.set_channel(ch, scaled);
+                    }
+                }
+            }
+        }
+        
+        output
+    }
+
+    /// Switch to Virtual DMX backend
+    pub fn switch_to_virtual(&mut self) {
+        self.dmx_backend = Box::new(VirtualBackend::new(true));
+        log::info!("Switched to Virtual DMX backend");
+    }
+
+    /// Switch to Enttec USB Pro backend
+    #[cfg(feature = "usb")]
+    pub fn switch_to_enttec(&mut self, port: &str) -> anyhow::Result<()> {
+        let backend = EnttecUsbProBackend::new(port)?;
+        self.dmx_backend = Box::new(backend);
+        log::info!("Switched to Enttec USB Pro at {}", port);
+        Ok(())
+    }
+
     /// Record a new cue from the current universe state
     ///
     /// Creates a new cue with the next sequential cue number and captures
@@ -469,9 +547,14 @@ impl eframe::App for EasyCueApp {
             if back { self.playback.back(&mut self.cue_list, universe); }
             
             self.playback.update(universe);
+        }
 
+        // Apply master level and blackout before sending (separate borrow)
+        if let Some(universe) = self.universes.first() {
+            let output_universe = self.apply_masters(universe);
+            
             // Send DMX output
-            if let Err(e) = self.dmx_backend.send_universe(universe) {
+            if let Err(e) = self.dmx_backend.send_universe(&output_universe) {
                 log::error!("DMX output error: {}", e);
             }
         }

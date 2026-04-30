@@ -36,6 +36,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     
     // Modal dialogs (always on top)
     render_quit_confirmation(ctx, app);
+    render_device_selector(ctx, app);
 }
 
 /// Handle global keyboard shortcuts
@@ -397,6 +398,14 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 ui.label(egui::RichText::new("💡 Drag tabs to rearrange").italics().small());
             });
             
+            // Settings menu
+            ui.menu_button("Settings", |ui| {
+                if ui.button("DMX Device...").clicked() {
+                    app.ui_state.show_device_selector = true;
+                    ui.close_menu();
+                }
+            });
+            
             // Help menu
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard Shortcuts").clicked() {
@@ -447,6 +456,127 @@ fn render_quit_confirmation(ctx: &Context, app: &mut EasyCueApp) {
                     if ui.button("  Quit  ").clicked() {
                         log::info!("User confirmed quit");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+                
+                ui.add_space(5.0);
+            });
+        });
+}
+
+/// Render the DMX device selector dialog
+fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_device_selector {
+        return;
+    }
+    
+    egui::Window::new("DMX Device Selection")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.add_space(10.0);
+                ui.label("Select DMX output device:");
+                ui.add_space(10.0);
+                
+                // Virtual DMX (always available)
+                ui.horizontal(|ui| {
+                    if ui.button("📋 Virtual DMX (Logging)").clicked() {
+                        app.switch_to_virtual();
+                        app.ui_state.status_message = format!("✓ Switched to {}", app.dmx_backend.name());
+                        app.ui_state.show_device_selector = false;
+                    }
+                    ui.label("- Log output only, no hardware");
+                });
+                
+                ui.add_space(5.0);
+                
+                // Enttec USB Pro (if feature enabled)
+                #[cfg(feature = "usb")]
+                {
+                    use crate::dmx::backends::EnttecUsbProBackend;
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("🔌 Enttec DMXUSB Pro:");
+                    });
+                    
+                    ui.indent("enttec_ports", |ui| {
+                        match EnttecUsbProBackend::list_ports() {
+                            Ok(ports) if !ports.is_empty() => {
+                                // Filter to likely USB ports (ttyUSB* and ttyACM*)
+                                let usb_ports: Vec<String> = ports.into_iter()
+                                    .filter(|p| p.contains("ttyUSB") || p.contains("ttyACM"))
+                                    .collect();
+                                
+                                if usb_ports.is_empty() {
+                                    ui.label(egui::RichText::new("No USB DMX devices found").italics().color(egui::Color32::GRAY));
+                                } else {
+                                    // Initialize selected port if empty
+                                    if app.ui_state.selected_usb_port.is_empty() && !usb_ports.is_empty() {
+                                        app.ui_state.selected_usb_port = usb_ports[0].clone();
+                                    }
+                                    
+                                    // Dropdown to select port
+                                    egui::ComboBox::from_id_salt("usb_port_selector")
+                                        .selected_text(&app.ui_state.selected_usb_port)
+                                        .show_ui(ui, |ui| {
+                                            for port in &usb_ports {
+                                                ui.selectable_value(&mut app.ui_state.selected_usb_port, port.clone(), port);
+                                            }
+                                        });
+                                    
+                                    ui.add_space(5.0);
+                                    
+                                    // Connect button
+                                    if ui.button("Connect").clicked() {
+                                        let port = app.ui_state.selected_usb_port.clone();
+                                        match app.switch_to_enttec(&port) {
+                                            Ok(_) => {
+                                                app.ui_state.status_message = format!("✓ Connected to Enttec at {}", port);
+                                                log::info!("✓ Switched to Enttec DMXUSB Pro at {}", port);
+                                                app.ui_state.show_device_selector = false;
+                                            }
+                                            Err(e) => {
+                                                app.ui_state.status_message = format!("✗ Error: {}", e);
+                                                log::error!("Failed to switch to Enttec: {}", e);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(_) => {
+                                ui.label(egui::RichText::new("No devices found").italics().color(egui::Color32::GRAY));
+                            }
+                            Err(e) => {
+                                ui.label(egui::RichText::new(format!("Error: {}", e)).color(egui::Color32::RED));
+                            }
+                        }
+                    });
+                }
+                
+                #[cfg(not(feature = "usb"))]
+                {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("🔌 Enttec USB Pro").strikethrough());
+                        ui.label(egui::RichText::new("(build with --features usb)").small().italics());
+                    });
+                }
+                
+                ui.add_space(5.0);
+                
+                // Art-Net (disabled for now)
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("🌐 Art-Net").strikethrough());
+                    ui.label(egui::RichText::new("(coming soon)").small().italics());
+                });
+                
+                ui.add_space(15.0);
+                
+                // Close button
+                ui.vertical_centered(|ui| {
+                    if ui.button("  Close  ").clicked() {
+                        app.ui_state.show_device_selector = false;
                     }
                 });
                 
