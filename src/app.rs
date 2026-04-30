@@ -22,7 +22,6 @@ pub enum TabKind {
     SoundCues,
     Patching,
     Properties,
-    Controls,
 }
 
 impl std::fmt::Display for TabKind {
@@ -33,7 +32,6 @@ impl std::fmt::Display for TabKind {
             TabKind::SoundCues => write!(f, "Sound Cues"),
             TabKind::Patching => write!(f, "Patching"),
             TabKind::Properties => write!(f, "Properties"),
-            TabKind::Controls => write!(f, "Controls"),
         }
     }
 }
@@ -456,10 +454,9 @@ impl EasyCueApp {
         // Split entire layout horizontally to create bottom row
         let [_top_row, bottom_row] = tree.split_below(egui_dock::NodeIndex::root(), 0.5, vec![TabKind::LightingCues]);
         
-        // Bottom row: Lighting Cues, Patching, Sound Cues, Controls
+        // Bottom row: Lighting Cues, Patching, Sound Cues
         let [_lighting, right_tabs] = tree.split_right(bottom_row, 0.3, vec![TabKind::Patching]);
-        let [_patching, sound_controls] = tree.split_right(right_tabs, 0.5, vec![TabKind::SoundCues]);
-        let [_sound, _controls] = tree.split_right(sound_controls, 0.5, vec![TabKind::Controls]);
+        let [_patching, _sound] = tree.split_right(right_tabs, 0.5, vec![TabKind::SoundCues]);
         
         dock_state
     }

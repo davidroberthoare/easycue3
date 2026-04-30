@@ -6,8 +6,86 @@ use crate::app::EasyCueApp;
 
 /// Render the lighting cue list panel
 pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
-    // Cue list controls
+    // Top toolbar: Transport controls, master, record/delete
     ui.horizontal(|ui| {
+        // Transport controls
+        let go_enabled = app.cue_list.next_index().is_some();
+        let go_button = egui::Button::new("⏵ GO")
+            .fill(if go_enabled { egui::Color32::from_rgb(50, 120, 50) } else { egui::Color32::from_rgb(30, 60, 30) });
+        
+        if ui.add_enabled(go_enabled, go_button).clicked() {
+            if let Some(universe) = app.universes.first() {
+                app.playback.go(&mut app.cue_list, universe);
+                app.ui_state.status_message = "GO".to_string();
+            }
+        }
+        
+        let back_enabled = app.cue_list.previous_index().is_some();
+        if ui.add_enabled(back_enabled, egui::Button::new("⏮ BACK")).clicked() {
+            if let Some(universe) = app.universes.first() {
+                app.playback.back(&mut app.cue_list, universe);
+                app.ui_state.status_message = "BACK".to_string();
+            }
+        }
+        
+        if ui.button("⏹ STOP").clicked() {
+            app.playback.stop();
+            app.ui_state.status_message = "STOP".to_string();
+        }
+        
+        ui.separator();
+        
+        // Lighting master control
+        ui.label("Master:");
+        
+        // Blackout toggle button
+        let blackout_text = if app.ui_state.blackout_active { "⚫" } else { "💡" };
+        let blackout_color = if app.ui_state.blackout_active {
+            egui::Color32::from_rgb(80, 40, 40)
+        } else {
+            egui::Color32::from_rgb(60, 60, 60)
+        };
+        
+        let blackout_button = egui::Button::new(blackout_text)
+            .fill(blackout_color)
+            .min_size(egui::vec2(30.0, 20.0));
+        
+        if ui.add(blackout_button).clicked() {
+            if app.ui_state.blackout_active {
+                // Restore previous lighting master
+                app.ui_state.lighting_master = app.ui_state.previous_lighting_master;
+                app.ui_state.blackout_active = false;
+                app.ui_state.status_message = "Blackout OFF".to_string();
+            } else {
+                // Save current lighting master and set to 0
+                app.ui_state.previous_lighting_master = app.ui_state.lighting_master;
+                app.ui_state.lighting_master = 0.0;
+                app.ui_state.blackout_active = true;
+                app.ui_state.status_message = "Blackout ON".to_string();
+            }
+        }
+        
+        // Draggable percentage display (replaces slider)
+        let mut lighting_percent = (app.ui_state.lighting_master * 100.0) as i32;
+        let response = ui.add(
+            egui::DragValue::new(&mut lighting_percent)
+                .speed(1.0)
+                .range(0..=100)
+                .suffix("%")
+        );
+        
+        if response.changed() {
+            app.ui_state.lighting_master = (lighting_percent as f32) / 100.0;
+            // If user manually adjusts, turn off blackout
+            if app.ui_state.blackout_active {
+                app.ui_state.blackout_active = false;
+                app.ui_state.previous_lighting_master = app.ui_state.lighting_master;
+            }
+        }
+        
+        ui.separator();
+        
+        // Record/Delete buttons
         if ui.button("➕ Record").clicked() {
             let idx = app.record_cue();
             app.ui_state.selected_cue_index = Some(idx);

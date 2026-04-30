@@ -6,7 +6,6 @@ mod channels;
 mod lighting_cues;
 mod sound_cues;
 mod properties;
-mod controls;
 mod patching;
 
 use egui::Context;
@@ -16,7 +15,6 @@ pub use channels::render_channels_panel;
 pub use lighting_cues::render_lighting_cues_panel;
 pub use sound_cues::render_sound_cues_panel;
 pub use properties::render_properties_panel;
-pub use controls::render_controls_panel;
 pub use patching::{render_patching_panel, PatchingPanelState};
 
 /// Render the main UI
@@ -255,7 +253,6 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
                 self.app.patching_state = patching_state;
             }
             TabKind::Properties => render_properties_panel(ui, self.app),
-            TabKind::Controls => render_controls_panel(ui, self.app),
         }
     }
 
@@ -385,10 +382,6 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 if ui.button("Properties").clicked() {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Properties);
-                    ui.close_menu();
-                }
-                if ui.button("Controls").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Controls);
                     ui.close_menu();
                 }
                 
@@ -667,13 +660,56 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                 );
             }
             
-            // Right side: DMX backend
+            // Right side: Emergency controls and DMX backend
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
                     egui::RichText::new(format!("DMX: {}", app.dmx_backend.name()))
                         .small()
                         .color(egui::Color32::GRAY)
                 );
+                
+                ui.separator();
+                
+                // Emergency controls (compact versions)
+                let panic_button = egui::Button::new("🚨 PANIC")
+                    .fill(egui::Color32::from_rgb(140, 40, 40))
+                    .min_size(egui::vec2(80.0, 20.0));
+                
+                if ui.add(panic_button).clicked() {
+                    // Stop all playback
+                    app.playback.stop();
+                    #[cfg(feature = "audio")]
+                    app.audio_playback.stop(&mut app.audio_player);
+                    
+                    // Activate blackout
+                    if !app.ui_state.blackout_active {
+                        app.ui_state.previous_lighting_master = app.ui_state.lighting_master;
+                        app.ui_state.lighting_master = 0.0;
+                        app.ui_state.blackout_active = true;
+                    }
+                    
+                    // Activate audio mute
+                    if !app.ui_state.audio_mute_active {
+                        app.ui_state.previous_sound_master = app.ui_state.sound_master;
+                        app.ui_state.sound_master = 0.0;
+                        app.ui_state.audio_mute_active = true;
+                    }
+                    
+                    app.ui_state.status_message = "🚨 PANIC - All stopped".to_string();
+                    log::warn!("PANIC button activated");
+                }
+                
+                let all_stop_button = egui::Button::new("⏹ ALL STOP")
+                    .fill(egui::Color32::from_rgb(120, 50, 50))
+                    .min_size(egui::vec2(95.0, 20.0));
+                
+                if ui.add(all_stop_button).clicked() {
+                    app.playback.stop();
+                    #[cfg(feature = "audio")]
+                    app.audio_playback.stop(&mut app.audio_player);
+                    app.ui_state.status_message = "ALL STOP".to_string();
+                    log::info!("All Stop activated");
+                }
             });
         });
     });
