@@ -1,0 +1,334 @@
+//! Fixture patching system
+//!
+//! Maps fixture instances to DMX addresses.
+
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// A patched fixture instance
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Patch {
+    /// Unique fixture ID (auto-assigned)
+    pub id: usize,
+    /// User-assigned fixture number/label (e.g., "RGB #1", "Moving Light 3")
+    pub label: String,
+    /// Profile ID this fixture uses
+    pub profile_id: String,
+    /// Starting DMX address (1-512, 1-indexed)
+    pub start_address: u16,
+    /// Universe number (1-based, default 1)
+    #[serde(default = "default_universe")]
+    pub universe: u16,
+    /// Optional user notes
+    #[serde(default)]
+    pub notes: String,
+}
+
+fn default_universe() -> u16 {
+    1
+}
+
+impl Patch {
+    /// Create a new patch
+    pub fn new(id: usize, label: String, profile_id: String, start_address: u16) -> Self {
+        Self {
+            id,
+            label,
+            profile_id,
+            start_address,
+            universe: 1,
+            notes: String::new(),
+        }
+    }
+
+    /// Get the ending DMX address for this fixture (inclusive)
+    pub fn end_address(&self, channel_count: u16) -> u16 {
+        self.start_address + channel_count - 1
+    }
+
+    /// Check if this patch uses a specific DMX channel
+    pub fn uses_channel(&self, channel: u16, channel_count: u16) -> bool {
+        channel >= self.start_address && channel <= self.end_address(channel_count)
+    }
+
+    /// Get the channel offset for a fixture parameter
+    /// Returns the absolute DMX channel number (1-indexed)
+    pub fn get_channel_for_offset(&self, offset: u16) -> u16 {
+        self.start_address + offset
+    }
+}
+
+/// Collection of patched fixtures
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PatchList {
+    patches: Vec<Patch>,
+    next_id: usize,
+}
+
+impl PatchList {
+    /// Create a new empty patch list
+    pub fn new() -> Self {
+        Self {
+            patches: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Add a new fixture patch
+    pub fn add_patch(
+        &mut self,
+        label: String,
+        profile_id: String,
+        start_address: u16,
+        channel_count: u16,
+    ) -> Result<usize> {
+        // Validate address range
+        if start_address == 0 || start_address > 512 {
+            return Err(anyhow!(
+                "Invalid start address {}: must be between 1 and 512",
+                start_address
+            ));
+        }
+
+        let end_address = start_address + channel_count - 1;
+        if end_address > 512 {
+            return Err(anyhow!(
+                "Fixture extends beyond channel 512 (start: {}, count: {}, end: {})",
+                start_address,
+                channel_count,
+                end_address
+            ));
+        }
+
+        // Check for overlaps with existing patches
+        if let Some(conflict) = self.find_overlap(start_address, channel_count, None) {
+            return Err(anyhow!(
+                "Address range {}-{} overlaps with fixture '{}' ({}-{})",
+                start_address,
+                end_address,
+                conflict.label,
+                conflict.start_address,
+                conflict.end_address(channel_count)
+            ));
+        }
+
+        let id = self.next_id;
+        self.next_id += 1;
+
+        let patch = Patch::new(id, label, profile_id, start_address);
+        self.patches.push(patch);
+
+        log::info!(
+            "Patched fixture #{} at address {}-{}",
+            id,
+            start_address,
+            end_address
+        );
+
+        Ok(id)
+    }
+
+    /// Remove a patch by ID
+    pub fn remove_patch(&mut self, id: usize) -> Result<()> {
+        let index = self
+            .patches
+            .iter()
+            .position(|p| p.id == id)
+            .ok_or_else(|| anyhow!("Fixture #{} not found", id))?;
+
+        let patch = self.patches.remove(index);
+        log::info!("Removed fixture #{} ({})", id, patch.label);
+
+        Ok(())
+    }
+
+    /// Get a patch by ID
+    pub fn get_patch(&self, id: usize) -> Option<&Patch> {
+        self.patches.iter().find(|p| p.id == id)
+    }
+
+    /// Get a mutable patch by ID
+    pub fn get_patch_mut(&mut self, id: usize) -> Option<&mut Patch> {
+        self.patches.iter_mut().find(|p| p.id == id)
+    }
+
+    /// Find which fixture (if any) is patched to a specific DMX channel
+    pub fn find_patch_at_channel(
+        &self,
+        channel: u16,
+        channel_counts: &HashMap<String, u16>,
+    ) -> Option<&Patch> {
+        self.patches.iter().find(|p| {
+            let channel_count = channel_counts.get(&p.profile_id).copied().unwrap_or(1);
+            p.uses_channel(channel, channel_count)
+        })
+    }
+
+    /// Find overlapping patch (excluding patch with given ID)
+    fn find_overlap(
+        &self,
+        start_address: u16,
+        channel_count: u16,
+        exclude_id: Option<usize>,
+    ) -> Option<&Patch> {
+        let end_address = start_address + channel_count - 1;
+
+        self.patches.iter().find(|p| {
+            if let Some(id) = exclude_id {
+                if p.id == id {
+                    return false;
+                }
+            }
+
+            // Check for range overlap
+            let p_end = p.start_address + channel_count - 1;
+            !(end_address < p.start_address || start_address > p_end)
+        })
+    }
+
+    /// Get all patches
+    pub fn patches(&self) -> &[Patch] {
+        &self.patches
+    }
+
+    /// Get number of patched fixtures
+    pub fn len(&self) -> usize {
+        self.patches.len()
+    }
+
+    /// Check if patch list is empty
+    pub fn is_empty(&self) -> bool {
+        self.patches.is_empty()
+    }
+
+    /// Update a patch's address (with overlap validation)
+    pub fn update_patch_address(
+        &mut self,
+        id: usize,
+        new_start_address: u16,
+        channel_count: u16,
+    ) -> Result<()> {
+        // Validate new address
+        if new_start_address == 0 || new_start_address > 512 {
+            return Err(anyhow!(
+                "Invalid address {}: must be between 1 and 512",
+                new_start_address
+            ));
+        }
+
+        let end_address = new_start_address + channel_count - 1;
+        if end_address > 512 {
+            return Err(anyhow!(
+                "Fixture would extend beyond channel 512 (start: {}, count: {}, end: {})",
+                new_start_address,
+                channel_count,
+                end_address
+            ));
+        }
+
+        // Check for overlaps (excluding this patch)
+        if let Some(conflict) = self.find_overlap(new_start_address, channel_count, Some(id)) {
+            return Err(anyhow!(
+                "New address range {}-{} overlaps with fixture '{}' ({}-{})",
+                new_start_address,
+                end_address,
+                conflict.label,
+                conflict.start_address,
+                conflict.end_address(channel_count)
+            ));
+        }
+
+        // Update the address
+        let patch = self
+            .get_patch_mut(id)
+            .ok_or_else(|| anyhow!("Fixture #{} not found", id))?;
+
+        patch.start_address = new_start_address;
+        log::info!(
+            "Updated fixture #{} address to {}-{}",
+            id,
+            new_start_address,
+            end_address
+        );
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_patch_address_range() {
+        let patch = Patch::new(1, "RGB #1".to_string(), "rgb".to_string(), 10);
+
+        // RGB has 3 channels
+        assert_eq!(patch.end_address(3), 12);
+        assert!(patch.uses_channel(10, 3));
+        assert!(patch.uses_channel(11, 3));
+        assert!(patch.uses_channel(12, 3));
+        assert!(!patch.uses_channel(9, 3));
+        assert!(!patch.uses_channel(13, 3));
+    }
+
+    #[test]
+    fn test_add_patch() {
+        let mut patch_list = PatchList::new();
+
+        // Add valid patch
+        let id = patch_list
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3)
+            .unwrap();
+        assert_eq!(id, 1);
+        assert_eq!(patch_list.len(), 1);
+
+        // Try to add overlapping patch (should fail)
+        let result = patch_list.add_patch("RGB #2".to_string(), "rgb".to_string(), 11, 3);
+        assert!(result.is_err());
+
+        // Add non-overlapping patch (should succeed)
+        let id2 = patch_list
+            .add_patch("RGB #2".to_string(), "rgb".to_string(), 20, 3)
+            .unwrap();
+        assert_eq!(id2, 2);
+        assert_eq!(patch_list.len(), 2);
+    }
+
+    #[test]
+    fn test_find_patch_at_channel() {
+        let mut patch_list = PatchList::new();
+        patch_list
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3)
+            .unwrap();
+
+        let mut channel_counts = HashMap::new();
+        channel_counts.insert("rgb".to_string(), 3);
+
+        // Find patch at channels 10-12
+        assert!(patch_list.find_patch_at_channel(10, &channel_counts).is_some());
+        assert!(patch_list.find_patch_at_channel(11, &channel_counts).is_some());
+        assert!(patch_list.find_patch_at_channel(12, &channel_counts).is_some());
+
+        // No patch at these channels
+        assert!(patch_list.find_patch_at_channel(9, &channel_counts).is_none());
+        assert!(patch_list.find_patch_at_channel(13, &channel_counts).is_none());
+    }
+
+    #[test]
+    fn test_remove_patch() {
+        let mut patch_list = PatchList::new();
+        let id = patch_list
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3)
+            .unwrap();
+
+        assert_eq!(patch_list.len(), 1);
+
+        patch_list.remove_patch(id).unwrap();
+        assert_eq!(patch_list.len(), 0);
+
+        // Try to remove non-existent patch
+        assert!(patch_list.remove_patch(999).is_err());
+    }
+}

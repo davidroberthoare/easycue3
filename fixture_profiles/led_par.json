@@ -1,0 +1,45 @@
+{
+  "id": "led_par",
+  "name": "LED PAR (7-channel)",
+  "manufacturer": null,
+  "channel_count": 7,
+  "parameters": [
+    {
+      "parameter": "intensity",
+      "channel_offset": 0,
+      "default_value": 0,
+      "description": "Master intensity/dimmer"
+    },
+    {
+      "parameter": "red",
+      "channel_offset": 1,
+      "default_value": 0
+    },
+    {
+      "parameter": "green",
+      "channel_offset": 2,
+      "default_value": 0
+    },
+    {
+      "parameter": "blue",
+      "channel_offset": 3,
+      "default_value": 0
+    },
+    {
+      "parameter": "amber",
+      "channel_offset": 4,
+      "default_value": 0
+    },
+    {
+      "parameter": "white",
+      "channel_offset": 5,
+      "default_value": 0
+    },
+    {
+      "parameter": "uv",
+      "channel_offset": 6,
+      "default_value": 0
+    }
+  ],
+  "notes": "LED PAR can with RGBAWUV color mixing and master dimmer"
+}

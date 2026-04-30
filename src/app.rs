@@ -17,6 +17,7 @@ pub enum TabKind {
     Channels,
     LightingCues,
     SoundCues,
+    Patching,
     Properties,
     Controls,
 }
@@ -27,6 +28,7 @@ impl std::fmt::Display for TabKind {
             TabKind::Channels => write!(f, "Channels"),
             TabKind::LightingCues => write!(f, "Lighting Cues"),
             TabKind::SoundCues => write!(f, "Sound Cues"),
+            TabKind::Patching => write!(f, "Patching"),
             TabKind::Properties => write!(f, "Properties"),
             TabKind::Controls => write!(f, "Controls"),
         }
@@ -138,6 +140,8 @@ pub struct EasyCueApp {
     pub fixtures: FixtureLibrary,
     /// UI state
     pub ui_state: UiState,
+    /// Patching panel state
+    pub patching_state: crate::ui::PatchingPanelState,
     /// Current show title
     pub show_title: String,
     /// Current file path (None if never saved)
@@ -370,6 +374,7 @@ impl EasyCueApp {
             media: MediaManager::new(),
             fixtures: FixtureLibrary::new(),
             ui_state: UiState::default(),
+            patching_state: crate::ui::PatchingPanelState::default(),
             show_title: "Example Show".to_string(),
             current_file_path: None,
             dock_state,
@@ -398,8 +403,9 @@ impl EasyCueApp {
         // Split entire layout horizontally to create bottom row
         let [_top_row, bottom_row] = tree.split_below(egui_dock::NodeIndex::root(), 0.5, vec![TabKind::LightingCues]);
         
-        // Bottom row: Lighting Cues, Sound Cues, Controls (split bottom_row further)
-        let [_lighting, sound_controls] = tree.split_right(bottom_row, 0.4, vec![TabKind::SoundCues]);
+        // Bottom row: Lighting Cues, Patching, Sound Cues, Controls
+        let [_lighting, right_tabs] = tree.split_right(bottom_row, 0.3, vec![TabKind::Patching]);
+        let [_patching, sound_controls] = tree.split_right(right_tabs, 0.5, vec![TabKind::SoundCues]);
         let [_sound, _controls] = tree.split_right(sound_controls, 0.5, vec![TabKind::Controls]);
         
         dock_state
@@ -418,11 +424,48 @@ impl EasyCueApp {
         for cue in show.cues {
             self.cue_list.add_cue(cue);
         }
+        
+        // Load patch into fixture library
+        *self.fixtures.patch_list_mut() = crate::fixtures::PatchList::new();
+        for patch in show.patch {
+            // Add patch directly (bypassing validation since it's from a saved show)
+            if self.fixtures.get_profile(&patch.profile_id).is_some() {
+                match self.fixtures.add_patch(
+                    patch.label.clone(),
+                    patch.profile_id.clone(),
+                    patch.start_address,
+                ) {
+                    Ok(_) => {
+                        log::debug!(
+                            "Loaded patch: {} ({}) at address {}",
+                            patch.label,
+                            patch.profile_id,
+                            patch.start_address
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load patch '{}': {}", patch.label, e);
+                    }
+                }
+            } else {
+                log::warn!(
+                    "Skipping patch '{}': profile '{}' not found",
+                    patch.label,
+                    patch.profile_id
+                );
+            }
+        }
+        
         self.show_title = show.title.clone();
         self.current_file_path = Some(path.to_path_buf());
         self.ui_state.selected_cue_index = None;
         self.ui_state.status_message = format!("Loaded show from {:?}", path);
-        log::info!("Loaded show: {}", self.show_title);
+        log::info!(
+            "Loaded show: {} ({} cues, {} fixtures)",
+            self.show_title,
+            self.cue_list.len(),
+            self.fixtures.patch_list().len()
+        );
         Ok(())
     }
 
@@ -430,6 +473,7 @@ impl EasyCueApp {
     pub fn save_show(&mut self, path: &std::path::Path, title: &str) -> anyhow::Result<()> {
         let mut show = ShowFile::new(title);
         show.cues = self.cue_list.cues().to_vec();
+        show.patch = self.fixtures.patch_list().patches().to_vec();
         // Ensure the parent directory exists
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -438,6 +482,12 @@ impl EasyCueApp {
         }
         show.save(path)?;
         self.current_file_path = Some(path.to_path_buf());
+        log::info!(
+            "Saved show: {} ({} cues, {} fixtures)",
+            title,
+            show.cues.len(),
+            show.patch.len()
+        );
         Ok(())
     }
 

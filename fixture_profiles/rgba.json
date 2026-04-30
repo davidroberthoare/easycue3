@@ -1,0 +1,29 @@
+{
+  "id": "rgba",
+  "name": "RGBA",
+  "manufacturer": null,
+  "channel_count": 4,
+  "parameters": [
+    {
+      "parameter": "red",
+      "channel_offset": 0,
+      "default_value": 0
+    },
+    {
+      "parameter": "green",
+      "channel_offset": 1,
+      "default_value": 0
+    },
+    {
+      "parameter": "blue",
+      "channel_offset": 2,
+      "default_value": 0
+    },
+    {
+      "parameter": "amber",
+      "channel_offset": 3,
+      "default_value": 0
+    }
+  ],
+  "notes": "4-channel RGBA fixture (no separate intensity)"
+}
