@@ -1,27 +1,37 @@
 {
   "audio_cues": [
     {
-      "audio_path": "/Users/admin1/Music/beat.mp3",
-      "fade_in": 2.0999999046325684,
-      "fade_out": 4.5,
-      "label": "Cue 1: beat",
+      "audio_path": "sample1.mp3",
+      "fade_in": 0.0,
+      "fade_out": 0.0,
+      "label": "Cue 1: sample1",
       "notes": "",
       "number": 1.0,
       "triggers_lighting_cue": null,
       "volume": 0.800000011920929
     },
     {
-      "audio_path": "/Users/admin1/Music/Shakira  Try Everything Official Video.mp3",
+      "audio_path": "sample2.mp3",
       "fade_in": 0.0,
-      "fade_out": 2.799999952316284,
-      "label": "Cue 2: Shakira  Try Everything Official Video",
+      "fade_out": 0.0,
+      "label": "Cue 2: sample2",
       "notes": "",
       "number": 2.0,
-      "triggers_lighting_cue": 3.0,
+      "triggers_lighting_cue": null,
+      "volume": 0.800000011920929
+    },
+    {
+      "audio_path": "sample3.mp3",
+      "fade_in": 0.0,
+      "fade_out": 0.0,
+      "label": "Cue 3: sample3",
+      "notes": "",
+      "number": 3.0,
+      "triggers_lighting_cue": null,
       "volume": 0.800000011920929
     }
   ],
-  "created": "2026-04-30T19:57:01.905838349+00:00",
+  "created": "2026-04-30T21:07:01.034879348+00:00",
   "cues": [
     {
       "channel_values": {
@@ -78,7 +88,7 @@
     }
   ],
   "description": "",
-  "modified": "2026-04-30T19:57:01.905919728+00:00",
+  "modified": "2026-04-30T21:07:01.034960078+00:00",
   "patch": [
     {
       "id": 1,
