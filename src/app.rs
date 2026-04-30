@@ -151,6 +151,8 @@ pub struct EasyCueApp {
     pub media: MediaManager,
     /// Fixture library
     pub fixtures: FixtureLibrary,
+    /// Virtual intensity system for RGB fixtures
+    pub virtual_intensity: crate::fixtures::VirtualIntensity,
     /// UI state
     pub ui_state: UiState,
     /// Patching panel state
@@ -406,6 +408,7 @@ impl EasyCueApp {
             playback: PlaybackEngine::new(),
             media: MediaManager::new(),
             fixtures: FixtureLibrary::new(),
+            virtual_intensity: crate::fixtures::VirtualIntensity::new(),
             ui_state: UiState::default(),
             patching_state: crate::ui::PatchingPanelState::default(),
             show_title: "Example Show".to_string(),
