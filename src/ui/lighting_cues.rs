@@ -131,6 +131,23 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         } else {
                             cue.label.clone()
                         };
+                        
+                        // Add cross-trigger indicator if this cue triggers an audio cue (Phase 4)
+                        let trigger_indicator = if cue.triggers_audio_cue.is_some() {
+                            #[cfg(feature = "audio")]
+                            {
+                                format!(" →🔊{:.1}", cue.triggers_audio_cue.unwrap())
+                            }
+                            #[cfg(not(feature = "audio"))]
+                            {
+                                String::new()
+                            }
+                        } else {
+                            String::new()
+                        };
+                        
+                        let full_text = format!("{}{}", label_text, trigger_indicator);
+                        
                         // Allocate entire cell space and make it interactive
                         let (rect, response) = ui.allocate_exact_size(
                             ui.available_size(),
@@ -145,7 +162,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         ui.painter().text(
                             rect.left_center() + egui::vec2(5.0, 0.0),
                             egui::Align2::LEFT_CENTER,
-                            label_text,
+                            full_text,
                             egui::FontId::default(),
                             text_color,
                         );

@@ -7,6 +7,7 @@ mod app;
 pub mod dmx;  // Public for examples and tests
 mod media;
 mod cue;
+mod audio;  // Audio playback system (Phase 4)
 mod ui;
 mod fixtures;
 mod show;

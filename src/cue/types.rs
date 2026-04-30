@@ -19,6 +19,10 @@ pub struct Cue {
     pub channel_values: HashMap<u16, u8>,
     /// Notes/description
     pub notes: String,
+    
+    /// Optional audio cue number to trigger when this lighting cue executes (Phase 4)
+    #[serde(default)]
+    pub triggers_audio_cue: Option<f32>,
 }
 
 impl Cue {
@@ -31,6 +35,7 @@ impl Cue {
             fade_down: 3.0,
             channel_values: HashMap::new(),
             notes: String::new(),
+            triggers_audio_cue: None,
         }
     }
 

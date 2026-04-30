@@ -147,6 +147,96 @@ easycue3/
 
 ---
 
+## Phase 4: Audio Playback & Cross-Triggering ✅ COMPLETE
+
+### What Was Built
+
+**Audio Engine Foundation**:
+- ✅ `AudioCue` struct: Stores audio file path, volume, fade in/out times, triggers
+- ✅ `AudioCueList`: Manages sorted collection of audio cues (parallel to lighting cues)
+- ✅ `AudioPlayer`: rodio-based audio playback with volume control
+- ✅ `AudioPlaybackEngine`: Frame-driven fade in/out with GO/BACK/STOP controls
+- ✅ Feature-gated with `#[cfg(feature = "audio")]` (build with `--features audio`)
+
+**Cross-Triggering**:
+- ✅ Lighting cues can trigger audio cues (via `triggers_audio_cue` field)
+- ✅ Audio cues can trigger lighting cues (via `triggers_lighting_cue` field)
+- ✅ Automatic cross-trigger execution during playback (no manual intervention)
+- ✅ Visual indicators in UI (→🔊 for audio triggers, →🎭 for lighting triggers)
+
+**Show File Integration**:
+- ✅ Audio cues saved/loaded in show JSON files (with relative paths)
+- ✅ Backward compatible (shows without audio cues still load)
+- ✅ Missing audio file warnings (⚠️ icon when file not found)
+
+**User Interface**:
+- ✅ Sound Cues panel: Add audio cues via file dialog (MP3, WAV, FLAC, OGG, AAC)
+- ✅ Audio cue list table: Shows cue number, label, filename, volume, triggers
+- ✅ Audio transport controls: GO/BACK/STOP buttons (context-aware)
+- ✅ Volume slider: Real-time volume adjustment (0-100%)
+- ✅ Playback status display: Shows fade in/out progress
+- ✅ Cross-trigger indicators: Visual links between related cues
+
+**File Structure**:
+```
+src/
+├── audio/
+│   ├── mod.rs          ← Module exports + stubs for non-audio builds
+│   ├── types.rs        ← AudioCue, AudioCueState
+│   ├── list.rs         ← AudioCueList (sorted, navigation)
+│   ├── player.rs       ← AudioPlayer (rodio wrapper)
+│   └── playback.rs     ← AudioPlaybackEngine (fades, triggers)
+├── app.rs              ← Added audio_cue_list, audio_player, audio_playback fields
+├── cue/types.rs        ← Added triggers_audio_cue field to Cue
+├── show/mod.rs         ← Added audio_cues field to ShowFile
+└── ui/
+    ├── sound_cues.rs   ← Full audio cue UI (replaced placeholder)
+    └── lighting_cues.rs ← Added cross-trigger indicators
+```
+
+### Current Capabilities
+
+**What Works**:
+1. Add audio cues via file dialog (supports MP3, WAV, FLAC, OGG, AAC, M4A)
+2. Audio cue list shows filename, volume, fade times, triggers
+3. GO/BACK/STOP controls for audio playback (in Sound Cues panel)
+4. Volume slider adjusts playback volume in real-time
+5. Fade in/out with configurable duration (frame-driven, like lighting fades)
+6. Cross-triggering: Lighting cue 1.0 can auto-trigger Audio cue 1.5
+7. Cross-triggering: Audio cue 2.0 can auto-trigger Lighting cue 2.5
+8. Visual indicators show trigger relationships (→🔊 and →🎭 icons)
+9. Save/load shows with audio cues (relative paths for portability)
+10. Missing file detection with warning icons
+
+**What Doesn't Work Yet** (Planned for future phases):
+- Audio waveform preview (Phase 6 enhancement)
+- Multi-track audio (simultaneous sound effects + music) — Phase 5
+- Seek/scrub playback position — Phase 5
+- Audio device selection UI — Phase 5
+- Fade curves (currently linear) — Phase 5
+
+**Known Limitations**:
+- Single audio stream at a time (one audio cue playing, no overlap)
+- Duration display shows "--:--" (rodio doesn't provide duration until playback starts)
+- No seek/scrub support yet (rodio Sink doesn't support seeking easily)
+
+---
+
+## Next Steps: Phase 5 – Advanced Media Features
+
+**Priority Tasks**:
+1. **Multi-track audio**: Multiple simultaneous audio cues (sound effects + music)
+2. **Audio device selection**: Choose output device from dropdown
+3. **Seek/scrub support**: Playback position slider with seek
+4. **Duration display**: Show audio file duration before playback
+5. **Video playback**: lumina-video integration (MP4, MOV, MKV, WebM)
+6. **Image display**: PNG, JPEG, SVG support
+7. **Fade curves**: Exponential/logarithmic fades (not just linear)
+
+**Estimated Effort**: 12–16 hours for Phase 5
+
+---
+
 ## Known Issues
 
 1. **Warnings**: Unused code in placeholder modules (expected until those phases)
