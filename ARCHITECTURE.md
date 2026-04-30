@@ -243,6 +243,32 @@ AppState (heap)
 3. Add UI for configuring action
 4. Serialize/deserialize in ShowFile
 
+## Data Format Specifications
+
+### Decimal Precision
+
+All floating-point values in saved show files are limited to **2 decimal places** for consistency and readability. This applies to:
+
+- Cue numbers (e.g., `1.0`, `2.5`, `3.75`)
+- Fade times (e.g., `2.50` seconds)
+- Audio volume levels (e.g., `0.80` for 80%)
+- Cross-trigger references (e.g., lighting cue triggers audio cue `3.00`)
+
+**Implementation:** Custom serde serializers in `src/serde_helpers.rs` round all f32 values during serialization:
+- `round_f32_2()` - for required f32 fields
+- `round_option_f32_2()` - for `Option<f32>` fields
+
+This prevents floating-point precision artifacts (like `0.800000011920929`) from appearing in saved JSON files.
+
+**Usage in types:**
+```rust
+#[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
+pub fade_up: f32,
+
+#[serde(serialize_with = "crate::serde_helpers::round_option_f32_2")]
+pub triggers_audio_cue: Option<f32>,
+```
+
 ## Future Optimizations
 
 1. **DMX output threading**: Send DMX in parallel with rendering

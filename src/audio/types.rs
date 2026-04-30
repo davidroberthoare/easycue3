@@ -7,6 +7,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioCue {
     /// Cue number (e.g., 1.0, 1.5, 2.0) - matches lighting cue numbering
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub number: f32,
     
     /// Optional text label
@@ -16,19 +17,22 @@ pub struct AudioCue {
     pub audio_path: PathBuf,
     
     /// Volume level (0.0 to 1.0)
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub volume: f32,
     
     /// Fade in time in seconds
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_in: f32,
     
     /// Fade out time in seconds
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_out: f32,
     
     /// Notes/description
     pub notes: String,
     
     /// Optional lighting cue number to trigger when this audio cue starts
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub triggers_lighting_cue: Option<f32>,
 }
 

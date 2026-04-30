@@ -595,6 +595,32 @@ impl EasyCueApp {
         log::info!("Switched to Enttec USB Pro at {}", port);
         Ok(())
     }
+    
+    /// Check if setting a lighting cue to trigger an audio cue would create a circular dependency
+    /// 
+    /// Returns true if the audio cue already triggers this lighting cue (circular reference)
+    #[cfg(feature = "audio")]
+    pub fn would_create_circular_light_to_audio(&self, lighting_cue_num: f32, audio_cue_num: f32) -> bool {
+        // Find the target audio cue and check if it triggers the lighting cue
+        self.audio_cue_list.cues().iter()
+            .find(|c| (c.number - audio_cue_num).abs() < 0.01)
+            .and_then(|c| c.triggers_lighting_cue)
+            .map(|trigger| (trigger - lighting_cue_num).abs() < 0.01)
+            .unwrap_or(false)
+    }
+    
+    /// Check if setting an audio cue to trigger a lighting cue would create a circular dependency
+    /// 
+    /// Returns true if the lighting cue already triggers this audio cue (circular reference)
+    #[cfg(feature = "audio")]
+    pub fn would_create_circular_audio_to_light(&self, audio_cue_num: f32, lighting_cue_num: f32) -> bool {
+        // Find the target lighting cue and check if it triggers the audio cue
+        self.cue_list.cues().iter()
+            .find(|c| (c.number - lighting_cue_num).abs() < 0.01)
+            .and_then(|c| c.triggers_audio_cue)
+            .map(|trigger| (trigger - audio_cue_num).abs() < 0.01)
+            .unwrap_or(false)
+    }
 
     /// Record a new cue from the current universe state
     ///
@@ -657,8 +683,46 @@ impl eframe::App for EasyCueApp {
         // Handle go/back within universe access since they need current state
         if let Some(universe) = self.universes.first_mut() {
             // Handle go/back commands with access to current universe state
-            if go  { self.playback.go(&mut self.cue_list, universe); }
-            if back { self.playback.back(&mut self.cue_list, universe); }
+            if go {
+                if self.playback.go(&mut self.cue_list, universe) {
+                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                    #[cfg(feature = "audio")]
+                    if let Some(current_idx) = self.cue_list.current_index() {
+                        if let Some(cue) = self.cue_list.get_cue(current_idx) {
+                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                                // Find and trigger the audio cue by number
+                                if let Some(audio_idx) = self.audio_cue_list.cues().iter()
+                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                    if self.audio_playback.go_to_cue(&self.audio_cue_list, audio_idx, &mut self.audio_player) {
+                                        self.audio_cue_list.set_current_index(Some(audio_idx));
+                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if back {
+                if self.playback.back(&mut self.cue_list, universe) {
+                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                    #[cfg(feature = "audio")]
+                    if let Some(current_idx) = self.cue_list.current_index() {
+                        if let Some(cue) = self.cue_list.get_cue(current_idx) {
+                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                                // Find and trigger the audio cue by number
+                                if let Some(audio_idx) = self.audio_cue_list.cues().iter()
+                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                    if self.audio_playback.go_to_cue(&self.audio_cue_list, audio_idx, &mut self.audio_player) {
+                                        self.audio_cue_list.set_current_index(Some(audio_idx));
+                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             
             self.playback.update(universe);
         }

@@ -45,14 +45,52 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
             .fill(if go_enabled { egui::Color32::from_rgb(50, 120, 50) } else { egui::Color32::from_rgb(30, 60, 30) });
         
         if ui.add_enabled(go_enabled, go_button).clicked() {
-            app.audio_playback.go(&mut app.audio_cue_list, &mut app.audio_player);
-            app.ui_state.status_message = "Audio GO".to_string();
+            if app.audio_playback.go(&mut app.audio_cue_list, &mut app.audio_player) {
+                app.ui_state.status_message = "Audio GO".to_string();
+                
+                // Check if this audio cue triggers a lighting cue (Phase 4 cross-trigger)
+                if let Some(current_idx) = app.audio_cue_list.current_index() {
+                    if let Some(cue) = app.audio_cue_list.get_cue(current_idx) {
+                        if let Some(light_cue_num) = cue.triggers_lighting_cue {
+                            // Find and trigger the lighting cue by number
+                            if let Some(light_idx) = app.cue_list.cues().iter()
+                                .position(|c| (c.number - light_cue_num).abs() < 0.01) {
+                                if let Some(universe) = app.universes.first() {
+                                    if app.playback.go_to_cue(&app.cue_list, light_idx, universe) {
+                                        app.cue_list.set_current_index(Some(light_idx));
+                                        log::info!("Audio cue {:.2} triggered lighting cue {:.2}", cue.number, light_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         let back_enabled = app.audio_cue_list.previous_index().is_some();
         if ui.add_enabled(back_enabled, egui::Button::new("⏮ BACK")).clicked() {
-            app.audio_playback.back(&mut app.audio_cue_list, &mut app.audio_player);
-            app.ui_state.status_message = "Audio BACK".to_string();
+            if app.audio_playback.back(&mut app.audio_cue_list, &mut app.audio_player) {
+                app.ui_state.status_message = "Audio BACK".to_string();
+                
+                // Check if this audio cue triggers a lighting cue (Phase 4 cross-trigger)
+                if let Some(current_idx) = app.audio_cue_list.current_index() {
+                    if let Some(cue) = app.audio_cue_list.get_cue(current_idx) {
+                        if let Some(light_cue_num) = cue.triggers_lighting_cue {
+                            // Find and trigger the lighting cue by number
+                            if let Some(light_idx) = app.cue_list.cues().iter()
+                                .position(|c| (c.number - light_cue_num).abs() < 0.01) {
+                                if let Some(universe) = app.universes.first() {
+                                    if app.playback.go_to_cue(&app.cue_list, light_idx, universe) {
+                                        app.cue_list.set_current_index(Some(light_idx));
+                                        log::info!("Audio cue {:.2} triggered lighting cue {:.2}", cue.number, light_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         if ui.button("⏹ STOP").clicked() {
@@ -325,6 +363,14 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                         
                         ui.horizontal(|ui| {
                             if ui.checkbox(&mut has_trigger, "").changed() {
+                                // Check for circular dependency
+                                if has_trigger && app.would_create_circular_audio_to_light(cue_number, trigger_value) {
+                                    app.ui_state.status_message = 
+                                        format!("⚠️ Cannot create circular trigger: Light {:.2} already triggers Audio {:.2}", 
+                                                trigger_value, cue_number);
+                                    has_trigger = false;
+                                }
+                                
                                 if let Some(cue) = app.audio_cue_list.get_cue_mut(idx) {
                                     cue.triggers_lighting_cue = if has_trigger {
                                         Some(trigger_value)
@@ -339,9 +385,21 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                                     egui::DragValue::new(&mut trigger_value)
                                         .speed(0.1)
                                         .range(0.0..=999.0)
+                                        .fixed_decimals(2)
                                 ).changed() {
-                                    if let Some(cue) = app.audio_cue_list.get_cue_mut(idx) {
-                                        cue.triggers_lighting_cue = Some(trigger_value);
+                                    // Check for circular dependency
+                                    if app.would_create_circular_audio_to_light(cue_number, trigger_value) {
+                                        app.ui_state.status_message = 
+                                            format!("⚠️ Cannot create circular trigger: Light {:.2} already triggers Audio {:.2}", 
+                                                    trigger_value, cue_number);
+                                        // Revert to previous value
+                                        if let Some(cue) = app.audio_cue_list.get_cue_mut(idx) {
+                                            cue.triggers_lighting_cue = cue_trigger;
+                                        }
+                                    } else {
+                                        if let Some(cue) = app.audio_cue_list.get_cue_mut(idx) {
+                                            cue.triggers_lighting_cue = Some(trigger_value);
+                                        }
                                     }
                                 }
                             }

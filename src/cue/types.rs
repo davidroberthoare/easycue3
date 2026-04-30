@@ -7,12 +7,15 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cue {
     /// Cue number (e.g., 1.0, 1.5, 2.0)
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub number: f32,
     /// Optional text label
     pub label: String,
     /// Fade up time in seconds
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_up: f32,
     /// Fade down time in seconds (for intensity)
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_down: f32,
     /// Channel intensity values (0-100, channel number -> intensity)
     /// Only stores non-zero channels to save space
@@ -21,7 +24,7 @@ pub struct Cue {
     pub notes: String,
     
     /// Optional audio cue number to trigger when this lighting cue executes (Phase 4)
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub triggers_audio_cue: Option<f32>,
 }
 
