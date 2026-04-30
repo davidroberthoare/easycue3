@@ -7,6 +7,7 @@ mod lighting_cues;
 mod sound_cues;
 mod properties;
 mod controls;
+mod patching;
 
 use egui::Context;
 use crate::app::{EasyCueApp, TabKind};
@@ -16,6 +17,7 @@ pub use lighting_cues::render_lighting_cues_panel;
 pub use sound_cues::render_sound_cues_panel;
 pub use properties::render_properties_panel;
 pub use controls::render_controls_panel;
+pub use patching::{render_patching_panel, PatchingPanelState};
 
 /// Render the main UI
 pub fn render(ctx: &Context, app: &mut EasyCueApp) {
@@ -247,6 +249,11 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             TabKind::Channels => render_channels_panel(ui, self.app),
             TabKind::LightingCues => render_lighting_cues_panel(ui, self.app),
             TabKind::SoundCues => render_sound_cues_panel(ui, self.app),
+            TabKind::Patching => {
+                let mut patching_state = std::mem::take(&mut self.app.patching_state);
+                render_patching_panel(ui, self.app, &mut patching_state);
+                self.app.patching_state = patching_state;
+            }
             TabKind::Properties => render_properties_panel(ui, self.app),
             TabKind::Controls => render_controls_panel(ui, self.app),
         }

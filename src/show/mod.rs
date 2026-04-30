@@ -2,9 +2,10 @@
 //!
 //! Handles saving/loading show files with cues, fixtures, and settings.
 
-use serde::{Deserialize, Serialize};
-use crate::cue::Cue;
 use anyhow::Result;
+use crate::cue::Cue;
+use crate::fixtures::Patch;
+use serde::{Deserialize, Serialize};
 
 /// Show file format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,11 +15,14 @@ pub struct ShowFile {
     pub description: String,
     pub created: String,
     pub modified: String,
-    
+
     /// Cue list
     pub cues: Vec<Cue>,
-    
-    // TODO: Fixture patch
+
+    /// Fixture patch
+    #[serde(default)]
+    pub patch: Vec<Patch>,
+
     // TODO: Media references
     // TODO: Settings
 }
@@ -33,6 +37,7 @@ impl ShowFile {
             created: now.clone(),
             modified: now,
             cues: Vec::new(),
+            patch: Vec::new(),
         }
     }
 

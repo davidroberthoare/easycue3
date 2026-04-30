@@ -38,6 +38,7 @@ env_logger = "0.11"
 chrono = { version = "0.4", features = ["serde"] }
 rfd = "0.14"  # Native file dialogs
 image = { version = "0.25", default-features = false, features = ["png"] }  # Icon loading
+dirs = "5.0"  # Platform-specific config directories
 
 [features]
 default = ["usb"]  # Enable USB DMX by default

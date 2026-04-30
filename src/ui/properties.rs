@@ -40,7 +40,29 @@ pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
 /// Render properties for a single selected channel
 fn render_single_channel_properties(ui: &mut Ui, app: &mut EasyCueApp, channel: u16) {
+    // Check if this channel is part of a patched fixture
+    // Collect fixture data to avoid borrow conflicts
+    let fixture_data: Option<(crate::fixtures::Patch, crate::fixtures::FixtureProfile)> = {
+        let channel_counts = app.fixtures.get_channel_counts();
+        app.fixtures
+            .patch_list()
+            .find_patch_at_channel(channel, &channel_counts)
+            .and_then(|patch| {
+                app.fixtures
+                    .get_profile(&patch.profile_id)
+                    .map(|profile| (patch.clone(), profile.clone()))
+            })
+    };
+    
+    if let Some((patch, profile)) = fixture_data {
+        // Channel is part of a fixture - show fixture properties
+        render_fixture_properties(ui, app, &patch, &profile, channel);
+        return;
+    }
+    
+    // Fall back to raw channel display if not patched
     ui.label(egui::RichText::new(format!("Channel {}", channel)).strong());
+    ui.label(egui::RichText::new("(Unpatched)").small().italics());
     
     if let Some(universe) = app.universes.first_mut() {
         let mut value = universe.get_channel(channel).unwrap_or(0);
@@ -63,9 +85,222 @@ fn render_single_channel_properties(ui: &mut Ui, app: &mut EasyCueApp, channel: 
     }
 }
 
+/// Render fixture properties with parameter controls
+fn render_fixture_properties(
+    ui: &mut Ui,
+    app: &mut EasyCueApp,
+    patch: &crate::fixtures::Patch,
+    profile: &crate::fixtures::FixtureProfile,
+    _selected_channel: u16,
+) {
+    use crate::fixtures::profiles::FixtureParameter;
+    
+    ui.label(egui::RichText::new(&patch.label).strong());
+    ui.label(egui::RichText::new(&profile.name).small().italics());
+    
+    ui.add_space(10.0);
+    
+    let Some(universe) = app.universes.first_mut() else {
+        return;
+    };
+    
+    // Intensity parameter (if present)
+    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Intensity) {
+        let ch = patch.start_address + offset;
+        let mut value = universe.get_channel(ch).unwrap_or(0);
+        
+        ui.label(egui::RichText::new("Intensity").strong());
+        if ui.add(egui::Slider::new(&mut value, 0..=100)).changed() {
+            let _ = universe.set_channel(ch, value);
+        }
+        ui.add_space(8.0);
+    }
+    
+    // Color picker for RGB fixtures
+    if profile.is_rgb() {
+        ui.label(egui::RichText::new("Color").strong());
+        
+        // Get current RGB values
+        let r_offset = profile.get_parameter_offset(&FixtureParameter::Red).unwrap();
+        let g_offset = profile.get_parameter_offset(&FixtureParameter::Green).unwrap();
+        let b_offset = profile.get_parameter_offset(&FixtureParameter::Blue).unwrap();
+        
+        let r_ch = patch.start_address + r_offset;
+        let g_ch = patch.start_address + g_offset;
+        let b_ch = patch.start_address + b_offset;
+        
+        let r = universe.get_channel(r_ch).unwrap_or(0);
+        let g = universe.get_channel(g_ch).unwrap_or(0);
+        let b = universe.get_channel(b_ch).unwrap_or(0);
+        
+        // Convert to egui Color32 (0-100 -> 0-255 range)
+        let mut color = egui::Color32::from_rgb(
+            ((r as f32 / 100.0) * 255.0) as u8,
+            ((g as f32 / 100.0) * 255.0) as u8,
+            ((b as f32 / 100.0) * 255.0) as u8,
+        );
+        
+        if ui.color_edit_button_srgba(&mut color).changed() {
+            // Convert back to 0-100 range
+            let new_r = ((color.r() as f32 / 255.0) * 100.0) as u8;
+            let new_g = ((color.g() as f32 / 255.0) * 100.0) as u8;
+            let new_b = ((color.b() as f32 / 255.0) * 100.0) as u8;
+            
+            let _ = universe.set_channel(r_ch, new_r);
+            let _ = universe.set_channel(g_ch, new_g);
+            let _ = universe.set_channel(b_ch, new_b);
+        }
+        
+        ui.add_space(8.0);
+        
+        // Individual color sliders
+        ui.collapsing("Color Channels", |ui| {
+            egui::Grid::new("rgb_sliders")
+                .num_columns(2)
+                .spacing([10.0, 6.0])
+                .show(ui, |ui| {
+                    let mut r_val = r;
+                    ui.label("Red:");
+                    if ui.add(egui::Slider::new(&mut r_val, 0..=100)).changed() {
+                        let _ = universe.set_channel(r_ch, r_val);
+                    }
+                    ui.end_row();
+                    
+                    let mut g_val = g;
+                    ui.label("Green:");
+                    if ui.add(egui::Slider::new(&mut g_val, 0..=100)).changed() {
+                        let _ = universe.set_channel(g_ch, g_val);
+                    }
+                    ui.end_row();
+                    
+                    let mut b_val = b;
+                    ui.label("Blue:");
+                    if ui.add(egui::Slider::new(&mut b_val, 0..=100)).changed() {
+                        let _ = universe.set_channel(b_ch, b_val);
+                    }
+                    ui.end_row();
+                    
+                    // Additional color channels (if present)
+                    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Amber) {
+                        let ch = patch.start_address + offset;
+                        let mut val = universe.get_channel(ch).unwrap_or(0);
+                        ui.label("Amber:");
+                        if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
+                            let _ = universe.set_channel(ch, val);
+                        }
+                        ui.end_row();
+                    }
+                    
+                    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::White) {
+                        let ch = patch.start_address + offset;
+                        let mut val = universe.get_channel(ch).unwrap_or(0);
+                        ui.label("White:");
+                        if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
+                            let _ = universe.set_channel(ch, val);
+                        }
+                        ui.end_row();
+                    }
+                    
+                    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Uv) {
+                        let ch = patch.start_address + offset;
+                        let mut val = universe.get_channel(ch).unwrap_or(0);
+                        ui.label("UV:");
+                        if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
+                            let _ = universe.set_channel(ch, val);
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+    
+    ui.add_space(8.0);
+    
+    // Other parameters
+    ui.collapsing("All Parameters", |ui| {
+        egui::Grid::new("fixture_params")
+            .num_columns(3)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("Parameter");
+                ui.label("Channel");
+                ui.label("Value");
+                ui.end_row();
+                
+                for param_map in &profile.parameters {
+                    let ch = patch.start_address + param_map.channel_offset;
+                    let value = universe.get_channel(ch).unwrap_or(0);
+                    
+                    ui.label(format!("{:?}", param_map.parameter));
+                    ui.label(format!("{}", ch));
+                    ui.label(format!("{}", value));
+                    ui.end_row();
+                }
+            });
+    });
+    
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(format!(
+            "Channels {}-{}",
+            patch.start_address,
+            patch.start_address + profile.channel_count - 1
+        ))
+        .small()
+        .italics(),
+    );
+}
+
 /// Render properties for multiple selected channels
 fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     let channel_count = app.ui_state.selected_channels.len();
+    
+    // Check if all selected channels belong to the same fixture
+    let fixture_data: Option<(crate::fixtures::Patch, crate::fixtures::FixtureProfile, u16)> = {
+        let channel_counts = app.fixtures.get_channel_counts();
+        let patch_ids: Vec<_> = app
+            .ui_state
+            .selected_channels
+            .iter()
+            .filter_map(|&ch| {
+                app.fixtures
+                    .patch_list()
+                    .find_patch_at_channel(ch, &channel_counts)
+                    .map(|p| p.id)
+            })
+            .collect();
+        
+        // If all channels belong to the same fixture, collect the data
+        if !patch_ids.is_empty()
+            && patch_ids.len() == channel_count
+            && patch_ids.iter().all(|&id| id == patch_ids[0])
+        {
+            let fixture_id = patch_ids[0];
+            let first_channel = *app.ui_state.selected_channels.iter().next().unwrap();
+            
+            // Collect patch and profile data
+            app.fixtures
+                .patch_list()
+                .patches()
+                .iter()
+                .find(|p| p.id == fixture_id)
+                .and_then(|patch| {
+                    app.fixtures
+                        .get_profile(&patch.profile_id)
+                        .map(|profile| (patch.clone(), profile.clone(), first_channel))
+                })
+        } else {
+            None
+        }
+    };
+    
+    // If we found fixture data, render fixture properties
+    if let Some((patch, profile, first_channel)) = fixture_data {
+        render_fixture_properties(ui, app, &patch, &profile, first_channel);
+        return;
+    }
+    
+    // Fall back to multi-channel display for mixed/unpatched channels
     ui.label(egui::RichText::new(format!("{} Channels Selected", channel_count)).strong());
     
     if let Some(universe) = app.universes.first_mut() {

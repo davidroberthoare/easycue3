@@ -1,0 +1,35 @@
+{
+  "id": "irgbw",
+  "name": "iRGBW (Intensity + RGBW)",
+  "manufacturer": null,
+  "channel_count": 5,
+  "parameters": [
+    {
+      "parameter": "intensity",
+      "channel_offset": 0,
+      "default_value": 0,
+      "description": "Master intensity/dimmer"
+    },
+    {
+      "parameter": "red",
+      "channel_offset": 1,
+      "default_value": 0
+    },
+    {
+      "parameter": "green",
+      "channel_offset": 2,
+      "default_value": 0
+    },
+    {
+      "parameter": "blue",
+      "channel_offset": 3,
+      "default_value": 0
+    },
+    {
+      "parameter": "white",
+      "channel_offset": 4,
+      "default_value": 0
+    }
+  ],
+  "notes": "5-channel RGBW fixture with separate intensity channel"
+}

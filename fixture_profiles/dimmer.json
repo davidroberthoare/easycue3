@@ -1,0 +1,15 @@
+{
+  "id": "generic_dimmer",
+  "name": "Generic Dimmer",
+  "manufacturer": null,
+  "channel_count": 1,
+  "parameters": [
+    {
+      "parameter": "intensity",
+      "channel_offset": 0,
+      "default_value": 0,
+      "description": "Master intensity/dimmer"
+    }
+  ],
+  "notes": "Single-channel dimmer for conventional fixtures"
+}
