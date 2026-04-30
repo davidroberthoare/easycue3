@@ -1,5 +1,37 @@
 {
-  "created": "2026-04-29T01:12:56.503914071+00:00",
+  "audio_cues": [
+    {
+      "audio_path": "/Users/admin1/Music/beat.mp3",
+      "fade_in": 0.0,
+      "fade_out": 0.0,
+      "label": "Cue 1: beat",
+      "notes": "",
+      "number": 1.0,
+      "triggers_lighting_cue": null,
+      "volume": 0.800000011920929
+    },
+    {
+      "audio_path": "/Users/admin1/Music/Muse - Mercy [Official Music Video].mp3",
+      "fade_in": 0.0,
+      "fade_out": 0.0,
+      "label": "Cue 2: Muse - Mercy [Official Music Video]",
+      "notes": "",
+      "number": 2.0,
+      "triggers_lighting_cue": null,
+      "volume": 0.800000011920929
+    },
+    {
+      "audio_path": "/Users/admin1/Music/Rick Astley  Never Gonna Give You Up Official Music Video.mp3",
+      "fade_in": 0.0,
+      "fade_out": 0.0,
+      "label": "Cue 3: Rick Astley  Never Gonna Give You Up Official Music Video",
+      "notes": "",
+      "number": 3.0,
+      "triggers_lighting_cue": null,
+      "volume": 0.800000011920929
+    }
+  ],
+  "created": "2026-04-30T14:23:01.214300+00:00",
   "cues": [
     {
       "channel_values": {
@@ -13,7 +45,8 @@
       "fade_up": 2.0,
       "label": "House Lights",
       "notes": "Full house lights for pre-show",
-      "number": 1.0
+      "number": 1.0,
+      "triggers_audio_cue": null
     },
     {
       "channel_values": {},
@@ -21,7 +54,8 @@
       "fade_up": 3.0,
       "label": "Blackout",
       "notes": "Stage blackout - all lights off",
-      "number": 2.0
+      "number": 2.0,
+      "triggers_audio_cue": null
     },
     {
       "channel_values": {
@@ -34,7 +68,8 @@
       "fade_up": 5.0,
       "label": "Warm Stage Wash",
       "notes": "Warm stage lighting for Act 1",
-      "number": 3.0
+      "number": 3.0,
+      "triggers_audio_cue": null
     },
     {
       "channel_values": {
@@ -48,10 +83,12 @@
       "fade_up": 2.0,
       "label": "Spotlight Center",
       "notes": "Spotlight on center stage with background wash",
-      "number": 4.0
+      "number": 4.0,
+      "triggers_audio_cue": null
     }
   ],
   "description": "",
-  "modified": "2026-04-29T01:12:56.504002721+00:00",
+  "modified": "2026-04-30T14:23:01.214380+00:00",
+  "patch": [],
   "title": "Example Show"
 }

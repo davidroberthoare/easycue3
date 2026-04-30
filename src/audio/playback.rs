@@ -112,17 +112,18 @@ impl AudioPlaybackEngine {
         }
     }
     
-    /// Update the playback state and apply fades (called each frame)
-    pub fn update(&mut self, player: &mut AudioPlayer) {
-        match self.state {
+    /// Update the playback state and calculate fades (called each frame)
+    /// Returns the base volume (with fades applied) that should be set on the player.
+    /// The app should multiply this by sound_master before setting.
+    pub fn update(&mut self, player: &mut AudioPlayer) -> f32 {
+        let target_volume = match self.state {
             AudioCueState::FadingIn { progress: _ } => {
                 if let Some(start_time) = self.fade_start {
                     let elapsed = start_time.elapsed().as_secs_f32();
                     let new_progress = (elapsed / self.fade_in_duration).clamp(0.0, 1.0);
                     
-                    // Apply fade curve (linear for now)
+                    // Calculate fade curve (linear for now) - this is the BASE volume (before sound master)
                     let fade_volume = self.base_volume * new_progress;
-                    player.set_volume(fade_volume);
                     
                     if new_progress >= 1.0 {
                         // Fade in complete
@@ -132,6 +133,9 @@ impl AudioPlaybackEngine {
                     } else {
                         self.state = AudioCueState::FadingIn { progress: new_progress };
                     }
+                    fade_volume
+                } else {
+                    self.base_volume
                 }
             }
             
@@ -142,6 +146,7 @@ impl AudioPlaybackEngine {
                     self.pending_lighting_trigger = None;
                     log::debug!("Audio playback finished");
                 }
+                self.base_volume
             }
             
             AudioCueState::FadingOut { progress: _ } => {
@@ -149,9 +154,8 @@ impl AudioPlaybackEngine {
                     let elapsed = start_time.elapsed().as_secs_f32();
                     let new_progress = (elapsed / self.fade_out_duration).clamp(0.0, 1.0);
                     
-                    // Apply fade curve (linear for now)
+                    // Calculate fade curve (linear for now) - this is the BASE volume (before sound master)
                     let fade_volume = self.base_volume * (1.0 - new_progress);
-                    player.set_volume(fade_volume);
                     
                     if new_progress >= 1.0 {
                         // Fade out complete, stop playback
@@ -163,13 +167,19 @@ impl AudioPlaybackEngine {
                     } else {
                         self.state = AudioCueState::FadingOut { progress: new_progress };
                     }
+                    fade_volume
+                } else {
+                    0.0
                 }
             }
             
             AudioCueState::Stopped => {
                 // Nothing to update
+                0.0
             }
-        }
+        };
+        
+        target_volume
     }
     
     /// Initiate a fade out
@@ -195,6 +205,17 @@ impl AudioPlaybackEngine {
     /// Take any pending lighting trigger (returns Some(cue_number) once, then None)
     pub fn take_pending_lighting_trigger(&mut self) -> Option<f32> {
         self.pending_lighting_trigger.take()
+    }
+    
+    /// Get the current base volume (before sound master is applied)
+    /// Returns the volume with fades applied, but not the global sound master
+    pub fn current_base_volume(&self) -> f32 {
+        match self.state {
+            AudioCueState::FadingIn { .. } | AudioCueState::Playing | AudioCueState::FadingOut { .. } => {
+                self.base_volume
+            }
+            AudioCueState::Stopped => 0.0,
+        }
     }
 }
 
