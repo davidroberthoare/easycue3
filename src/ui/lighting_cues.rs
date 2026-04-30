@@ -144,9 +144,11 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     ui.separator();
     ui.add_space(4.0);
     
-    // Calculate space for footer (reserve space at bottom)
-    let footer_height = 60.0; // Increased to ensure footer is visible
-    let available_for_table = ui.available_height() - footer_height;
+    // Reserve extra bottom space so rows never scroll under the footer,
+    // while keeping the footer visually compact.
+    let footer_visual_height = 48.0;
+    let footer_reserved_height = 76.0;
+    let available_for_table = (ui.available_height() - footer_reserved_height).max(0.0);
     
     // Scrollable cue list with resizable columns
     let selected = app.ui_state.selected_cue_index;
@@ -159,6 +161,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             ui.add_space(10.0);
             ui.label("Press 'Record' or Ctrl+R to create your first cue");
         });
+        
     } else {
         let cue_count = app.cue_list.len();
         let mut clicked_index: Option<usize> = None;
@@ -174,6 +177,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             .column(Column::remainder().at_least(100.0))     // Label (takes remaining space)
             .column(Column::initial(80.0).at_least(60.0))   // Fade
             .column(Column::initial(80.0).at_least(60.0))   // Sound trigger
+            .min_scrolled_height(0.0)
             .max_scroll_height(available_for_table);
     
     table
@@ -443,69 +447,76 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
     }
     
-    // Footer: Lighting control panel with solid background
-    ui.separator();
-    egui::Frame::new()
-        .fill(ui.style().visuals.extreme_bg_color)
-        .inner_margin(egui::Margin::symmetric(8, 4))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                // Playback status
-                let state_text = match app.playback.state() {
-                    crate::cue::CueState::Stopped => "⏹ Stopped",
-                    crate::cue::CueState::Fading { progress } => {
-                        &format!("⏵ Fading {:.0}%", progress * 100.0)
+    // Footer: Lighting control panel pinned to panel bottom
+    let max_rect = ui.max_rect();
+    let footer_rect = egui::Rect::from_min_max(
+        egui::pos2(max_rect.left(), max_rect.bottom() - footer_visual_height),
+        egui::pos2(max_rect.right(), max_rect.bottom()),
+    );
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
+        ui.separator();
+        egui::Frame::new()
+            .fill(ui.style().visuals.extreme_bg_color)
+            .inner_margin(egui::Margin::symmetric(8, 4))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Playback status
+                    let state_text = match app.playback.state() {
+                        crate::cue::CueState::Stopped => "⏹ Stopped",
+                        crate::cue::CueState::Fading { progress } => {
+                            &format!("⏵ Fading {:.0}%", progress * 100.0)
+                        }
+                        crate::cue::CueState::Active => "⏸ Active",
+                    };
+                    ui.label(state_text);
+
+                    // Current cue
+                    if let Some(idx) = app.cue_list.current_index() {
+                        if let Some(cue) = app.cue_list.get_cue(idx) {
+                            ui.separator();
+                            ui.label(format!("Q{:.1}", cue.number));
+                        }
                     }
-                    crate::cue::CueState::Active => "⏸ Active",
-                };
-                ui.label(state_text);
-                
-                // Current cue
-                if let Some(idx) = app.cue_list.current_index() {
-                    if let Some(cue) = app.cue_list.get_cue(idx) {
-                        ui.separator();
-                        ui.label(format!("Q{:.1}", cue.number));
-                    }
-                }
-                
-                ui.separator();
-                
-                // Command line
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
-                    ui.horizontal(|ui| {
-                        // Context indicator
-                        let context_label = match app.ui_state.command_context {
-                            crate::command::CommandContext::Lighting => "💡",
-                            crate::command::CommandContext::Sound => "🔊",
-                            _ => "⌨",
-                        };
-                        ui.label(egui::RichText::new(context_label).size(16.0));
-                        
-                        // Command input
-                        let response = ui.add(
-                            egui::TextEdit::singleline(&mut app.ui_state.command_input)
-                                .desired_width(ui.available_width() - 80.0)
-                                .hint_text("Click channels...")
-                                .font(egui::TextStyle::Monospace)
-                        );
-                        
-                        // Handle Enter key to execute command
-                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            crate::ui::execute_command_line(app);
-                        }
-                        
-                        // Execute button
-                        if ui.button("⏎").clicked() {
-                            crate::ui::execute_command_line(app);
-                        }
-                        
-                        // Clear button
-                        if ui.button("✖").clicked() {
-                            app.ui_state.command_input.clear();
-                            app.ui_state.status_message = "Command cleared".to_string();
-                        }
+
+                    ui.separator();
+
+                    // Command line
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
+                        ui.horizontal(|ui| {
+                            // Context indicator
+                            let context_label = match app.ui_state.command_context {
+                                crate::command::CommandContext::Lighting => "💡",
+                                crate::command::CommandContext::Sound => "🔊",
+                                _ => "⌨",
+                            };
+                            ui.label(egui::RichText::new(context_label).size(16.0));
+
+                            // Command input
+                            let response = ui.add(
+                                egui::TextEdit::singleline(&mut app.ui_state.command_input)
+                                    .desired_width(ui.available_width() - 80.0)
+                                    .hint_text("Click channels...")
+                                    .font(egui::TextStyle::Monospace)
+                            );
+
+                            // Handle Enter key to execute command
+                            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                crate::ui::execute_command_line(app);
+                            }
+
+                            // Execute button
+                            if ui.button("⏎").clicked() {
+                                crate::ui::execute_command_line(app);
+                            }
+
+                            // Clear button
+                            if ui.button("✖").clicked() {
+                                app.ui_state.command_input.clear();
+                                app.ui_state.status_message = "Command cleared".to_string();
+                            }
+                        });
                     });
                 });
             });
-        });
+    });
 }

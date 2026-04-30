@@ -227,9 +227,11 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
     let current_idx = app.audio_cue_list.current_index();
     let selected_idx = app.ui_state.selected_audio_cue_index;
     
-    // Calculate space for footer (reserve space at bottom)
-    let footer_height = 60.0; // Increased to ensure footer is visible
-    let available_height = ui.available_height() - footer_height;
+    // Reserve extra bottom space so rows never scroll under the footer,
+    // while keeping the footer visually compact.
+    let footer_visual_height = 48.0;
+    let footer_reserved_height = 76.0;
+    let available_height = (ui.available_height() - footer_reserved_height).max(0.0);
     
     TableBuilder::new(ui)
         .striped(true)
@@ -554,34 +556,41 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         });
     
-    // Show playback status with solid background
-    ui.separator();
-    
-    let state_text = match app.audio_playback.state() {
-        crate::audio::AudioCueState::Stopped => "⏹ Stopped".to_string(),
-        crate::audio::AudioCueState::FadingIn { progress } => 
-            format!("⏵ Fading In ({:.0}%)", progress * 100.0),
-        crate::audio::AudioCueState::Playing => "⏵ Playing".to_string(),
-        crate::audio::AudioCueState::FadingOut { progress } => 
-            format!("⏸ Fading Out ({:.0}%)", progress * 100.0),
-    };
-    
-    egui::Frame::new()
-        .fill(ui.style().visuals.extreme_bg_color)
-        .inner_margin(egui::Margin::symmetric(8, 4))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Status:");
-                ui.label(egui::RichText::new(state_text).strong());
-                
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Show effective volume (cue volume × fade × sound master)
-                    #[cfg(feature = "audio")]
-                    {
-                        let effective_volume = app.audio_player.volume();
-                        ui.label(format!("Output: {:.0}%", effective_volume * 100.0));
-                    }
+    // Show playback status pinned to panel bottom
+    let max_rect = ui.max_rect();
+    let footer_rect = egui::Rect::from_min_max(
+        egui::pos2(max_rect.left(), max_rect.bottom() - footer_visual_height),
+        egui::pos2(max_rect.right(), max_rect.bottom()),
+    );
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
+        ui.separator();
+
+        let state_text = match app.audio_playback.state() {
+            crate::audio::AudioCueState::Stopped => "⏹ Stopped".to_string(),
+            crate::audio::AudioCueState::FadingIn { progress } => 
+                format!("⏵ Fading In ({:.0}%)", progress * 100.0),
+            crate::audio::AudioCueState::Playing => "⏵ Playing".to_string(),
+            crate::audio::AudioCueState::FadingOut { progress } => 
+                format!("⏸ Fading Out ({:.0}%)", progress * 100.0),
+        };
+
+        egui::Frame::new()
+            .fill(ui.style().visuals.extreme_bg_color)
+            .inner_margin(egui::Margin::symmetric(8, 4))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Status:");
+                    ui.label(egui::RichText::new(state_text).strong());
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Show effective volume (cue volume × fade × sound master)
+                        #[cfg(feature = "audio")]
+                        {
+                            let effective_volume = app.audio_player.volume();
+                            ui.label(format!("Output: {:.0}%", effective_volume * 100.0));
+                        }
+                    });
                 });
             });
-        });
+    });
 }
