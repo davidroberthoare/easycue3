@@ -4,9 +4,11 @@
 
 pub mod patching;
 pub mod profiles;
+pub mod intensity;
 
 pub use patching::{Patch, PatchList};
 pub use profiles::FixtureProfile;
+pub use intensity::VirtualIntensity;
 
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
