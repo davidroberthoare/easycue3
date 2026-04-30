@@ -2,26 +2,26 @@
   "audio_cues": [
     {
       "audio_path": "/Users/admin1/Music/beat.mp3",
-      "fade_in": 2.1,
+      "fade_in": 2.0999999046325684,
       "fade_out": 4.5,
       "label": "Cue 1: beat",
       "notes": "",
       "number": 1.0,
       "triggers_lighting_cue": null,
-      "volume": 0.8
+      "volume": 0.800000011920929
     },
     {
       "audio_path": "/Users/admin1/Music/Shakira  Try Everything Official Video.mp3",
       "fade_in": 0.0,
-      "fade_out": 2.8,
+      "fade_out": 2.799999952316284,
       "label": "Cue 2: Shakira  Try Everything Official Video",
       "notes": "",
       "number": 2.0,
       "triggers_lighting_cue": 3.0,
-      "volume": 0.8
+      "volume": 0.800000011920929
     }
   ],
-  "created": "2026-04-30T17:44:10.072439+00:00",
+  "created": "2026-04-30T19:57:01.905838349+00:00",
   "cues": [
     {
       "channel_values": {
@@ -78,7 +78,24 @@
     }
   ],
   "description": "",
-  "modified": "2026-04-30T17:44:10.072463+00:00",
-  "patch": [],
+  "modified": "2026-04-30T19:57:01.905919728+00:00",
+  "patch": [
+    {
+      "id": 1,
+      "label": "test",
+      "notes": "",
+      "profile_id": "rgbawuv",
+      "start_address": 1,
+      "universe": 1
+    },
+    {
+      "id": 2,
+      "label": "dimmer",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 99,
+      "universe": 1
+    }
+  ],
   "title": "Example Show"
 }
