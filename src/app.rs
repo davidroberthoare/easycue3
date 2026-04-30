@@ -77,8 +77,16 @@ pub struct UiState {
     pub active_pane: Option<TabKind>,
     
     // Command context (derived from active pane)
-    pub command_context: CommandContext,
+    pub command_context: CommandContext,    
+    /// Selected audio cue index (for editing)
+    pub selected_audio_cue_index: Option<usize>,
     
+    /// Cached file existence checks (path -> exists)
+    #[cfg(feature = "audio")]
+    pub audio_file_cache: std::collections::HashMap<std::path::PathBuf, bool>,
+    
+    /// Show debug info (FPS, frame time)
+    pub show_debug_ui: bool,    
     // Theme initialization flag
     pub theme_initialized: bool,
     
@@ -112,6 +120,10 @@ impl Default for UiState {
             show_quit_confirmation: false,
             show_device_selector: false,
             selected_usb_port: String::new(),
+            selected_audio_cue_index: None,
+            #[cfg(feature = "audio")]
+            audio_file_cache: std::collections::HashMap::new(),
+            show_debug_ui: false,
         }
     }
 }
@@ -657,7 +669,12 @@ impl eframe::App for EasyCueApp {
         // Update audio playback engine (Phase 4)
         #[cfg(feature = "audio")]
         {
-            self.audio_playback.update(&mut self.audio_player);
+            // Update fades and get base volume (cue volume with fades applied)
+            let base_volume = self.audio_playback.update(&mut self.audio_player);
+            
+            // Apply sound master on top of base volume (allows real-time master adjustment)
+            let effective_volume = base_volume * self.ui_state.sound_master;
+            self.audio_player.set_volume(effective_volume);
             
             // Check for cross-triggers from audio to lighting
             if let Some(lighting_cue_number) = self.audio_playback.take_pending_lighting_trigger() {
@@ -687,16 +704,51 @@ impl eframe::App for EasyCueApp {
 
         // Render UI
         crate::ui::render(ctx, self);
+        
+        // Debug UI overlay (FPS counter, frame time)
+        if self.ui_state.show_debug_ui {
+            egui::Window::new("🐛 Debug Info")
+                .default_pos([10.0, 10.0])
+                .default_width(250.0)
+                .show(ctx, |ui| {
+                    ui.label(format!("FPS: {:.1}", ctx.input(|i| 1.0 / i.stable_dt)));
+                    ui.label(format!("Frame time: {:.2}ms", ctx.input(|i| i.stable_dt * 1000.0)));
+                    ui.separator();
+                    
+                    #[cfg(feature = "audio")]
+                    {
+                        ui.label(format!("Audio cues: {}", self.audio_cue_list.cues().len()));
+                        ui.label(format!("File cache: {} entries", self.ui_state.audio_file_cache.len()));
+                        ui.label(format!("Audio playing: {}", self.audio_playback.is_playing()));
+                    }
+                    
+                    ui.separator();
+                    ui.label(format!("Lighting cues: {}", self.cue_list.len()));
+                    ui.label(format!("Lighting playing: {}", self.playback.is_playing()));
+                    
+                    ui.separator();
+                    if ui.button("Clear file cache").clicked() {
+                        #[cfg(feature = "audio")]
+                        self.ui_state.audio_file_cache.clear();
+                    }
+                });
+        }
 
-        // Request continuous repaint for smooth fades
+        // Request continuous repaint for smooth fades (but only when needed)
         if self.playback.is_playing() {
-            ctx.request_repaint();
+            // Request repaint after 16ms (60 FPS) for smooth fades
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
         
         // Request repaint for audio playback (Phase 4)
         #[cfg(feature = "audio")]
         if self.audio_playback.is_playing() {
-            ctx.request_repaint();
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+        
+        // Always request repaint if debug UI is showing
+        if self.ui_state.show_debug_ui {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
     }
 

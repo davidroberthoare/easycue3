@@ -402,6 +402,9 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 
                 ui.separator();
+                ui.checkbox(&mut app.ui_state.show_debug_ui, "🐛 Show Debug Info (FPS)");
+                
+                ui.separator();
                 ui.label(egui::RichText::new("💡 Drag tabs to rearrange").italics().small());
             });
             
