@@ -157,7 +157,47 @@ Connect real DMX hardware, patch fixtures, and control them with sliders and a c
 
 ---
 
-### Phase 4: Advanced Cueing & Groups 📋 PLANNED
+### Phase 4: Audio Playback & Cross-Triggering 📋 PLANNED
+
+**Goal:** Add simple audio playback and allow lighting/audio cues to trigger each other.
+
+**Deliverables:**
+
+**Audio Playback:**
+- 📋 Audio cues (MP3, WAV, FLAC, AAC, OGG)
+- 📋 Play/Pause/Stop controls
+- 📋 Volume control (per-cue volume)
+- 📋 Fade in/out (audio crossfades)
+- 📋 Audio device selection (choose output device)
+- 📋 Playback position indicator
+
+**Cross-Triggering:**
+- 📋 Lighting cue can trigger an audio cue (on GO)
+- 📋 Audio cue can trigger a lighting cue (on start/end)
+- 📋 Trigger settings in cue properties panel
+- 📋 Visual indicators showing cue relationships
+
+**Integrated Timeline:**
+```
+Cue 1.0: [LIGHTS] House Lights                  Fade: 2s
+Cue 2.0: [LIGHTS] Blackout                      Fade: 3s → Triggers Audio 2.5
+Cue 2.5: [AUDIO]  Overture (music.mp3)          Vol: 80%
+Cue 3.0: [LIGHTS] Stage Wash                    Fade: 5s
+Cue 4.0: [AUDIO]  Sound Effect (thunder.wav)    Vol: 100% → Triggers Lights 4.5
+Cue 4.5: [LIGHTS] Lightning Flash               Fade: 0.1s
+```
+
+**Media Management:**
+- 📋 Audio file browser (view all audio files in show folder)
+- 📋 Drag-and-drop audio import
+- 📋 Missing audio warnings (if files are moved/deleted)
+
+**Outcome:**
+Run simple shows with integrated audio and lighting from a single timeline. Audio cues can automatically trigger lighting changes and vice versa, enabling coordinated effects like thunder sound with lightning flashes.
+
+---
+
+### Phase 5: Advanced Cueing & Groups 📋 PLANNED
 
 **Goal:** Add professional features for complex shows.
 
@@ -188,20 +228,11 @@ Power users can build complex shows with sophisticated timing and organization, 
 
 ---
 
-### Phase 5: Media Integration 📋 PLANNED
+### Phase 6: Video & Image Playback 📋 FUTURE
 
-**Goal:** Integrate audio and video playback into the cue list.
+**Goal:** Extend media capabilities with video and still images.
 
 **Deliverables:**
-
-**Audio Playback:**
-- 📋 Audio cues (MP3, WAV, FLAC, AAC, OGG)
-- 📋 Play/Pause/Stop controls
-- 📋 Volume control (per-cue volume)
-- 📋 Fade in/out (audio crossfades)
-- 📋 Audio waveform display
-- 📋 Playback position indicator
-- 📋 Audio device selection (choose output device)
 
 **Video Playback:**
 - 📋 Video cues (MP4, MOV, MKV, WebM, AVI)
@@ -218,7 +249,7 @@ Power users can build complex shows with sophisticated timing and organization, 
 - 📋 Crossfade between images
 - 📋 Image scaling/positioning
 
-**Integrated Timeline:**
+**Enhanced Timeline:**
 ```
 Cue 1.0: [LIGHTS] House Lights                  Fade: 2s
 Cue 2.0: [LIGHTS] Blackout                      Fade: 3s
@@ -229,17 +260,17 @@ Cue 5.0: [LIGHTS] Act 1 Scene 1                 Fade: 3s
 ```
 
 **Media Management:**
-- 📋 Media browser (view all audio/video files in show folder)
+- 📋 Video/image browser (view all media files in show folder)
 - 📋 Drag-and-drop media import
-- 📋 Missing media warnings (if files are moved/deleted)
-- 📋 Auto-update media paths (if files are moved)
+- 📋 Missing media warnings
+- 📋 Media preview thumbnails
 
 **Outcome:**
-Run a complete show with lighting, sound, and video from a single timeline. No need for separate QLab or audio software.
+Full QLab-style capability with integrated lighting, audio, video, and images all controlled from a single timeline.
 
 ---
 
-### Phase 6: Effects & Dynamics 📋 PLANNED
+### Phase 7: Effects & Dynamics 📋 FUTURE
 
 **Goal:** Add moving effects and dynamic lighting behaviors.
 
@@ -274,7 +305,7 @@ Create dynamic, evolving lighting looks and synchronize with audio/video timecod
 
 ---
 
-### Phase 7: Magic Sheets & Visualization 📋 PLANNED
+### Phase 8: Magic Sheets & Visualization 📋 FUTURE
 
 **Goal:** Add custom visual control layouts and 3D visualization.
 
@@ -303,7 +334,7 @@ Visualize your lighting design in 3D before setting up hardware. Control fixture
 
 ---
 
-### Phase 8: Collaboration & Cloud 📋 FUTURE
+### Phase 9: Collaboration & Cloud 📋 FUTURE
 
 **Goal:** Enable multi-user workflows and remote control.
 
@@ -363,10 +394,16 @@ These limitations keep the software simple, maintainable, and appropriate for th
 - [ ] Command line parsing is intuitive (90% success rate for new users)
 - [ ] No dropped DMX frames during playback
 
-### Phase 5 Goals:
+### Phase 4 Goals:
 - [ ] Audio stays in sync with lighting cues (±100ms accuracy)
+- [ ] Audio crossfades are smooth (no popping/clicking)
+- [ ] Audio files load quickly (<1 second for typical files)
+- [ ] Cross-triggering works reliably (lighting→audio, audio→lighting)
+
+### Phase 6 Goals:
 - [ ] Video playback is smooth (30 FPS minimum)
-- [ ] Media files load quickly (<2 seconds for typical audio/video)
+- [ ] Video files load quickly (<2 seconds)
+- [ ] Image transitions are clean (no visible artifacts)
 
 ### Long-Term Goals:
 - [ ] Used in 10+ real productions
