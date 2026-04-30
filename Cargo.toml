@@ -40,7 +40,7 @@ rfd = "0.14"  # Native file dialogs
 image = { version = "0.25", default-features = false, features = ["png"] }  # Icon loading
 
 [features]
-default = []
+default = ["usb"]  # Enable USB DMX by default
 usb = ["serialport"]  # Enable USB DMX interfaces (Enttec USB Pro)
 audio = ["rodio"]  # Enable audio playback (requires ALSA on Linux)
 video = ["lumina-video"]  # Enable video playback (requires GStreamer on Linux)
