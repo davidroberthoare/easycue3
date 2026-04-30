@@ -723,9 +723,12 @@ fn execute_command_line(app: &mut EasyCueApp) {
         return;
     }
     
-    match app.ui_state.command_context {
-        crate::command::CommandContext::Lighting => {
-            match crate::command::parse_lighting_command(&input) {
+    // Use context-aware parsing
+    let context = app.ui_state.command_context;
+    
+    match context {
+        crate::command::CommandContext::Lighting | crate::command::CommandContext::General => {
+            match crate::command::parse_lighting_command_with_context(&input, context) {
                 Ok(cmd) => {
                     crate::command::execute_command(cmd, app);
                 }
@@ -737,9 +740,6 @@ fn execute_command_line(app: &mut EasyCueApp) {
         }
         crate::command::CommandContext::Sound => {
             app.ui_state.status_message = "Sound commands not yet implemented".to_string();
-        }
-        _ => {
-            app.ui_state.status_message = "No command context active".to_string();
         }
     }
     

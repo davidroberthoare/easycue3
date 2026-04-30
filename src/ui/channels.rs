@@ -12,7 +12,7 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         
         // Toggle between fixture list and channel grid
         let mut show_unpatched = app.ui_state.show_unpatched_channels;
-        if ui.checkbox(&mut show_unpatched, "Show Unpatched Channels").changed() {
+        if ui.checkbox(&mut show_unpatched, "Show DMX").changed() {
             app.ui_state.show_unpatched_channels = show_unpatched;
         }
         
