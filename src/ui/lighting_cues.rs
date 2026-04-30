@@ -15,16 +15,52 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         
         if ui.add_enabled(go_enabled, go_button).clicked() {
             if let Some(universe) = app.universes.first() {
-                app.playback.go(&mut app.cue_list, universe);
-                app.ui_state.status_message = "GO".to_string();
+                if app.playback.go(&mut app.cue_list, universe) {
+                    app.ui_state.status_message = "GO".to_string();
+                    
+                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                    #[cfg(feature = "audio")]
+                    if let Some(current_idx) = app.cue_list.current_index() {
+                        if let Some(cue) = app.cue_list.get_cue(current_idx) {
+                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                                // Find and trigger the audio cue by number
+                                if let Some(audio_idx) = app.audio_cue_list.cues().iter()
+                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                    if app.audio_playback.go_to_cue(&app.audio_cue_list, audio_idx, &mut app.audio_player) {
+                                        app.audio_cue_list.set_current_index(Some(audio_idx));
+                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         
         let back_enabled = app.cue_list.previous_index().is_some();
         if ui.add_enabled(back_enabled, egui::Button::new("⏮ BACK")).clicked() {
             if let Some(universe) = app.universes.first() {
-                app.playback.back(&mut app.cue_list, universe);
-                app.ui_state.status_message = "BACK".to_string();
+                if app.playback.back(&mut app.cue_list, universe) {
+                    app.ui_state.status_message = "BACK".to_string();
+                    
+                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                    #[cfg(feature = "audio")]
+                    if let Some(current_idx) = app.cue_list.current_index() {
+                        if let Some(cue) = app.cue_list.get_cue(current_idx) {
+                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                                // Find and trigger the audio cue by number
+                                if let Some(audio_idx) = app.audio_cue_list.cues().iter()
+                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                    if app.audio_playback.go_to_cue(&app.audio_cue_list, audio_idx, &mut app.audio_player) {
+                                        app.audio_cue_list.set_current_index(Some(audio_idx));
+                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         
@@ -134,7 +170,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         .column(Column::initial(60.0).at_least(40.0))   // Q number
         .column(Column::remainder().at_least(100.0))     // Label (takes remaining space)
         .column(Column::initial(80.0).at_least(60.0))   // Fade
-        .column(Column::initial(50.0).at_least(40.0));  // Ch count
+        .column(Column::initial(80.0).at_least(60.0));  // Sound trigger
     
     table
         .header(20.0, |mut header| {
@@ -148,196 +184,238 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 ui.strong("Fade");
             });
             header.col(|ui| {
-                ui.strong("Ch");
+                ui.strong("→ Sound");
             });
         })
         .body(|body| {
             body.rows(22.0, cue_count, |mut row| {
                 let idx = row.index();
                 
-                if let Some(cue) = app.cue_list.get_cue(idx) {
-                    let is_current = Some(idx) == current;
-                    let is_selected = Some(idx) == selected;
-                    
-                    // Set row selection styling
-                    if is_selected {
-                        row.set_selected(true);
+                // Read cue data (immutable borrow, released immediately)
+                let (cue_number, cue_label, cue_fade_up, cue_triggers_audio) = 
+                    if let Some(cue) = app.cue_list.get_cue(idx) {
+                        (cue.number, cue.label.clone(), cue.fade_up, cue.triggers_audio_cue)
+                    } else {
+                        return;
+                    };
+                
+                let is_current = Some(idx) == current;
+                let is_selected = Some(idx) == selected;
+                
+                // Set row selection styling
+                if is_selected {
+                    row.set_selected(true);
+                }
+                
+                // Background color based on state
+                let bg_color = if is_current && is_selected {
+                    egui::Color32::from_rgb(80, 120, 160)  // Current + selected
+                } else if is_current {
+                    egui::Color32::from_rgb(60, 100, 60)   // Current (playing)
+                } else if is_selected {
+                    egui::Color32::from_rgb(80, 80, 120)   // Selected
+                } else {
+                    egui::Color32::TRANSPARENT              // Use default striping
+                };
+                
+                // Collect responses from all columns to make entire row clickable
+                let mut row_responses = Vec::new();
+                
+                // Cue number
+                row.col(|ui| {
+                    if bg_color != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
+                    }
+                    // Allocate entire cell space and make it interactive
+                    let (rect, response) = ui.allocate_exact_size(
+                        ui.available_size(),
+                        egui::Sense::click()
+                    );
+                    // Draw text centered in the allocated space
+                    ui.painter().text(
+                        rect.left_center() + egui::vec2(5.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{:.1}", cue_number),
+                        egui::FontId::default(),
+                        ui.style().visuals.text_color(),
+                    );
+                    row_responses.push(response);
+                });
+                
+                // Label (editable)
+                row.col(|ui| {
+                    if bg_color != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
                     }
                     
-                    // Background color based on state
-                    let bg_color = if is_current && is_selected {
-                        egui::Color32::from_rgb(80, 120, 160)  // Current + selected
-                    } else if is_current {
-                        egui::Color32::from_rgb(60, 100, 60)   // Current (playing)
-                    } else if is_selected {
-                        egui::Color32::from_rgb(80, 80, 120)   // Selected
-                    } else {
-                        egui::Color32::TRANSPARENT              // Use default striping
-                    };
+                    let mut new_label = cue_label.clone();
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut new_label)
+                            .desired_width(ui.available_width())
+                    );
                     
-                    // Collect responses from all columns to make entire row clickable
-                    let mut row_responses = Vec::new();
-                    
-                    // Cue number
-                    row.col(|ui| {
-                        if bg_color != egui::Color32::TRANSPARENT {
-                            ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
+                    if response.changed() {
+                        if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                            cue.label = new_label;
                         }
-                        // Allocate entire cell space and make it interactive
-                        let (rect, response) = ui.allocate_exact_size(
-                            ui.available_size(),
-                            egui::Sense::click()
-                        );
-                        // Draw text centered in the allocated space
-                        ui.painter().text(
-                            rect.left_center() + egui::vec2(5.0, 0.0),
-                            egui::Align2::LEFT_CENTER,
-                            format!("{:.1}", cue.number),
-                            egui::FontId::default(),
-                            ui.style().visuals.text_color(),
-                        );
-                        row_responses.push(response);
-                    });
-                    
-                    // Label
-                    row.col(|ui| {
-                        if bg_color != egui::Color32::TRANSPARENT {
-                            ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
-                        }
-                        let label_text = if cue.label.is_empty() {
-                            "(untitled)".to_string()
-                        } else {
-                            cue.label.clone()
-                        };
-                        
-                        // Add cross-trigger indicator if this cue triggers an audio cue (Phase 4)
-                        let trigger_indicator = if cue.triggers_audio_cue.is_some() {
-                            #[cfg(feature = "audio")]
-                            {
-                                format!(" →🔊{:.1}", cue.triggers_audio_cue.unwrap())
-                            }
-                            #[cfg(not(feature = "audio"))]
-                            {
-                                String::new()
-                            }
-                        } else {
-                            String::new()
-                        };
-                        
-                        let full_text = format!("{}{}", label_text, trigger_indicator);
-                        
-                        // Allocate entire cell space and make it interactive
-                        let (rect, response) = ui.allocate_exact_size(
-                            ui.available_size(),
-                            egui::Sense::click()
-                        );
-                        // Draw text
-                        let text_color = if cue.label.is_empty() {
-                            egui::Color32::GRAY
-                        } else {
-                            ui.style().visuals.text_color()
-                        };
-                        ui.painter().text(
-                            rect.left_center() + egui::vec2(5.0, 0.0),
-                            egui::Align2::LEFT_CENTER,
-                            full_text,
-                            egui::FontId::default(),
-                            text_color,
-                        );
-                        row_responses.push(response);
-                    });
-                    
-                    // Fade time
-                    row.col(|ui| {
-                        if bg_color != egui::Color32::TRANSPARENT {
-                            ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
-                        }
-                        // Allocate entire cell space and make it interactive
-                        let (rect, response) = ui.allocate_exact_size(
-                            ui.available_size(),
-                            egui::Sense::click()
-                        );
-                        ui.painter().text(
-                            rect.left_center() + egui::vec2(5.0, 0.0),
-                            egui::Align2::LEFT_CENTER,
-                            format!("{:.1}s", cue.fade_up),
-                            egui::FontId::default(),
-                            ui.style().visuals.text_color(),
-                        );
-                        row_responses.push(response);
-                    });
-                    
-                    // Channel count
-                    row.col(|ui| {
-                        if bg_color != egui::Color32::TRANSPARENT {
-                            ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
-                        }
-                        // Allocate entire cell space and make it interactive
-                        let (rect, response) = ui.allocate_exact_size(
-                            ui.available_size(),
-                            egui::Sense::click()
-                        );
-                        ui.painter().text(
-                            rect.left_center() + egui::vec2(5.0, 0.0),
-                            egui::Align2::LEFT_CENTER,
-                            format!("{}", cue.channel_values.len()),
-                            egui::FontId::default(),
-                            ui.style().visuals.text_color(),
-                        );
-                        row_responses.push(response);
-                    });
-                    
-                    // Handle click to select (entire row) - check if any cell was clicked
-                    let row_clicked = row_responses.iter().any(|r| r.clicked());
-                    if row_clicked {
+                    }
+                    if response.clicked() {
                         clicked_index = Some(idx);
                     }
                     
-                    // Context menu (right-click on entire row) - use first response
-                    if let Some(first_response) = row_responses.first() {
-                        let combined_response = row_responses.iter().skip(1).fold(
-                            first_response.clone(),
-                            |acc, r| acc.union(r.clone())
-                        );
-                        
-                        combined_response.context_menu(|ui| {
-                            if ui.button("Edit").clicked() {
-                                app.ui_state.selected_cue_index = Some(idx);
-                                ui.close_menu();
-                            }
-                            if ui.button("Go To").clicked() {
-                                if let Some(universe) = app.universes.first() {
-                                    app.playback.go_to_cue(&app.cue_list, idx, universe);
+                    row_responses.push(response);
+                });
+                
+                // Fade time (editable drag value)
+                row.col(|ui| {
+                    if bg_color != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
+                    }
+                    
+                    let mut fade_up = cue_fade_up;
+                    let response = ui.add(
+                        egui::DragValue::new(&mut fade_up)
+                            .speed(0.1)
+                            .range(0.0..=30.0)
+                            .suffix("s")
+                    );
+                    
+                    if response.changed() {
+                        if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                            cue.fade_up = fade_up;
+                        }
+                    }
+                    if response.clicked() {
+                        clicked_index = Some(idx);
+                    }
+                    
+                    row_responses.push(response);
+                });
+                
+                // Sound trigger (editable - shows audio cue number)
+                row.col(|ui| {
+                    if bg_color != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
+                    }
+                    
+                    let mut has_trigger = cue_triggers_audio.is_some();
+                    let mut trigger_value = cue_triggers_audio.unwrap_or(1.0);
+                    
+                    ui.horizontal(|ui| {
+                        let checkbox_response = ui.checkbox(&mut has_trigger, "");
+                        if checkbox_response.changed() {
+                            #[cfg(feature = "audio")]
+                            {
+                                // Check for circular dependency
+                                if has_trigger && app.would_create_circular_light_to_audio(cue_number, trigger_value) {
+                                    app.ui_state.status_message = 
+                                        format!("⚠️ Cannot create circular trigger: Audio {:.2} already triggers Light {:.2}", 
+                                                trigger_value, cue_number);
+                                    has_trigger = false;
                                 }
-                                ui.close_menu();
                             }
-                            if ui.button("Update from Live").clicked() {
-                                if let Some(cue_mut) = app.cue_list.get_cue_mut(idx) {
-                                    if let Some(universe) = app.universes.first() {
-                                        cue_mut.channel_values.clear();
-                                        for ch in 1u16..=512 {
-                                            if let Ok(val) = universe.get_channel(ch) {
-                                                if val > 0 {
-                                                    cue_mut.set_channel(ch, val);
-                                                }
-                                            }
-                                        }
+                            
+                            if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                                cue.triggers_audio_cue = if has_trigger {
+                                    Some(trigger_value)
+                                } else {
+                                    None
+                                };
+                            }
+                        }
+                        if checkbox_response.clicked() {
+                            clicked_index = Some(idx);
+                        }
+                        
+                        if has_trigger {
+                            let drag_response = ui.add(
+                                egui::DragValue::new(&mut trigger_value)
+                                    .speed(0.1)
+                                    .range(0.0..=999.0)
+                                    .fixed_decimals(2)
+                            );
+                            if drag_response.changed() {
+                                #[cfg(feature = "audio")]
+                                {
+                                    // Check for circular dependency
+                                    if app.would_create_circular_light_to_audio(cue_number, trigger_value) {
                                         app.ui_state.status_message = 
-                                            format!("Updated cue {:.1}", cue_mut.number);
+                                            format!("⚠️ Cannot create circular trigger: Audio {:.2} already triggers Light {:.2}", 
+                                                    trigger_value, cue_number);
+                                        // Revert to previous value (None or find previous)
+                                        if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                                            cue.triggers_audio_cue = cue_triggers_audio;
+                                        }
+                                    } else {
+                                        if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                                            cue.triggers_audio_cue = Some(trigger_value);
+                                        }
                                     }
                                 }
-                                ui.close_menu();
-                            }
-                            ui.separator();
-                            if ui.button("Delete").clicked() {
-                                if app.cue_list.remove_cue(idx).is_ok() {
-                                    app.ui_state.selected_cue_index = None;
-                                    app.ui_state.status_message = "Cue deleted".to_string();
+                                #[cfg(not(feature = "audio"))]
+                                {
+                                    if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                                        cue.triggers_audio_cue = Some(trigger_value);
+                                    }
                                 }
-                                ui.close_menu();
                             }
-                        });
-                    }
+                            if drag_response.clicked() {
+                                clicked_index = Some(idx);
+                            }
+                        }
+                    });
+                });
+                
+                // Handle click to select (entire row) - check if any cell was clicked
+                let row_clicked = row_responses.iter().any(|r| r.clicked());
+                if row_clicked {
+                    clicked_index = Some(idx);
+                }
+                
+                // Context menu (right-click on entire row) - use first response
+                if let Some(first_response) = row_responses.first() {
+                    let combined_response = row_responses.iter().skip(1).fold(
+                        first_response.clone(),
+                        |acc, r| acc.union(r.clone())
+                    );
+                    
+                    combined_response.context_menu(|ui| {
+                        if ui.button("Edit").clicked() {
+                            app.ui_state.selected_cue_index = Some(idx);
+                            ui.close_menu();
+                        }
+                        if ui.button("Go To").clicked() {
+                            if let Some(universe) = app.universes.first() {
+                                app.playback.go_to_cue(&app.cue_list, idx, universe);
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Update from Live").clicked() {
+                            if let Some(cue_mut) = app.cue_list.get_cue_mut(idx) {
+                                if let Some(universe) = app.universes.first() {
+                                    cue_mut.channel_values.clear();
+                                    for ch in 1u16..=512 {
+                                        if let Ok(val) = universe.get_channel(ch) {
+                                            if val > 0 {
+                                                cue_mut.set_channel(ch, val);
+                                            }
+                                        }
+                                    }
+                                    app.ui_state.status_message = 
+                                        format!("Updated cue {:.1}", cue_mut.number);
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Delete").clicked() {
+                            if app.cue_list.remove_cue(idx).is_ok() {
+                                app.ui_state.selected_cue_index = None;
+                                app.ui_state.status_message = "Cue deleted".to_string();
+                            }
+                            ui.close_menu();
+                        }
+                    });
                 }
             });
         });
