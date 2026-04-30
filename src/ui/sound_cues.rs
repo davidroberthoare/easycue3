@@ -36,13 +36,83 @@ fn render_audio_disabled_message(ui: &mut Ui) {
 fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
     use egui_extras::{TableBuilder, Column};
     
-    ui.heading("🔊 Sound Cues");
-    ui.add_space(2.0);
-    ui.label(egui::RichText::new("Click cells to edit • Volume controlled by Sound Master").small().italics().color(egui::Color32::GRAY));
-    ui.add_space(2.0);
-    
     // Toolbar buttons
     ui.horizontal(|ui| {
+
+        
+        let go_enabled = app.audio_cue_list.next_index().is_some();
+        let go_button = egui::Button::new("⏵ GO")
+            .fill(if go_enabled { egui::Color32::from_rgb(50, 120, 50) } else { egui::Color32::from_rgb(30, 60, 30) });
+        
+        if ui.add_enabled(go_enabled, go_button).clicked() {
+            app.audio_playback.go(&mut app.audio_cue_list, &mut app.audio_player);
+            app.ui_state.status_message = "Audio GO".to_string();
+        }
+        
+        let back_enabled = app.audio_cue_list.previous_index().is_some();
+        if ui.add_enabled(back_enabled, egui::Button::new("⏮ BACK")).clicked() {
+            app.audio_playback.back(&mut app.audio_cue_list, &mut app.audio_player);
+            app.ui_state.status_message = "Audio BACK".to_string();
+        }
+        
+        if ui.button("⏹ STOP").clicked() {
+            app.audio_playback.stop(&mut app.audio_player);
+            app.ui_state.status_message = "Audio STOP".to_string();
+        }
+        
+        ui.separator();
+        
+        // Sound master control
+        ui.label("Master:");
+        
+        // Mute toggle button
+        let mute_text = if app.ui_state.audio_mute_active { "🔇" } else { "🔊" };
+        let mute_color = if app.ui_state.audio_mute_active {
+            egui::Color32::from_rgb(80, 40, 40)
+        } else {
+            egui::Color32::from_rgb(60, 60, 60)
+        };
+        
+        let mute_button = egui::Button::new(mute_text)
+            .fill(mute_color)
+            .min_size(egui::vec2(30.0, 20.0));
+        
+        if ui.add(mute_button).clicked() {
+            if app.ui_state.audio_mute_active {
+                // Restore previous sound master
+                app.ui_state.sound_master = app.ui_state.previous_sound_master;
+                app.ui_state.audio_mute_active = false;
+                app.ui_state.status_message = "Audio unmuted".to_string();
+            } else {
+                // Save current sound master and set to 0
+                app.ui_state.previous_sound_master = app.ui_state.sound_master;
+                app.ui_state.sound_master = 0.0;
+                app.ui_state.audio_mute_active = true;
+                app.ui_state.status_message = "Audio muted".to_string();
+            }
+        }
+        
+        // Draggable percentage display (replaces slider)
+        let mut sound_percent = (app.ui_state.sound_master * 100.0) as i32;
+        let response = ui.add(
+            egui::DragValue::new(&mut sound_percent)
+                .speed(1.0)
+                .range(0..=100)
+                .suffix("%")
+        );
+        
+        // Transport controls
+        ui.separator();
+
+        if response.changed() {
+            app.ui_state.sound_master = (sound_percent as f32) / 100.0;
+            // If user manually adjusts, turn off mute
+            if app.ui_state.audio_mute_active {
+                app.ui_state.audio_mute_active = false;
+                app.ui_state.previous_sound_master = app.ui_state.sound_master;
+            }
+        }
+
         if ui.button("➕ Add Audio Cue").clicked() {
             // Open file dialog to select audio file
             if let Some(path) = rfd::FileDialog::new()
@@ -75,25 +145,7 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
         
-        // Transport controls
-        ui.separator();
         
-        let go_enabled = app.audio_cue_list.next_index().is_some();
-        if ui.add_enabled(go_enabled, egui::Button::new("⏵ GO")).clicked() {
-            app.audio_playback.go(&mut app.audio_cue_list, &mut app.audio_player);
-            app.ui_state.status_message = "Audio GO".to_string();
-        }
-        
-        let back_enabled = app.audio_cue_list.previous_index().is_some();
-        if ui.add_enabled(back_enabled, egui::Button::new("⏮ BACK")).clicked() {
-            app.audio_playback.back(&mut app.audio_cue_list, &mut app.audio_player);
-            app.ui_state.status_message = "Audio BACK".to_string();
-        }
-        
-        if ui.button("⏹ STOP").clicked() {
-            app.audio_playback.stop(&mut app.audio_player);
-            app.ui_state.status_message = "Audio STOP".to_string();
-        }
     });
     
     ui.add_space(6.0);
@@ -215,7 +267,7 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                         let response = ui.add(
                             egui::DragValue::new(&mut fade_in)
                                 .speed(0.1)
-                                .clamp_range(0.0..=30.0)
+                                .range(0.0..=30.0)
                                 .suffix("s")
                         );
                         if response.changed() {
@@ -234,7 +286,7 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                         let response = ui.add(
                             egui::DragValue::new(&mut fade_out)
                                 .speed(0.1)
-                                .clamp_range(0.0..=30.0)
+                                .range(0.0..=30.0)
                                 .suffix("s")
                         );
                         if response.changed() {
@@ -253,7 +305,7 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                         let response = ui.add(
                             egui::DragValue::new(&mut volume_percent)
                                 .speed(1.0)
-                                .clamp_range(0..=100)
+                                .range(0..=100)
                                 .suffix("%")
                         );
                         if response.changed() {
@@ -286,7 +338,7 @@ fn render_audio_cues_ui(ui: &mut Ui, app: &mut EasyCueApp) {
                                 if ui.add(
                                     egui::DragValue::new(&mut trigger_value)
                                         .speed(0.1)
-                                        .clamp_range(0.0..=999.0)
+                                        .range(0.0..=999.0)
                                 ).changed() {
                                     if let Some(cue) = app.audio_cue_list.get_cue_mut(idx) {
                                         cue.triggers_lighting_cue = Some(trigger_value);
