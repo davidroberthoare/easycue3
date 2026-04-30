@@ -259,6 +259,11 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         tab.to_string().into()
     }
+    
+    // Enable horizontal scrolling, disable vertical
+    fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
+        [true, false] // [horizontal, vertical]
+    }
 }
 
 /// Render the top menu bar
@@ -591,68 +596,8 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
 /// Render the bottom status bar
 fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
     egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-        // Single row footer with all info
         ui.horizontal(|ui| {
-            // Left side: Playback status
-            let state_text = match app.playback.state() {
-                crate::cue::CueState::Stopped => "⏹ Stopped",
-                crate::cue::CueState::Fading { progress } => {
-                    &format!("⏵ Fading {:.0}%", progress * 100.0)
-                }
-                crate::cue::CueState::Active => "⏸ Active",
-            };
-            ui.label(state_text);
-            
-            // Current cue
-            if let Some(idx) = app.cue_list.current_index() {
-                if let Some(cue) = app.cue_list.get_cue(idx) {
-                    ui.separator();
-                    ui.label(format!("Q{:.1}", cue.number));
-                }
-            }
-            
-            ui.separator();
-            
-            // Center: Command line
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
-                ui.horizontal(|ui| {
-                    // Context indicator
-                    let context_label = match app.ui_state.command_context {
-                        crate::command::CommandContext::Lighting => "💡",
-                        crate::command::CommandContext::Sound => "🔊",
-                        _ => "⌨",
-                    };
-                    ui.label(egui::RichText::new(context_label).size(16.0));
-                    
-                    // Command input
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut app.ui_state.command_input)
-                            .desired_width(280.0)
-                            .hint_text("Click channels...")
-                            .font(egui::TextStyle::Monospace)
-                    );
-                    
-                    // Handle Enter key to execute command
-                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        execute_command_line(app);
-                    }
-                    
-                    // Execute button
-                    if ui.button("⏎").clicked() {
-                        execute_command_line(app);
-                    }
-                    
-                    // Clear button
-                    if ui.button("✖").clicked() {
-                        app.ui_state.command_input.clear();
-                        app.ui_state.status_message = "Command cleared".to_string();
-                    }
-                });
-            });
-            
-            ui.separator();
-            
-            // Status message
+            // Left side: Status message
             if !app.ui_state.status_message.is_empty() {
                 ui.label(
                     egui::RichText::new(&app.ui_state.status_message)
@@ -660,16 +605,8 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                 );
             }
             
-            // Right side: Emergency controls and DMX backend
+            // Right side: DMX backend and emergency controls
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!("DMX: {}", app.dmx_backend.name()))
-                        .small()
-                        .color(egui::Color32::GRAY)
-                );
-                
-                ui.separator();
-                
                 // Emergency controls (compact versions)
                 let panic_button = egui::Button::new("🚨 PANIC")
                     .fill(egui::Color32::from_rgb(140, 40, 40))
@@ -710,13 +647,21 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.ui_state.status_message = "ALL STOP".to_string();
                     log::info!("All Stop activated");
                 }
+                
+                ui.separator();
+                
+                ui.label(
+                    egui::RichText::new(format!("DMX: {}", app.dmx_backend.name()))
+                        .small()
+                        .color(egui::Color32::GRAY)
+                );
             });
         });
     });
 }
 
 /// Execute the current command line input
-fn execute_command_line(app: &mut EasyCueApp) {
+pub fn execute_command_line(app: &mut EasyCueApp) {
     let input = app.ui_state.command_input.trim().to_string();
     
     if input.is_empty() {

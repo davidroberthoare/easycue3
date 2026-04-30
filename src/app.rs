@@ -680,9 +680,8 @@ impl eframe::App for EasyCueApp {
         }
         
         // Handle keyboard shortcuts (checked before UI to avoid consuming events)
-        let (go, back, stop, record) = ctx.input(|i| (
+        let (go, stop, record) = ctx.input(|i| (
             i.key_pressed(egui::Key::Space) && !i.modifiers.any(),
-            i.key_pressed(egui::Key::B)     && !i.modifiers.any(),
             i.key_pressed(egui::Key::S)     && !i.modifiers.any(),
             i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
         ));
@@ -694,31 +693,11 @@ impl eframe::App for EasyCueApp {
         }
 
         // Update playback engine and apply to first universe
-        // Handle go/back within universe access since they need current state
+        // Handle go within universe access since they need current state
         if let Some(universe) = self.universes.first_mut() {
-            // Handle go/back commands with access to current universe state
+            // Handle go command with access to current universe state
             if go {
                 if self.playback.go(&mut self.cue_list, universe) {
-                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
-                    #[cfg(feature = "audio")]
-                    if let Some(current_idx) = self.cue_list.current_index() {
-                        if let Some(cue) = self.cue_list.get_cue(current_idx) {
-                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
-                                // Find and trigger the audio cue by number
-                                if let Some(audio_idx) = self.audio_cue_list.cues().iter()
-                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
-                                    if self.audio_playback.go_to_cue(&self.audio_cue_list, audio_idx, &mut self.audio_player) {
-                                        self.audio_cue_list.set_current_index(Some(audio_idx));
-                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if back {
-                if self.playback.back(&mut self.cue_list, universe) {
                     // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
                     #[cfg(feature = "audio")]
                     if let Some(current_idx) = self.cue_list.current_index() {

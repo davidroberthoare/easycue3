@@ -20,8 +20,6 @@ pub struct Cue {
     /// Channel intensity values (0-100, channel number -> intensity)
     /// Only stores non-zero channels to save space
     pub channel_values: HashMap<u16, u8>,
-    /// Notes/description
-    pub notes: String,
     
     /// Optional audio cue number to trigger when this lighting cue executes (Phase 4)
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
@@ -37,7 +35,6 @@ impl Cue {
             fade_up: 3.0,  // Default 3 second fade
             fade_down: 3.0,
             channel_values: HashMap::new(),
-            notes: String::new(),
             triggers_audio_cue: None,
         }
     }

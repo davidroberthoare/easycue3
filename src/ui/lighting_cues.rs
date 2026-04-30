@@ -38,32 +38,6 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
         
-        let back_enabled = app.cue_list.previous_index().is_some();
-        if ui.add_enabled(back_enabled, egui::Button::new("⏮ BACK")).clicked() {
-            if let Some(universe) = app.universes.first() {
-                if app.playback.back(&mut app.cue_list, universe) {
-                    app.ui_state.status_message = "BACK".to_string();
-                    
-                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
-                    #[cfg(feature = "audio")]
-                    if let Some(current_idx) = app.cue_list.current_index() {
-                        if let Some(cue) = app.cue_list.get_cue(current_idx) {
-                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
-                                // Find and trigger the audio cue by number
-                                if let Some(audio_idx) = app.audio_cue_list.cues().iter()
-                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
-                                    if app.audio_playback.go_to_cue(&app.audio_cue_list, audio_idx, &mut app.audio_player) {
-                                        app.audio_cue_list.set_current_index(Some(audio_idx));
-                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
         if ui.button("⏹ STOP").clicked() {
             app.playback.stop();
             app.ui_state.status_message = "STOP".to_string();
@@ -71,6 +45,49 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         
         ui.separator();
         
+        
+        
+        // Record/Delete buttons
+        if ui.button("➕ Record").clicked() {
+            let idx = app.record_cue();
+            app.ui_state.selected_cue_index = Some(idx);
+        }
+        
+        if ui.button("🗑 Delete").clicked() {
+            if let Some(sel_idx) = app.ui_state.selected_cue_index {
+                if app.cue_list.remove_cue(sel_idx).is_ok() {
+                    app.ui_state.selected_cue_index = None;
+                    app.ui_state.status_message = "Cue deleted".to_string();
+                }
+            } else {
+                app.ui_state.status_message = "Select a cue first".to_string();
+            }
+        }
+        
+        if ui.button("🔄 Update").clicked() {
+            if let Some(sel_idx) = app.ui_state.selected_cue_index {
+                if let Some(cue_mut) = app.cue_list.get_cue_mut(sel_idx) {
+                    if let Some(universe) = app.universes.first() {
+                        cue_mut.channel_values.clear();
+                        for ch in 1u16..=512 {
+                            if let Ok(val) = universe.get_channel(ch) {
+                                if val > 0 {
+                                    cue_mut.set_channel(ch, val);
+                                }
+                            }
+                        }
+                        app.ui_state.status_message = format!("Updated cue {:.1}", cue_mut.number);
+                    }
+                }
+            } else {
+                app.ui_state.status_message = "Select a cue first".to_string();
+            }
+        }
+
+
+        ui.separator();
+
+
         // Lighting master control
         ui.label("Master:");
         
@@ -119,31 +136,17 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
         
-        ui.separator();
-        
-        // Record/Delete buttons
-        if ui.button("➕ Record").clicked() {
-            let idx = app.record_cue();
-            app.ui_state.selected_cue_index = Some(idx);
-        }
-        
-        if ui.button("🗑 Delete").clicked() {
-            if let Some(sel_idx) = app.ui_state.selected_cue_index {
-                if app.cue_list.remove_cue(sel_idx).is_ok() {
-                    app.ui_state.selected_cue_index = None;
-                    app.ui_state.status_message = "Cue deleted".to_string();
-                }
-            } else {
-                app.ui_state.status_message = "Select a cue first".to_string();
-            }
-        }
-        
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(format!("{} cues", app.cue_list.len()));
-        });
+
+
     });
     
+    ui.add_space(6.0);
     ui.separator();
+    ui.add_space(4.0);
+    
+    // Calculate space for footer (reserve space at bottom)
+    let footer_height = 60.0; // Increased to ensure footer is visible
+    let available_for_table = ui.available_height() - footer_height;
     
     // Scrollable cue list with resizable columns
     let selected = app.ui_state.selected_cue_index;
@@ -156,24 +159,28 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             ui.add_space(10.0);
             ui.label("Press 'Record' or Ctrl+R to create your first cue");
         });
-        return;
-    }
-    
-    let cue_count = app.cue_list.len();
-    let mut clicked_index: Option<usize> = None;
-    
-    // Use TableBuilder for resizable columns
-    let table = TableBuilder::new(ui)
-        .striped(true)
-        .resizable(true)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::initial(60.0).at_least(40.0))   // Q number
-        .column(Column::remainder().at_least(100.0))     // Label (takes remaining space)
-        .column(Column::initial(80.0).at_least(60.0))   // Fade
-        .column(Column::initial(80.0).at_least(60.0));  // Sound trigger
+    } else {
+        let cue_count = app.cue_list.len();
+        let mut clicked_index: Option<usize> = None;
+        let mut go_to_cue_index: Option<usize> = None;
+        
+        // Use TableBuilder for resizable columns
+        let table = TableBuilder::new(ui)
+            .striped(true)
+            .resizable(true)
+            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+            .column(Column::exact(30.0))                     // Play button
+            .column(Column::initial(60.0).at_least(40.0))   // Q number
+            .column(Column::remainder().at_least(100.0))     // Label (takes remaining space)
+            .column(Column::initial(80.0).at_least(60.0))   // Fade
+            .column(Column::initial(80.0).at_least(60.0))   // Sound trigger
+            .max_scroll_height(available_for_table);
     
     table
         .header(20.0, |mut header| {
+            header.col(|ui| {
+                ui.strong("");
+            });
             header.col(|ui| {
                 ui.strong("Q");
             });
@@ -220,6 +227,16 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 
                 // Collect responses from all columns to make entire row clickable
                 let mut row_responses = Vec::new();
+                
+                // Play button
+                row.col(|ui| {
+                    if bg_color != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
+                    }
+                    if ui.small_button("⏵").on_hover_text("Go to this cue").clicked() {
+                        go_to_cue_index = Some(idx);
+                    }
+                });
                 
                 // Cue number
                 row.col(|ui| {
@@ -390,23 +407,6 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             }
                             ui.close_menu();
                         }
-                        if ui.button("Update from Live").clicked() {
-                            if let Some(cue_mut) = app.cue_list.get_cue_mut(idx) {
-                                if let Some(universe) = app.universes.first() {
-                                    cue_mut.channel_values.clear();
-                                    for ch in 1u16..=512 {
-                                        if let Ok(val) = universe.get_channel(ch) {
-                                            if val > 0 {
-                                                cue_mut.set_channel(ch, val);
-                                            }
-                                        }
-                                    }
-                                    app.ui_state.status_message = 
-                                        format!("Updated cue {:.1}", cue_mut.number);
-                                }
-                            }
-                            ui.close_menu();
-                        }
                         ui.separator();
                         if ui.button("Delete").clicked() {
                             if app.cue_list.remove_cue(idx).is_ok() {
@@ -429,4 +429,83 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             app.ui_state.selected_cue_index = Some(idx);
         }
     }
+    
+        // Handle go to cue
+        if let Some(idx) = go_to_cue_index {
+            if let Some(universe) = app.universes.first() {
+                if app.playback.go_to_cue(&app.cue_list, idx, universe) {
+                    app.cue_list.set_current_index(Some(idx));
+                    if let Some(cue) = app.cue_list.get_cue(idx) {
+                        app.ui_state.status_message = format!("Going to cue {:.1}", cue.number);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Footer: Lighting control panel with solid background
+    ui.separator();
+    egui::Frame::new()
+        .fill(ui.style().visuals.extreme_bg_color)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                // Playback status
+                let state_text = match app.playback.state() {
+                    crate::cue::CueState::Stopped => "⏹ Stopped",
+                    crate::cue::CueState::Fading { progress } => {
+                        &format!("⏵ Fading {:.0}%", progress * 100.0)
+                    }
+                    crate::cue::CueState::Active => "⏸ Active",
+                };
+                ui.label(state_text);
+                
+                // Current cue
+                if let Some(idx) = app.cue_list.current_index() {
+                    if let Some(cue) = app.cue_list.get_cue(idx) {
+                        ui.separator();
+                        ui.label(format!("Q{:.1}", cue.number));
+                    }
+                }
+                
+                ui.separator();
+                
+                // Command line
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
+                    ui.horizontal(|ui| {
+                        // Context indicator
+                        let context_label = match app.ui_state.command_context {
+                            crate::command::CommandContext::Lighting => "💡",
+                            crate::command::CommandContext::Sound => "🔊",
+                            _ => "⌨",
+                        };
+                        ui.label(egui::RichText::new(context_label).size(16.0));
+                        
+                        // Command input
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut app.ui_state.command_input)
+                                .desired_width(ui.available_width() - 80.0)
+                                .hint_text("Click channels...")
+                                .font(egui::TextStyle::Monospace)
+                        );
+                        
+                        // Handle Enter key to execute command
+                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            crate::ui::execute_command_line(app);
+                        }
+                        
+                        // Execute button
+                        if ui.button("⏎").clicked() {
+                            crate::ui::execute_command_line(app);
+                        }
+                        
+                        // Clear button
+                        if ui.button("✖").clicked() {
+                            app.ui_state.command_input.clear();
+                            app.ui_state.status_message = "Command cleared".to_string();
+                        }
+                    });
+                });
+            });
+        });
 }
