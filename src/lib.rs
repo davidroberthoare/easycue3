@@ -5,3 +5,4 @@
 
 pub mod dmx;
 pub mod cue;
+pub mod audio;

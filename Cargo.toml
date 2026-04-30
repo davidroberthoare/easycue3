@@ -41,7 +41,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }  # Ic
 dirs = "5.0"  # Platform-specific config directories
 
 [features]
-default = ["usb"]  # Enable USB DMX by default
+default = ["usb", "audio"]  # Enable USB DMX and audio by default
 usb = ["serialport"]  # Enable USB DMX interfaces (Enttec USB Pro)
 audio = ["rodio"]  # Enable audio playback (requires ALSA on Linux)
 video = ["lumina-video"]  # Enable video playback (requires GStreamer on Linux)

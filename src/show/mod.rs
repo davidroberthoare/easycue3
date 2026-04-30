@@ -7,6 +7,9 @@ use crate::cue::Cue;
 use crate::fixtures::Patch;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "audio")]
+use crate::audio::AudioCue;
+
 /// Show file format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShowFile {
@@ -22,8 +25,17 @@ pub struct ShowFile {
     /// Fixture patch
     #[serde(default)]
     pub patch: Vec<Patch>,
+    
+    /// Audio cues (Phase 4)
+    #[cfg(feature = "audio")]
+    #[serde(default)]
+    pub audio_cues: Vec<AudioCue>,
+    
+    #[cfg(not(feature = "audio"))]
+    #[serde(skip)]
+    audio_cues: Vec<()>,  // Placeholder for non-audio builds
 
-    // TODO: Media references
+    // TODO: Media references (video, images)
     // TODO: Settings
 }
 
@@ -38,6 +50,10 @@ impl ShowFile {
             modified: now,
             cues: Vec::new(),
             patch: Vec::new(),
+            #[cfg(feature = "audio")]
+            audio_cues: Vec::new(),
+            #[cfg(not(feature = "audio"))]
+            audio_cues: Vec::new(),
         }
     }
 

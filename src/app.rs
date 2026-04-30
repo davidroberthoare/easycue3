@@ -11,6 +11,9 @@ use crate::command::CommandContext;
 use egui_dock::DockState;
 use std::collections::{HashSet, HashMap};
 
+#[cfg(feature = "audio")]
+use crate::audio::{AudioCueList, AudioPlayer, AudioPlaybackEngine};
+
 /// Panel types for the docking system
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TabKind {
@@ -148,6 +151,26 @@ pub struct EasyCueApp {
     pub current_file_path: Option<std::path::PathBuf>,
     /// Docking state for the panel layout
     pub dock_state: DockState<TabKind>,
+    
+    // Audio system (Phase 4)
+    #[cfg(feature = "audio")]
+    /// Audio cue list
+    pub audio_cue_list: AudioCueList,
+    #[cfg(feature = "audio")]
+    /// Audio player
+    pub audio_player: AudioPlayer,
+    #[cfg(feature = "audio")]
+    /// Audio playback engine
+    pub audio_playback: AudioPlaybackEngine,
+    #[cfg(not(feature = "audio"))]
+    /// Stub audio cue list (when audio feature disabled)
+    pub audio_cue_list: crate::audio::AudioCueList,
+    #[cfg(not(feature = "audio"))]
+    /// Stub audio player (when audio feature disabled)
+    pub audio_player: crate::audio::AudioPlayer,
+    #[cfg(not(feature = "audio"))]
+    /// Stub audio playback engine (when audio feature disabled)
+    pub audio_playback: crate::audio::AudioPlaybackEngine,
 }
 
 impl EasyCueApp {
@@ -378,6 +401,24 @@ impl EasyCueApp {
             show_title: "Example Show".to_string(),
             current_file_path: None,
             dock_state,
+            
+            // Initialize audio system (Phase 4)
+            #[cfg(feature = "audio")]
+            audio_cue_list: AudioCueList::new(),
+            #[cfg(feature = "audio")]
+            audio_player: AudioPlayer::new().unwrap_or_else(|e| {
+                log::error!("Failed to initialize audio player: {}", e);
+                log::warn!("Audio playback will be disabled");
+                AudioPlayer::new().unwrap()  // This will panic if it fails twice
+            }),
+            #[cfg(feature = "audio")]
+            audio_playback: AudioPlaybackEngine::new(),
+            #[cfg(not(feature = "audio"))]
+            audio_cue_list: crate::audio::AudioCueList::new(),
+            #[cfg(not(feature = "audio"))]
+            audio_player: crate::audio::AudioPlayer::new().unwrap(),
+            #[cfg(not(feature = "audio"))]
+            audio_playback: crate::audio::AudioPlaybackEngine::new(),
         };
 
         // Try to load example show on startup
@@ -423,6 +464,13 @@ impl EasyCueApp {
         self.cue_list.clear();
         for cue in show.cues {
             self.cue_list.add_cue(cue);
+        }
+        
+        // Load audio cues (Phase 4)
+        #[cfg(feature = "audio")]
+        {
+            self.audio_cue_list.load_cues(show.audio_cues);
+            log::info!("Loaded {} audio cues", self.audio_cue_list.len());
         }
         
         // Load patch into fixture library
@@ -474,6 +522,13 @@ impl EasyCueApp {
         let mut show = ShowFile::new(title);
         show.cues = self.cue_list.cues().to_vec();
         show.patch = self.fixtures.patch_list().patches().to_vec();
+        
+        // Save audio cues (Phase 4)
+        #[cfg(feature = "audio")]
+        {
+            show.audio_cues = self.audio_cue_list.cues().to_vec();
+        }
+        
         // Ensure the parent directory exists
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -598,6 +653,27 @@ impl eframe::App for EasyCueApp {
             
             self.playback.update(universe);
         }
+        
+        // Update audio playback engine (Phase 4)
+        #[cfg(feature = "audio")]
+        {
+            self.audio_playback.update(&mut self.audio_player);
+            
+            // Check for cross-triggers from audio to lighting
+            if let Some(lighting_cue_number) = self.audio_playback.take_pending_lighting_trigger() {
+                // Find the lighting cue with this number and trigger it
+                for (idx, cue) in self.cue_list.cues().iter().enumerate() {
+                    if (cue.number - lighting_cue_number).abs() < 0.01 {
+                        if let Some(universe) = self.universes.first() {
+                            self.playback.go_to_cue(&self.cue_list, idx, universe);
+                            self.cue_list.set_current_index(Some(idx));
+                            log::info!("Audio cross-trigger: lighting cue {}", lighting_cue_number);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
 
         // Apply master level and blackout before sending (separate borrow)
         if let Some(universe) = self.universes.first() {
@@ -614,6 +690,12 @@ impl eframe::App for EasyCueApp {
 
         // Request continuous repaint for smooth fades
         if self.playback.is_playing() {
+            ctx.request_repaint();
+        }
+        
+        // Request repaint for audio playback (Phase 4)
+        #[cfg(feature = "audio")]
+        if self.audio_playback.is_playing() {
             ctx.request_repaint();
         }
     }
