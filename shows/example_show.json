@@ -31,7 +31,7 @@
       "volume": 0.800000011920929
     }
   ],
-  "created": "2026-04-30T21:07:01.034879348+00:00",
+  "created": "2026-05-01T01:24:19.132286+00:00",
   "cues": [
     {
       "channel_values": {
@@ -44,7 +44,6 @@
       "fade_down": 2.0,
       "fade_up": 2.0,
       "label": "House Lights",
-      "notes": "Full house lights for pre-show",
       "number": 1.0,
       "triggers_audio_cue": null
     },
@@ -53,7 +52,6 @@
       "fade_down": 3.0,
       "fade_up": 3.0,
       "label": "Blackout",
-      "notes": "Stage blackout - all lights off",
       "number": 2.0,
       "triggers_audio_cue": null
     },
@@ -67,7 +65,6 @@
       "fade_down": 5.0,
       "fade_up": 5.0,
       "label": "Warm Stage Wash",
-      "notes": "Warm stage lighting for Act 1",
       "number": 3.0,
       "triggers_audio_cue": null
     },
@@ -82,20 +79,19 @@
       "fade_down": 2.0,
       "fade_up": 2.0,
       "label": "Spotlight Center",
-      "notes": "Spotlight on center stage with background wash",
       "number": 4.0,
       "triggers_audio_cue": null
     }
   ],
   "description": "",
-  "modified": "2026-04-30T21:07:01.034960078+00:00",
+  "modified": "2026-05-01T01:24:19.132628+00:00",
   "patch": [
     {
       "id": 1,
       "label": "test",
       "notes": "",
       "profile_id": "rgbawuv",
-      "start_address": 1,
+      "start_address": 16,
       "universe": 1
     },
     {
@@ -103,7 +99,7 @@
       "label": "dimmer",
       "notes": "",
       "profile_id": "generic_dimmer",
-      "start_address": 99,
+      "start_address": 12,
       "universe": 1
     }
   ],

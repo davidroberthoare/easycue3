@@ -213,7 +213,6 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                     if let Some(start_address) = current_start {
                         match app
                             .fixtures
-                            .patch_list_mut()
                             .update_patch_address(id, start_address, new_channel_count)
                         {
                             Ok(()) => {
@@ -231,7 +230,6 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                 for (id, new_start_address, channel_count) in address_updates {
                     if let Err(e) = app
                         .fixtures
-                        .patch_list_mut()
                         .update_patch_address(id, new_start_address, channel_count)
                     {
                         app.ui_state.status_message = format!("Error: {}", e);
