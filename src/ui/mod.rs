@@ -385,6 +385,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::SoundCues);
                     ui.close_menu();
                 }
+                if ui.button("Patching").clicked() {
+                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Patching);
+                    ui.close_menu();
+                }
                 if ui.button("Properties").clicked() {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Properties);
                     ui.close_menu();
