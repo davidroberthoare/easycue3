@@ -3,7 +3,6 @@
 //! Interface for managing fixture patches (assigning fixtures to DMX addresses).
 
 use crate::app::EasyCueApp;
-use crate::fixtures::Patch;
 use egui::{Color32, RichText, ScrollArea};
 
 /// State for the patching panel
@@ -28,16 +27,6 @@ impl PatchingPanelState {
         self.label_input.clear();
         self.selected_profile_id = default_profile.unwrap_or_default();
         self.address_input.clear();
-        self.error_message.clear();
-    }
-
-    /// Open dialog to edit an existing patch
-    pub fn open_edit_dialog(&mut self, patch: &Patch, profile_id: String) {
-        self.show_patch_dialog = true;
-        self.editing_patch_id = Some(patch.id);
-        self.label_input = patch.label.clone();
-        self.selected_profile_id = profile_id;
-        self.address_input = patch.start_address.to_string();
         self.error_message.clear();
     }
 
@@ -71,6 +60,17 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
 
     // Patch table
     ScrollArea::vertical().show(ui, |ui| {
+        let profile_options: Vec<(String, String, u16)> = app
+            .fixtures
+            .profile_ids()
+            .into_iter()
+            .filter_map(|profile_id| {
+                app.fixtures
+                    .get_profile(&profile_id)
+                    .map(|profile| (profile_id, profile.name.clone(), profile.channel_count))
+            })
+            .collect();
+
         egui_extras::TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
@@ -78,9 +78,8 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
             .column(egui_extras::Column::exact(40.0)) // ID
             .column(egui_extras::Column::initial(120.0).at_least(80.0)) // Label
             .column(egui_extras::Column::initial(150.0).at_least(100.0)) // Type
-            .column(egui_extras::Column::exact(80.0)) // Address
-            .column(egui_extras::Column::exact(80.0)) // Channels
-            .column(egui_extras::Column::exact(100.0)) // Actions
+            .column(egui_extras::Column::exact(140.0)) // Address
+            .column(egui_extras::Column::exact(70.0)) // Actions
             .header(20.0, |mut header| {
                 header.col(|ui| {
                     ui.strong("#");
@@ -93,9 +92,6 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                 });
                 header.col(|ui| {
                     ui.strong("Address");
-                });
-                header.col(|ui| {
-                    ui.strong("Channels");
                 });
                 header.col(|ui| {
                     ui.strong("Actions");
@@ -126,54 +122,120 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
 
                 // Track patches to remove (can't remove during iteration)
                 let mut to_remove: Option<usize> = None;
-                let mut to_edit: Option<(Patch, String)> = None;
+                let mut label_updates: Vec<(usize, String)> = Vec::new();
+                let mut profile_updates: Vec<(usize, String, u16)> = Vec::new();
+                let mut address_updates: Vec<(usize, u16, u16)> = Vec::new();
 
                 for (patch, profile_name, profile_missing, channel_count) in patch_data {
-                    let end_address = patch.start_address + channel_count - 1;
-
                     body.row(24.0, |mut row| {
                         // ID
                         row.col(|ui| {
                             ui.label(patch.id.to_string());
                         });
 
-                        // Label
+                        // Label (inline editable)
                         row.col(|ui| {
-                            ui.label(&patch.label);
-                        });
-
-                        // Type (profile name)
-                        row.col(|ui| {
-                            if profile_missing {
-                                ui.label(RichText::new(&profile_name).color(Color32::YELLOW));
-                            } else {
-                                ui.label(&profile_name);
+                            let mut new_label = patch.label.clone();
+                            let response = ui.add(
+                                egui::TextEdit::singleline(&mut new_label)
+                                    .desired_width(ui.available_width())
+                            );
+                            if response.changed() {
+                                label_updates.push((patch.id, new_label));
                             }
                         });
 
-                        // Address range
+                        // Type (inline dropdown)
                         row.col(|ui| {
-                            ui.label(format!("{}-{}", patch.start_address, end_address));
+                            let selected_text = if profile_missing {
+                                format!("⚠ {}", patch.profile_id)
+                            } else {
+                                profile_name.clone()
+                            };
+
+                            egui::ComboBox::from_id_salt(format!("patch_type_{}", patch.id))
+                                .selected_text(selected_text)
+                                .show_ui(ui, |ui| {
+                                    for (option_profile_id, option_name, option_channels) in &profile_options {
+                                        let is_selected = patch.profile_id == *option_profile_id;
+                                        if ui.selectable_label(is_selected, option_name).clicked() {
+                                            profile_updates.push((
+                                                patch.id,
+                                                option_profile_id.clone(),
+                                                *option_channels,
+                                            ));
+                                        }
+                                    }
+                                });
                         });
 
-                        // Channel count
+                        // Address start + computed end
                         row.col(|ui| {
-                            ui.label(format!("{} ch", channel_count));
+                            ui.horizontal(|ui| {
+                                let mut start_address = patch.start_address;
+                                let response = ui.add(
+                                    egui::DragValue::new(&mut start_address)
+                                        .range(1..=512)
+                                        .speed(1.0)
+                                );
+
+                                let end_address = (u32::from(start_address) + u32::from(channel_count) - 1) as u16;
+                                ui.label(format!("-{}", end_address));
+
+                                if response.changed() {
+                                    address_updates.push((patch.id, start_address, channel_count));
+                                }
+                            });
                         });
 
                         // Actions
                         row.col(|ui| {
-                            ui.horizontal(|ui| {
-                                if ui.small_button("✏").clicked() {
-                                    to_edit = Some((patch.clone(), patch.profile_id.clone()));
-                                }
-
-                                if ui.small_button("🗑").clicked() {
-                                    to_remove = Some(patch.id);
-                                }
-                            });
+                            if ui.small_button("🗑").clicked() {
+                                to_remove = Some(patch.id);
+                            }
                         });
                     });
+                }
+
+                for (id, new_label) in label_updates {
+                    if let Some(target_patch) = app.fixtures.patch_list_mut().get_patch_mut(id) {
+                        target_patch.label = new_label;
+                    }
+                }
+
+                for (id, new_profile_id, new_channel_count) in profile_updates {
+                    let current_start = app
+                        .fixtures
+                        .patch_list()
+                        .get_patch(id)
+                        .map(|p| p.start_address);
+
+                    if let Some(start_address) = current_start {
+                        match app
+                            .fixtures
+                            .patch_list_mut()
+                            .update_patch_address(id, start_address, new_channel_count)
+                        {
+                            Ok(()) => {
+                                if let Some(target_patch) = app.fixtures.patch_list_mut().get_patch_mut(id) {
+                                    target_patch.profile_id = new_profile_id;
+                                }
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message = format!("Error: {}", e);
+                            }
+                        }
+                    }
+                }
+
+                for (id, new_start_address, channel_count) in address_updates {
+                    if let Err(e) = app
+                        .fixtures
+                        .patch_list_mut()
+                        .update_patch_address(id, new_start_address, channel_count)
+                    {
+                        app.ui_state.status_message = format!("Error: {}", e);
+                    }
                 }
 
                 // Process actions after table rendering
@@ -184,10 +246,6 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                     } else {
                         app.ui_state.status_message = "Removed fixture".to_string();
                     }
-                }
-
-                if let Some((patch, profile_id)) = to_edit {
-                    state.open_edit_dialog(&patch, profile_id);
                 }
             });
     });
