@@ -59,24 +59,41 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
     let footer_height = 40.0;
     let max_scroll_height = ui.available_height() - footer_height - 10.0;
     
-    // Scrollable area for fixture list
+    // Scrollable area for fixture grid
     egui::ScrollArea::vertical()
         .id_salt("instrument_scroll")
         .auto_shrink([false, false])
         .max_height(max_scroll_height)
         .show(ui, |ui| {
-            // Render each patched fixture
-            for patch in &patches {
-                let profile = match app.fixtures.get_profile(&patch.profile_id) {
-                    Some(p) => p.clone(),
-                    None => {
-                        ui.label(format!("⚠ Fixture #{}: Unknown profile '{}'", patch.id, patch.profile_id));
-                        continue;
-                    }
-                };
+            // Calculate how many blocks fit per row
+            let block_width = 140.0;
+            let block_spacing = 8.0;
+            let available_width = ui.available_width();
+            let blocks_per_row = ((available_width + block_spacing) / (block_width + block_spacing)).floor().max(1.0) as usize;
+            
+            // Render fixtures in a grid layout
+            let mut row_start = 0;
+            while row_start < patches.len() {
+                let row_end = (row_start + blocks_per_row).min(patches.len());
                 
-                render_fixture_row(ui, app, patch, &profile);
-                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = block_spacing;
+                    
+                    for patch in &patches[row_start..row_end] {
+                        let profile = match app.fixtures.get_profile(&patch.profile_id) {
+                            Some(p) => p.clone(),
+                            None => {
+                                ui.label(format!("⚠ #{}", patch.id));
+                                continue;
+                            }
+                        };
+                        
+                        render_fixture_block(ui, app, patch, &profile, block_width);
+                    }
+                });
+                
+                ui.add_space(block_spacing);
+                row_start = row_end;
             }
         });
     
@@ -143,12 +160,13 @@ fn set_selected_fixtures_intensity(app: &mut EasyCueApp, intensity: f32) {
     );
 }
 
-/// Render a single fixture row with intensity control
-fn render_fixture_row(
+/// Render a single fixture block with intensity control
+fn render_fixture_block(
     ui: &mut Ui,
     app: &mut EasyCueApp,
     patch: &crate::fixtures::Patch,
     profile: &crate::fixtures::FixtureProfile,
+    block_width: f32,
 ) {
     let fixture_id = patch.id;
     let is_selected = app.ui_state.selected_fixtures.contains(&fixture_id);
@@ -180,10 +198,10 @@ fn render_fixture_row(
         0.0
     };
     
-    // Row background
-    let row_height = 40.0;
+    // Block dimensions - compact square-ish
+    let block_height = 85.0;
     let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), row_height),
+        Vec2::new(block_width, block_height),
         Sense::click_and_drag()
     );
     
@@ -263,36 +281,63 @@ fn render_fixture_row(
     };
     ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, border_color), egui::epaint::StrokeKind::Middle);
     
-    // Draw fixture info
+    // Draw fixture info - compact layout
     let text_color = if current_intensity > 0.0 {
         Color32::WHITE
     } else {
         Color32::GRAY
     };
     
-    let text_pos = Pos2::new(rect.min.x + 10.0, rect.min.y + 8.0);
+    let padding = 6.0;
+    let mut y_offset = rect.min.y + padding;
     
-    // Line 1: [#ID] Label (Type)
-    let line1 = format!("[#{}] {} ({})", 
-        fixture_id, 
-        patch.label, 
-        profile.name
-    );
+    // Line 1: Fixture ID
+    let id_text = format!("#{}", fixture_id);
     ui.painter().text(
-        text_pos,
+        Pos2::new(rect.min.x + padding, y_offset),
         egui::Align2::LEFT_TOP,
-        line1,
-        egui::FontId::proportional(14.0),
+        id_text,
+        egui::FontId::proportional(11.0),
+        Color32::GRAY,
+    );
+    y_offset += 14.0;
+    
+    // Line 2: Label (truncated if needed)
+    let label_text = if patch.label.len() > 14 {
+        format!("{}...", &patch.label[..11])
+    } else {
+        patch.label.clone()
+    };
+    ui.painter().text(
+        Pos2::new(rect.min.x + padding, y_offset),
+        egui::Align2::LEFT_TOP,
+        label_text,
+        egui::FontId::proportional(12.0),
         text_color,
     );
+    y_offset += 15.0;
     
-    // Line 2: Intensity value
+    // Line 3: Profile type (truncated)
+    let profile_text = if profile.name.len() > 14 {
+        format!("{}...", &profile.name[..11])
+    } else {
+        profile.name.clone()
+    };
+    ui.painter().text(
+        Pos2::new(rect.min.x + padding, y_offset),
+        egui::Align2::LEFT_TOP,
+        profile_text,
+        egui::FontId::proportional(9.0),
+        Color32::DARK_GRAY,
+    );
+    y_offset += 14.0;
+    
+    // Line 4: Intensity value - larger and centered
     let intensity_pct = (current_intensity * 100.0).round() as u8;
-    let line2 = format!("Intensity: {}%", intensity_pct);
-    let line2_pos = Pos2::new(rect.min.x + 10.0, rect.min.y + 24.0);
+    let intensity_text = format!("{}%", intensity_pct);
     
     let intensity_color = if intensity_pct == 0 {
-        Color32::from_rgb(100, 100, 100)
+        Color32::from_rgb(80, 80, 80)
     } else if intensity_pct == 100 {
         Color32::from_rgb(255, 100, 100)
     } else if intensity_pct >= 75 {
@@ -303,13 +348,17 @@ fn render_fixture_row(
         Color32::from_rgb(150, 200, 255)
     };
     
-    ui.painter().text(
-        line2_pos,
-        egui::Align2::LEFT_TOP,
-        line2,
-        egui::FontId::monospace(12.0),
+    let intensity_font = egui::FontId::proportional(18.0);
+    let intensity_galley = ui.painter().layout_no_wrap(
+        intensity_text.clone(),
+        intensity_font.clone(),
         intensity_color,
     );
+    let intensity_pos = Pos2::new(
+        rect.center().x - intensity_galley.rect.width() / 2.0,
+        y_offset,
+    );
+    ui.painter().galley(intensity_pos, intensity_galley, intensity_color);
 }
 
 /// Render the traditional channel grid (for unpatched channels)
