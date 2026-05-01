@@ -170,8 +170,27 @@ impl FixtureLibrary {
             .get_profile(&profile_id)
             .ok_or_else(|| anyhow!("Profile '{}' not found", profile_id))?;
 
+        let channel_counts = self.get_channel_counts();
         self.patch_list
-            .add_patch(label, profile_id, start_address, profile.channel_count)
+            .add_patch(
+                label,
+                profile_id,
+                start_address,
+                profile.channel_count,
+                &channel_counts,
+            )
+    }
+
+    /// Update a patched fixture address
+    pub fn update_patch_address(
+        &mut self,
+        id: usize,
+        new_start_address: u16,
+        channel_count: u16,
+    ) -> Result<()> {
+        let channel_counts = self.get_channel_counts();
+        self.patch_list
+            .update_patch_address(id, new_start_address, channel_count, &channel_counts)
     }
 
     /// Remove a patched fixture

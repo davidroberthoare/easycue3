@@ -82,6 +82,7 @@ impl PatchList {
         profile_id: String,
         start_address: u16,
         channel_count: u16,
+        channel_counts: &HashMap<String, u16>,
     ) -> Result<usize> {
         // Validate address range
         if start_address == 0 || start_address > 512 {
@@ -102,14 +103,15 @@ impl PatchList {
         }
 
         // Check for overlaps with existing patches
-        if let Some(conflict) = self.find_overlap(start_address, channel_count, None) {
+        if let Some(conflict) = self.find_overlap(start_address, channel_count, None, channel_counts) {
+            let conflict_channel_count = channel_counts.get(&conflict.profile_id).copied().unwrap_or(1);
             return Err(anyhow!(
                 "Address range {}-{} overlaps with fixture '{}' ({}-{})",
                 start_address,
                 end_address,
                 conflict.label,
                 conflict.start_address,
-                conflict.end_address(channel_count)
+                conflict.end_address(conflict_channel_count)
             ));
         }
 
@@ -171,6 +173,7 @@ impl PatchList {
         start_address: u16,
         channel_count: u16,
         exclude_id: Option<usize>,
+        channel_counts: &HashMap<String, u16>,
     ) -> Option<&Patch> {
         let end_address = start_address + channel_count - 1;
 
@@ -182,7 +185,8 @@ impl PatchList {
             }
 
             // Check for range overlap
-            let p_end = p.start_address + channel_count - 1;
+            let p_channel_count = channel_counts.get(&p.profile_id).copied().unwrap_or(1);
+            let p_end = p.start_address + p_channel_count - 1;
             !(end_address < p.start_address || start_address > p_end)
         })
     }
@@ -208,6 +212,7 @@ impl PatchList {
         id: usize,
         new_start_address: u16,
         channel_count: u16,
+        channel_counts: &HashMap<String, u16>,
     ) -> Result<()> {
         // Validate new address
         if new_start_address == 0 || new_start_address > 512 {
@@ -228,14 +233,15 @@ impl PatchList {
         }
 
         // Check for overlaps (excluding this patch)
-        if let Some(conflict) = self.find_overlap(new_start_address, channel_count, Some(id)) {
+        if let Some(conflict) = self.find_overlap(new_start_address, channel_count, Some(id), channel_counts) {
+            let conflict_channel_count = channel_counts.get(&conflict.profile_id).copied().unwrap_or(1);
             return Err(anyhow!(
                 "New address range {}-{} overlaps with fixture '{}' ({}-{})",
                 new_start_address,
                 end_address,
                 conflict.label,
                 conflict.start_address,
-                conflict.end_address(channel_count)
+                conflict.end_address(conflict_channel_count)
             ));
         }
 
@@ -276,21 +282,29 @@ mod tests {
     #[test]
     fn test_add_patch() {
         let mut patch_list = PatchList::new();
+        let mut channel_counts = HashMap::new();
+        channel_counts.insert("rgb".to_string(), 3);
 
         // Add valid patch
         let id = patch_list
-            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3)
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3, &channel_counts)
             .unwrap();
         assert_eq!(id, 1);
         assert_eq!(patch_list.len(), 1);
 
         // Try to add overlapping patch (should fail)
-        let result = patch_list.add_patch("RGB #2".to_string(), "rgb".to_string(), 11, 3);
+        let result = patch_list.add_patch(
+            "RGB #2".to_string(),
+            "rgb".to_string(),
+            11,
+            3,
+            &channel_counts,
+        );
         assert!(result.is_err());
 
         // Add non-overlapping patch (should succeed)
         let id2 = patch_list
-            .add_patch("RGB #2".to_string(), "rgb".to_string(), 20, 3)
+            .add_patch("RGB #2".to_string(), "rgb".to_string(), 20, 3, &channel_counts)
             .unwrap();
         assert_eq!(id2, 2);
         assert_eq!(patch_list.len(), 2);
@@ -299,12 +313,11 @@ mod tests {
     #[test]
     fn test_find_patch_at_channel() {
         let mut patch_list = PatchList::new();
-        patch_list
-            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3)
-            .unwrap();
-
         let mut channel_counts = HashMap::new();
         channel_counts.insert("rgb".to_string(), 3);
+        patch_list
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3, &channel_counts)
+            .unwrap();
 
         // Find patch at channels 10-12
         assert!(patch_list.find_patch_at_channel(10, &channel_counts).is_some());
@@ -319,8 +332,10 @@ mod tests {
     #[test]
     fn test_remove_patch() {
         let mut patch_list = PatchList::new();
+        let mut channel_counts = HashMap::new();
+        channel_counts.insert("rgb".to_string(), 3);
         let id = patch_list
-            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3)
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3, &channel_counts)
             .unwrap();
 
         assert_eq!(patch_list.len(), 1);
@@ -330,5 +345,28 @@ mod tests {
 
         // Try to remove non-existent patch
         assert!(patch_list.remove_patch(999).is_err());
+    }
+
+    #[test]
+    fn test_overlap_uses_existing_fixture_width() {
+        let mut patch_list = PatchList::new();
+
+        let mut channel_counts = HashMap::new();
+        channel_counts.insert("irgb".to_string(), 4);
+        channel_counts.insert("dimmer".to_string(), 1);
+
+        patch_list
+            .add_patch("iRGB #1".to_string(), "irgb".to_string(), 1, 4, &channel_counts)
+            .unwrap();
+
+        // 4 is inside iRGB #1 range (1-4), so this dimmer patch must fail.
+        let result = patch_list.add_patch(
+            "Dimmer #1".to_string(),
+            "dimmer".to_string(),
+            4,
+            1,
+            &channel_counts,
+        );
+        assert!(result.is_err());
     }
 }
