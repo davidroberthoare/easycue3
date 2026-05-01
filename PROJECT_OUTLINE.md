@@ -168,7 +168,6 @@ Connect real DMX hardware, patch fixtures, and control them with sliders and a c
 - 📋 Play/Pause/Stop controls
 - 📋 Volume control (per-cue volume)
 - 📋 Fade in/out (audio crossfades)
-- 📋 Audio device selection (choose output device)
 - 📋 Playback position indicator
 
 **Cross-Triggering:**

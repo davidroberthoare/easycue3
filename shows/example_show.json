@@ -31,7 +31,7 @@
       "volume": 0.800000011920929
     }
   ],
-  "created": "2026-05-01T11:11:05.114514070+00:00",
+  "created": "2026-05-01T23:20:11.276040+00:00",
   "cues": [
     {
       "channel_values": {
@@ -84,7 +84,7 @@
     }
   ],
   "description": "",
-  "modified": "2026-05-01T11:11:05.114660431+00:00",
+  "modified": "2026-05-01T23:20:11.276066+00:00",
   "patch": [
     {
       "id": 1,
@@ -100,6 +100,22 @@
       "notes": "",
       "profile_id": "generic_dimmer",
       "start_address": 12,
+      "universe": 1
+    },
+    {
+      "id": 3,
+      "label": "dc-spot",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 20,
+      "universe": 1
+    },
+    {
+      "id": 4,
+      "label": "cube1",
+      "notes": "",
+      "profile_id": "irgbawuv",
+      "start_address": 30,
       "universe": 1
     }
   ],
