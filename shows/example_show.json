@@ -27,11 +27,11 @@
       "label": "Cue 3: sample3",
       "notes": "",
       "number": 3.0,
-      "triggers_lighting_cue": null,
+      "triggers_lighting_cue": 4.0,
       "volume": 0.800000011920929
     }
   ],
-  "created": "2026-05-01T01:24:19.132286+00:00",
+  "created": "2026-05-01T11:11:05.114514070+00:00",
   "cues": [
     {
       "channel_values": {
@@ -53,7 +53,7 @@
       "fade_up": 3.0,
       "label": "Blackout",
       "number": 2.0,
-      "triggers_audio_cue": null
+      "triggers_audio_cue": 1.0
     },
     {
       "channel_values": {
@@ -84,14 +84,14 @@
     }
   ],
   "description": "",
-  "modified": "2026-05-01T01:24:19.132628+00:00",
+  "modified": "2026-05-01T11:11:05.114660431+00:00",
   "patch": [
     {
       "id": 1,
       "label": "test",
       "notes": "",
       "profile_id": "rgbawuv",
-      "start_address": 16,
+      "start_address": 1,
       "universe": 1
     },
     {
