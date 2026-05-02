@@ -16,6 +16,8 @@ pub struct PlaybackEngine {
     previous_values: [u8; 512],
     /// Target cue values (for crossfade to)
     target_values: [u8; 512],
+    /// Autofollow timer: when cue should automatically advance to next
+    autofollow_time: Option<Instant>,
 }
 
 impl PlaybackEngine {
@@ -27,6 +29,7 @@ impl PlaybackEngine {
             fade_duration: 0.0,
             previous_values: [0; 512],
             target_values: [0; 512],
+            autofollow_time: None,
         }
     }
 
@@ -69,6 +72,7 @@ impl PlaybackEngine {
     pub fn stop(&mut self) {
         self.state = CueState::Stopped;
         self.fade_start = None;
+        self.autofollow_time = None;
     }
 
     /// Start playing a specific cue
@@ -92,12 +96,22 @@ impl PlaybackEngine {
         self.fade_duration = cue.fade_up;
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
-
-        log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, cue.fade_up);
+        
+        // Set up autofollow timer if configured
+        if let Some(autofollow_delay) = cue.autofollow {
+            self.autofollow_time = Some(Instant::now() + std::time::Duration::from_secs_f32(autofollow_delay));
+            log::info!("Starting cue {}: {} (fade: {}s, autofollow: {}s)", cue.number, cue.label, cue.fade_up, autofollow_delay);
+        } else {
+            self.autofollow_time = None;
+            log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, cue.fade_up);
+        }
     }
 
     /// Update the playback state and apply to universe
-    pub fn update(&mut self, universe: &mut Universe) {
+    /// Returns true if autofollow should trigger the next cue
+    pub fn update(&mut self, universe: &mut Universe) -> bool {
+        let mut should_autofollow = false;
+        
         match self.state {
             CueState::Fading { .. } => {
                 if let Some(start) = self.fade_start {
@@ -127,12 +141,21 @@ impl PlaybackEngine {
                 }
             }
             CueState::Active => {
-                // Holding steady - no updates needed
+                // Holding steady - check for autofollow
+                if let Some(autofollow_time) = self.autofollow_time {
+                    if Instant::now() >= autofollow_time {
+                        should_autofollow = true;
+                        self.autofollow_time = None;
+                        log::info!("Autofollow triggered");
+                    }
+                }
             }
             CueState::Stopped => {
                 // Not playing
             }
         }
+        
+        should_autofollow
     }
 
     /// Get the current playback state

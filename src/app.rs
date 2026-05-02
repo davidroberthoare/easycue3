@@ -717,7 +717,30 @@ impl eframe::App for EasyCueApp {
                 }
             }
             
-            self.playback.update(universe);
+            // Update playback and check for autofollow
+            let should_autofollow = self.playback.update(universe);
+            
+            // Handle autofollow - automatically trigger next cue
+            if should_autofollow {
+                if self.playback.go(&mut self.cue_list, universe) {
+                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                    #[cfg(feature = "audio")]
+                    if let Some(current_idx) = self.cue_list.current_index() {
+                        if let Some(cue) = self.cue_list.get_cue(current_idx) {
+                            if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                                // Find and trigger the audio cue by number
+                                if let Some(audio_idx) = self.audio_cue_list.cues().iter()
+                                    .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                    if self.audio_playback.go_to_cue(&self.audio_cue_list, audio_idx, &mut self.audio_player) {
+                                        self.audio_cue_list.set_current_index(Some(audio_idx));
+                                        log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         // Update audio playback engine (Phase 4)
