@@ -6,6 +6,9 @@ use std::path::PathBuf;
 /// A single audio cue containing playback settings and timing information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioCue {
+    /// Stable identity — assigned once, never changes. 0 means unassigned (set by AudioCueList::add_cue).
+    #[serde(default)]
+    pub id: u32,
     /// Cue number (e.g., 1.0, 1.5, 2.0) - matches lighting cue numbering
     #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub number: f32,
@@ -43,6 +46,7 @@ impl AudioCue {
     /// Create a new audio cue with default settings
     pub fn new(number: f32, audio_path: PathBuf) -> Self {
         Self {
+            id: 0,  // 0 = unassigned; AudioCueList::add_cue will assign a real ID
             number,
             label: String::new(),
             audio_path,

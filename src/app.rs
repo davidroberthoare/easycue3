@@ -488,7 +488,9 @@ impl EasyCueApp {
         for cue in show.cues {
             self.cue_list.add_cue(cue);
         }
-        
+        // Ensure the lighting cue counter stays ahead of what the show file recorded
+        self.cue_list.set_next_id(show.next_cue_id);
+
         // Load audio cues (Phase 4)
         #[cfg(feature = "audio")]
         {
@@ -543,6 +545,7 @@ impl EasyCueApp {
     /// Save the current cue list to a show file
     pub fn save_show(&mut self, path: &std::path::Path, title: &str) -> anyhow::Result<()> {
         let mut show = ShowFile::new(title);
+        show.next_cue_id = self.cue_list.next_id();
         show.cues = self.cue_list.cues().to_vec();
         show.patch = self.fixtures.patch_list().patches().to_vec();
         

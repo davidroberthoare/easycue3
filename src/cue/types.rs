@@ -6,6 +6,9 @@ use std::collections::HashMap;
 /// A single cue containing fixture states and timing information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cue {
+    /// Stable identity — assigned once, never changes. 0 means unassigned (set by CueList::add_cue).
+    #[serde(default)]
+    pub id: u32,
     /// Cue number (e.g., 1.0, 1.5, 2.0)
     #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub number: f32,
@@ -30,6 +33,7 @@ impl Cue {
     /// Create a new empty cue
     pub fn new(number: f32) -> Self {
         Self {
+            id: 0,  // 0 = unassigned; CueList::add_cue will assign a real ID
             number,
             label: String::new(),
             fade_up: 3.0,  // Default 3 second fade

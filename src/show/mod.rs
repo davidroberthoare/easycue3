@@ -19,6 +19,10 @@ pub struct ShowFile {
     pub created: String,
     pub modified: String,
 
+    /// Next cue ID to assign — ensures IDs are never reused across save/load cycles
+    #[serde(default)]
+    pub next_cue_id: u32,
+
     /// Cue list
     pub cues: Vec<Cue>,
 
@@ -48,6 +52,7 @@ impl ShowFile {
             description: String::new(),
             created: now.clone(),
             modified: now,
+            next_cue_id: 1,
             cues: Vec::new(),
             patch: Vec::new(),
             #[cfg(feature = "audio")]
@@ -74,8 +79,42 @@ impl ShowFile {
     /// Load from a JSON file
     pub fn load(path: &std::path::Path) -> Result<Self> {
         let json = std::fs::read_to_string(path)?;
-        let show: ShowFile = serde_json::from_str(&json)?;
+        let mut show: ShowFile = serde_json::from_str(&json)?;
+        show.repair_cue_ids();
         log::info!("Loaded show from {:?}", path);
         Ok(show)
+    }
+
+    /// Assign stable IDs to any cues that are missing one (id == 0).
+    /// Guarantees all cues have a non-zero ID and next_cue_id is ahead of all of them.
+    fn repair_cue_ids(&mut self) {
+        // Find the highest ID already present across all cue types
+        let max_lighting = self.cues.iter().map(|c| c.id).max().unwrap_or(0);
+        #[cfg(feature = "audio")]
+        let max_audio = self.audio_cues.iter().map(|c| c.id).max().unwrap_or(0);
+        #[cfg(not(feature = "audio"))]
+        let max_audio = 0u32;
+
+        let mut next = max_lighting.max(max_audio).max(self.next_cue_id);
+        if next == 0 {
+            next = 1;
+        }
+
+        for cue in &mut self.cues {
+            if cue.id == 0 {
+                cue.id = next;
+                next += 1;
+            }
+        }
+
+        #[cfg(feature = "audio")]
+        for cue in &mut self.audio_cues {
+            if cue.id == 0 {
+                cue.id = next;
+                next += 1;
+            }
+        }
+
+        self.next_cue_id = next;
     }
 }
