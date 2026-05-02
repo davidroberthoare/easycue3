@@ -513,13 +513,20 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             .inner_margin(egui::Margin::symmetric(8, 4))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    // Playback status
+                    // Playback status with autofollow countdown
                     let state_text = match app.playback.state() {
-                        crate::cue::CueState::Stopped => "⏹ Stopped",
+                        crate::cue::CueState::Stopped => "⏹ Stopped".to_string(),
                         crate::cue::CueState::Fading { progress } => {
-                            &format!("⏵ Fading {:.0}%", progress * 100.0)
+                            format!("⏵ Fading {:.0}%", progress * 100.0)
                         }
-                        crate::cue::CueState::Active => "⏸ Active",
+                        crate::cue::CueState::Active => {
+                            // Check for autofollow countdown
+                            if let Some(remaining) = app.playback.autofollow_remaining() {
+                                format!("⏸ Active (→ {:.1}s)", remaining)
+                            } else {
+                                "⏸ Active".to_string()
+                            }
+                        }
                     };
                     ui.label(state_text);
 
