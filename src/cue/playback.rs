@@ -18,6 +18,8 @@ pub struct PlaybackEngine {
     target_values: [u8; 512],
     /// Autofollow timer: when cue should automatically advance to next
     autofollow_time: Option<Instant>,
+    /// Autofollow delay in seconds (stored to set timer when fade completes)
+    autofollow_delay: Option<f32>,
 }
 
 impl PlaybackEngine {
@@ -30,6 +32,7 @@ impl PlaybackEngine {
             previous_values: [0; 512],
             target_values: [0; 512],
             autofollow_time: None,
+            autofollow_delay: None,
         }
     }
 
@@ -73,6 +76,7 @@ impl PlaybackEngine {
         self.state = CueState::Stopped;
         self.fade_start = None;
         self.autofollow_time = None;
+        self.autofollow_delay = None;
     }
 
     /// Start playing a specific cue
@@ -97,12 +101,13 @@ impl PlaybackEngine {
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
         
-        // Set up autofollow timer if configured
-        if let Some(autofollow_delay) = cue.autofollow {
-            self.autofollow_time = Some(Instant::now() + std::time::Duration::from_secs_f32(autofollow_delay));
-            log::info!("Starting cue {}: {} (fade: {}s, autofollow: {}s)", cue.number, cue.label, cue.fade_up, autofollow_delay);
+        // Store autofollow delay - timer will start when fade completes
+        self.autofollow_delay = cue.autofollow;
+        self.autofollow_time = None;
+        
+        if cue.autofollow.is_some() {
+            log::info!("Starting cue {}: {} (fade: {}s, autofollow: {}s)", cue.number, cue.label, cue.fade_up, cue.autofollow.unwrap());
         } else {
-            self.autofollow_time = None;
             log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, cue.fade_up);
         }
     }
@@ -134,7 +139,14 @@ impl PlaybackEngine {
                     if progress >= 1.0 {
                         self.state = CueState::Active;
                         self.previous_values = self.target_values;
-                        log::debug!("Fade complete");
+                        
+                        // Start autofollow timer now that fade is complete
+                        if let Some(delay) = self.autofollow_delay {
+                            self.autofollow_time = Some(Instant::now() + std::time::Duration::from_secs_f32(delay));
+                            log::debug!("Fade complete, autofollow timer started: {}s", delay);
+                        } else {
+                            log::debug!("Fade complete");
+                        }
                     } else {
                         self.state = CueState::Fading { progress };
                     }
@@ -166,6 +178,18 @@ impl PlaybackEngine {
     /// Check if currently playing
     pub fn is_playing(&self) -> bool {
         !matches!(self.state, CueState::Stopped)
+    }
+    
+    /// Get remaining autofollow time in seconds (returns None if no autofollow active)
+    pub fn autofollow_remaining(&self) -> Option<f32> {
+        if let Some(autofollow_time) = self.autofollow_time {
+            let now = Instant::now();
+            if now < autofollow_time {
+                let remaining = autofollow_time.duration_since(now).as_secs_f32();
+                return Some(remaining);
+            }
+        }
+        None
     }
 }
 
