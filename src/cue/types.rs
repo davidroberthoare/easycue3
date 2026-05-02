@@ -24,6 +24,10 @@ pub struct Cue {
     /// Optional audio cue number to trigger when this lighting cue executes (Phase 4)
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub triggers_audio_cue: Option<f32>,
+    
+    /// Optional autofollow time in seconds - automatically triggers next cue after this delay
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
+    pub autofollow: Option<f32>,
 }
 
 impl Cue {
@@ -36,6 +40,7 @@ impl Cue {
             fade_down: 3.0,
             channel_values: HashMap::new(),
             triggers_audio_cue: None,
+            autofollow: None,
         }
     }
 

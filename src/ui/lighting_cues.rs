@@ -176,6 +176,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             .column(Column::initial(60.0).at_least(40.0))   // Q number
             .column(Column::remainder().at_least(100.0))     // Label (takes remaining space)
             .column(Column::initial(80.0).at_least(60.0))   // Fade
+            .column(Column::initial(90.0).at_least(60.0))   // Autofollow
             .column(Column::initial(80.0).at_least(60.0))   // Sound trigger
             .min_scrolled_height(0.0)
             .max_scroll_height(available_for_table);
@@ -195,6 +196,9 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 ui.strong("Fade");
             });
             header.col(|ui| {
+                ui.strong("Autofollow");
+            });
+            header.col(|ui| {
                 ui.strong("→ Sound");
             });
         })
@@ -203,9 +207,9 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 let idx = row.index();
                 
                 // Read cue data (immutable borrow, released immediately)
-                let (cue_number, cue_label, cue_fade_up, cue_triggers_audio) = 
+                let (cue_number, cue_label, cue_fade_up, cue_autofollow, cue_triggers_audio) = 
                     if let Some(cue) = app.cue_list.get_cue(idx) {
-                        (cue.number, cue.label.clone(), cue.fade_up, cue.triggers_audio_cue)
+                        (cue.number, cue.label.clone(), cue.fade_up, cue.autofollow, cue.triggers_audio_cue)
                     } else {
                         return;
                     };
@@ -313,6 +317,52 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     row_responses.push(response);
                 });
                 
+                // Autofollow time (editable - shows delay before next cue)
+                row.col(|ui| {
+                    if bg_color != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
+                    }
+                    
+                    let mut has_autofollow = cue_autofollow.is_some();
+                    let mut autofollow_value = cue_autofollow.unwrap_or(0.0);
+                    
+                    let response = ui.horizontal(|ui| {
+                        let checkbox_response = ui.checkbox(&mut has_autofollow, "");
+                        if checkbox_response.changed() {
+                            if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                                cue.autofollow = if has_autofollow {
+                                    Some(autofollow_value)
+                                } else {
+                                    None
+                                };
+                            }
+                        }
+                        if checkbox_response.clicked() {
+                            clicked_index = Some(idx);
+                        }
+                        
+                        if has_autofollow {
+                            let drag_response = ui.add(
+                                egui::DragValue::new(&mut autofollow_value)
+                                    .speed(0.1)
+                                    .range(0.0..=999.0)
+                                    .suffix("s")
+                            );
+                            if drag_response.changed() {
+                                if let Some(cue) = app.cue_list.get_cue_mut(idx) {
+                                    cue.autofollow = Some(autofollow_value);
+                                }
+                            }
+                            if drag_response.clicked() {
+                                clicked_index = Some(idx);
+                            }
+                        }
+                        checkbox_response
+                    }).inner;
+                    
+                    row_responses.push(response);
+                });
+                
                 // Sound trigger (editable - shows audio cue number)
                 row.col(|ui| {
                     if bg_color != egui::Color32::TRANSPARENT {
@@ -322,7 +372,7 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     let mut has_trigger = cue_triggers_audio.is_some();
                     let mut trigger_value = cue_triggers_audio.unwrap_or(1.0);
                     
-                    ui.horizontal(|ui| {
+                    let response = ui.horizontal(|ui| {
                         let checkbox_response = ui.checkbox(&mut has_trigger, "");
                         if checkbox_response.changed() {
                             #[cfg(feature = "audio")]
@@ -384,7 +434,10 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                                 clicked_index = Some(idx);
                             }
                         }
-                    });
+                        checkbox_response
+                    }).inner;
+                    
+                    row_responses.push(response);
                 });
                 
                 // Handle click to select (entire row) - check if any cell was clicked
