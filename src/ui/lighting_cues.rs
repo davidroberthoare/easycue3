@@ -460,7 +460,24 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         }
                         if ui.button("Go To").clicked() {
                             if let Some(universe) = app.universes.first() {
-                                app.playback.go_to_cue(&app.cue_list, idx, universe);
+                                if app.playback.go_to_cue(&app.cue_list, idx, universe) {
+                                    app.cue_list.set_current_index(Some(idx));
+                                    
+                                    // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                                    #[cfg(feature = "audio")]
+                                    if let Some(cue) = app.cue_list.get_cue(idx) {
+                                        if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                                            // Find and trigger the audio cue by number
+                                            if let Some(audio_idx) = app.audio_cue_list.cues().iter()
+                                                .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                                if app.audio_playback.go_to_cue(&app.audio_cue_list, audio_idx, &mut app.audio_player) {
+                                                    app.audio_cue_list.set_current_index(Some(audio_idx));
+                                                    log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             ui.close_menu();
                         }
@@ -494,6 +511,19 @@ pub fn render_lighting_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     app.cue_list.set_current_index(Some(idx));
                     if let Some(cue) = app.cue_list.get_cue(idx) {
                         app.ui_state.status_message = format!("Going to cue {:.1}", cue.number);
+                        
+                        // Check if this lighting cue triggers an audio cue (Phase 4 cross-trigger)
+                        #[cfg(feature = "audio")]
+                        if let Some(audio_cue_num) = cue.triggers_audio_cue {
+                            // Find and trigger the audio cue by number
+                            if let Some(audio_idx) = app.audio_cue_list.cues().iter()
+                                .position(|c| (c.number - audio_cue_num).abs() < 0.01) {
+                                if app.audio_playback.go_to_cue(&app.audio_cue_list, audio_idx, &mut app.audio_player) {
+                                    app.audio_cue_list.set_current_index(Some(audio_idx));
+                                    log::info!("Lighting cue {:.2} triggered audio cue {:.2}", cue.number, audio_cue_num);
+                                }
+                            }
+                        }
                     }
                 }
             }
