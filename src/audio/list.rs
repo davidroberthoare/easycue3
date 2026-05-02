@@ -4,10 +4,17 @@ use crate::audio::AudioCue;
 use anyhow::Result;
 
 /// Manages a list of audio cues
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AudioCueList {
     cues: Vec<AudioCue>,
     current_index: Option<usize>,
+    next_id: u32,
+}
+
+impl Default for AudioCueList {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AudioCueList {
@@ -16,16 +23,38 @@ impl AudioCueList {
         Self {
             cues: Vec::new(),
             current_index: None,
+            next_id: 1,
         }
     }
-    
-    /// Add an audio cue to the list
-    pub fn add_cue(&mut self, cue: AudioCue) {
+
+    /// Add an audio cue to the list, assigning a stable ID if the cue has none (id == 0)
+    pub fn add_cue(&mut self, mut cue: AudioCue) {
+        if cue.id == 0 {
+            cue.id = self.next_id;
+            self.next_id += 1;
+        } else {
+            self.next_id = self.next_id.max(cue.id + 1);
+        }
         // Insert in sorted order by cue number
         let insert_pos = self.cues
             .binary_search_by(|c| c.number.partial_cmp(&cue.number).unwrap())
             .unwrap_or_else(|e| e);
         self.cues.insert(insert_pos, cue);
+    }
+
+    /// Look up an audio cue by its stable ID
+    pub fn find_by_id(&self, id: u32) -> Option<&AudioCue> {
+        self.cues.iter().find(|c| c.id == id)
+    }
+
+    /// Current value of the ID counter
+    pub fn next_id(&self) -> u32 {
+        self.next_id
+    }
+
+    /// Advance the counter to at least `id`, used after loading a show file
+    pub fn set_next_id(&mut self, id: u32) {
+        self.next_id = self.next_id.max(id);
     }
     
     /// Remove an audio cue by index
@@ -107,8 +136,9 @@ impl AudioCueList {
     /// Load cues from a vector (used when loading show files)
     pub fn load_cues(&mut self, cues: Vec<AudioCue>) {
         self.cues = cues;
-        // Sort by cue number
         self.cues.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap());
         self.current_index = None;
+        let max_id = self.cues.iter().map(|c| c.id).max().unwrap_or(0);
+        self.next_id = self.next_id.max(max_id + 1);
     }
 }
