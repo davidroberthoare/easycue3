@@ -33,9 +33,9 @@ pub mod stub {
     #[derive(Debug)]
     pub struct AudioPlaybackEngine;
     impl AudioPlaybackEngine {
-        pub fn new() -> Self {
-            Self
-        }
+        pub fn new() -> Self { Self }
+        pub fn is_playing(&self) -> bool { false }
+        pub fn stop_all(&mut self) {}
     }
 }
 

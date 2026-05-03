@@ -1,158 +1,219 @@
-//! Audio cue playback engine with fade support
+//! Multi-track audio playback engine.
+//!
+//! Each audio cue gets its own Sink. Firing a new cue never stops existing ones;
+//! each stream runs independently until its length timer expires, the file ends,
+//! or stop_all() is called.
 
 use crate::audio::{AudioCueState, AudioPlayer};
 use crate::cue::Cue;
+use rodio::{Decoder, Source};
+use std::fs::File;
+use std::io::BufReader;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// Manages audio cue playback and fades.
-/// Navigation (which cue is next) is the caller's responsibility;
-/// this engine only starts, updates, and stops playback.
-pub struct AudioPlaybackEngine {
+fn resolve_audio_path(path: &Path) -> PathBuf {
+    if path.is_absolute() || path.exists() {
+        return path.to_path_buf();
+    }
+    let media_path = PathBuf::from("media").join(path);
+    if media_path.exists() {
+        return media_path;
+    }
+    path.to_path_buf()
+}
+
+struct ActiveAudioStream {
+    cue_id: u32,
+    sink: rodio::Sink,
     state: AudioCueState,
-    current_cue_id: Option<u32>,
-    fade_start: Option<Instant>,
+    base_volume: f32,
     fade_in_duration: f32,
     fade_out_duration: f32,
-    base_volume: f32,
-    pending_lighting_trigger: Option<f32>,
+    fade_start: Option<Instant>,
+    /// Optional max play time from play_start; triggers fade/stop when elapsed.
+    length: Option<f32>,
+    play_start: Instant,
+}
+
+/// Multi-track audio playback engine. Maintains a list of concurrently running streams.
+pub struct AudioPlaybackEngine {
+    streams: Vec<ActiveAudioStream>,
+    /// Cross-triggers queued at start() time, drained each frame by app.rs.
+    pending_lighting_triggers: Vec<f32>,
 }
 
 impl AudioPlaybackEngine {
     pub fn new() -> Self {
-        Self {
-            state: AudioCueState::Stopped,
-            current_cue_id: None,
-            fade_start: None,
-            fade_in_duration: 0.0,
-            fade_out_duration: 0.0,
-            base_volume: 1.0,
-            pending_lighting_trigger: None,
-        }
+        Self { streams: Vec::new(), pending_lighting_triggers: Vec::new() }
     }
 
-    /// Start playing the given audio cue. The caller has already decided which cue to fire.
-    pub fn start(&mut self, cue: &Cue, player: &mut AudioPlayer) -> bool {
+    /// Start a new audio stream for this cue. Does NOT stop any currently playing streams.
+    pub fn start(&mut self, cue: &Cue, player: &AudioPlayer) -> bool {
         let Some(data) = cue.audio_data() else { return false };
-        match player.play(&data.audio_path, 0.0) {
-            Ok(_) => {
-                self.base_volume = data.volume;
-                self.fade_in_duration = data.fade_in;
-                self.fade_out_duration = data.fade_out;
-                self.pending_lighting_trigger = data.triggers_lighting_cue;
-                self.current_cue_id = Some(cue.id);
 
-                if data.fade_in > 0.0 {
-                    self.state = AudioCueState::FadingIn { progress: 0.0 };
-                    self.fade_start = Some(Instant::now());
-                    player.set_volume(0.0);
-                } else {
-                    self.state = AudioCueState::Playing;
-                    player.set_volume(self.base_volume);
-                }
-
-                log::info!("Starting audio cue {:.2}: {} (volume: {:.0}%, fade in: {}s)",
-                    cue.number, cue.label, data.volume * 100.0, data.fade_in);
-                true
-            }
+        let resolved = resolve_audio_path(&data.audio_path);
+        let file = match File::open(&resolved) {
+            Ok(f) => f,
             Err(e) => {
-                log::error!("Failed to play audio cue {:.2}: {}", cue.number, e);
-                self.state = AudioCueState::Stopped;
-                false
+                log::error!("Audio: cannot open {}: {}", resolved.display(), e);
+                return false;
             }
+        };
+        let source = match Decoder::new(BufReader::new(file)) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Audio: decode error: {}", e);
+                return false;
+            }
+        };
+        let sink = match player.new_sink() {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Audio: cannot create sink: {}", e);
+                return false;
+            }
+        };
+
+        let (initial_volume, initial_state, fade_start) = if data.fade_in > 0.0 {
+            (0.0_f32, AudioCueState::FadingIn { progress: 0.0 }, Some(Instant::now()))
+        } else {
+            (data.volume, AudioCueState::Playing, None)
+        };
+
+        sink.set_volume(initial_volume);
+        sink.append(source);
+
+        if let Some(trigger) = data.triggers_lighting_cue {
+            self.pending_lighting_triggers.push(trigger);
         }
+
+        self.streams.push(ActiveAudioStream {
+            cue_id: cue.id,
+            sink,
+            state: initial_state,
+            base_volume: data.volume,
+            fade_in_duration: data.fade_in,
+            fade_out_duration: data.fade_out,
+            fade_start,
+            length: data.length,
+            play_start: Instant::now(),
+        });
+
+        log::info!(
+            "Audio start: cue {:.2} '{}' vol={:.0}% fade_in={:.1}s length={:?}",
+            cue.number, cue.label, data.volume * 100.0, data.fade_in, data.length
+        );
+        true
     }
 
-    pub fn stop(&mut self, player: &mut AudioPlayer) {
-        player.stop();
-        self.state = AudioCueState::Stopped;
-        self.fade_start = None;
-        self.pending_lighting_trigger = None;
+    /// Stop all active streams immediately.
+    pub fn stop_all(&mut self) {
+        for s in self.streams.drain(..) {
+            s.sink.stop();
+        }
+        self.pending_lighting_triggers.clear();
+        log::debug!("Audio: all streams stopped");
     }
 
-    /// Update fade state each frame. Returns the base volume (caller multiplies by sound_master).
-    pub fn update(&mut self, player: &mut AudioPlayer) -> f32 {
-        match self.state {
-            AudioCueState::FadingIn { .. } => {
-                if let Some(start) = self.fade_start {
-                    let elapsed = start.elapsed().as_secs_f32();
-                    let progress = (elapsed / self.fade_in_duration).clamp(0.0, 1.0);
-                    let fade_volume = self.base_volume * progress;
-                    if progress >= 1.0 {
-                        self.state = AudioCueState::Playing;
-                        self.fade_start = None;
-                        log::debug!("Audio fade in complete");
-                    } else {
-                        self.state = AudioCueState::FadingIn { progress };
+    /// Advance every stream's fade state and apply sound_master each frame.
+    pub fn update(&mut self, sound_master: f32) {
+        self.streams.retain_mut(|stream| {
+            // File ended naturally
+            if stream.sink.empty() {
+                log::debug!("Audio cue {} finished (file end)", stream.cue_id);
+                return false;
+            }
+
+            // Length timer: once Playing, check if we've hit the length limit
+            if matches!(stream.state, AudioCueState::Playing) {
+                if let Some(len) = stream.length {
+                    if stream.play_start.elapsed().as_secs_f32() >= len {
+                        if stream.fade_out_duration > 0.0 {
+                            stream.state = AudioCueState::FadingOut { progress: 0.0 };
+                            stream.fade_start = Some(Instant::now());
+                            log::debug!("Audio cue {} length expired, fading out", stream.cue_id);
+                        } else {
+                            stream.sink.stop();
+                            log::debug!("Audio cue {} length expired, stopping", stream.cue_id);
+                            return false;
+                        }
                     }
-                    fade_volume
-                } else {
-                    self.base_volume
                 }
             }
-            AudioCueState::Playing => {
-                if player.is_finished() {
-                    self.state = AudioCueState::Stopped;
-                    self.pending_lighting_trigger = None;
-                    log::debug!("Audio playback finished");
-                }
-                self.base_volume
-            }
-            AudioCueState::FadingOut { .. } => {
-                if let Some(start) = self.fade_start {
-                    let elapsed = start.elapsed().as_secs_f32();
-                    let progress = (elapsed / self.fade_out_duration).clamp(0.0, 1.0);
-                    let fade_volume = self.base_volume * (1.0 - progress);
+
+            // Compute per-stream volume based on fade state
+            let volume = match stream.state {
+                AudioCueState::FadingIn { .. } => {
+                    let start = stream.fade_start.get_or_insert_with(Instant::now);
+                    let progress =
+                        (start.elapsed().as_secs_f32() / stream.fade_in_duration).clamp(0.0, 1.0);
                     if progress >= 1.0 {
-                        player.stop();
-                        self.state = AudioCueState::Stopped;
-                        self.fade_start = None;
-                        self.pending_lighting_trigger = None;
-                        log::debug!("Audio fade out complete");
+                        stream.state = AudioCueState::Playing;
+                        stream.fade_start = None;
                     } else {
-                        self.state = AudioCueState::FadingOut { progress };
+                        stream.state = AudioCueState::FadingIn { progress };
                     }
-                    fade_volume
-                } else {
-                    0.0
+                    stream.base_volume * progress
                 }
-            }
-            AudioCueState::Stopped => 0.0,
-        }
+                AudioCueState::Playing => stream.base_volume,
+                AudioCueState::FadingOut { .. } => {
+                    let start = stream.fade_start.get_or_insert_with(Instant::now);
+                    let progress =
+                        (start.elapsed().as_secs_f32() / stream.fade_out_duration).clamp(0.0, 1.0);
+                    if progress >= 1.0 {
+                        stream.sink.stop();
+                        log::debug!("Audio cue {} fade out complete", stream.cue_id);
+                        return false;
+                    }
+                    stream.state = AudioCueState::FadingOut { progress };
+                    stream.base_volume * (1.0 - progress)
+                }
+                AudioCueState::Stopped => return false,
+            };
+
+            stream.sink.set_volume((volume * sound_master).clamp(0.0, 2.0));
+            true
+        });
     }
 
-    pub fn fade_out(&mut self, fade_duration: f32) {
-        if matches!(self.state, AudioCueState::Playing | AudioCueState::FadingIn { .. }) {
-            self.fade_out_duration = fade_duration;
-            self.fade_start = Some(Instant::now());
-            self.state = AudioCueState::FadingOut { progress: 0.0 };
-        }
+    // ── Query API ────────────────────────────────────────────────────────────
+
+    /// IDs of all currently active streams (for row coloring).
+    pub fn active_cue_ids(&self) -> Vec<u32> {
+        self.streams.iter().map(|s| s.cue_id).collect()
     }
 
+    /// Playback state for a specific cue, or None if that cue is not active.
+    pub fn stream_state(&self, cue_id: u32) -> Option<AudioCueState> {
+        self.streams.iter().find(|s| s.cue_id == cue_id).map(|s| s.state)
+    }
+
+    /// The ID of the most recently started active stream (used for footer display).
+    pub fn current_cue_id(&self) -> Option<u32> {
+        self.streams.last().map(|s| s.cue_id)
+    }
+
+    /// State of the most recently started active stream, or Stopped.
     pub fn state(&self) -> AudioCueState {
-        self.state
+        self.streams.last().map(|s| s.state).unwrap_or(AudioCueState::Stopped)
+    }
+
+    /// Number of streams currently active.
+    pub fn active_count(&self) -> usize {
+        self.streams.len()
     }
 
     pub fn is_playing(&self) -> bool {
-        !matches!(self.state, AudioCueState::Stopped)
+        !self.streams.is_empty()
     }
 
-    /// The stable ID of the audio cue currently playing or fading. Used for row coloring in UI.
-    pub fn current_cue_id(&self) -> Option<u32> {
-        if matches!(self.state, AudioCueState::Stopped) {
-            None
-        } else {
-            self.current_cue_id
-        }
-    }
-
-    /// Take any pending lighting trigger (consumed once, then None)
-    pub fn take_pending_lighting_trigger(&mut self) -> Option<f32> {
-        self.pending_lighting_trigger.take()
+    /// Drain audio→lighting cross-triggers queued since last call.
+    pub fn take_pending_lighting_triggers(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.pending_lighting_triggers)
     }
 }
 
 impl Default for AudioPlaybackEngine {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }

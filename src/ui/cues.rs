@@ -39,7 +39,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         if ui.button("⏹ STOP").clicked() {
             app.playback.stop();
             #[cfg(feature = "audio")]
-            app.audio_playback.stop(&mut app.audio_player);
+            app.audio_playback.stop_all();
             app.ui_state.status_message = "STOP".to_string();
         }
 
@@ -151,11 +151,10 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let lx_active_id      = app.playback.current_cue_id();
     let lx_fade           = app.playback.fade_progress();
     #[cfg(feature = "audio")]
-    let audio_active_id   = app.audio_playback.current_cue_id();
-    #[cfg(feature = "audio")]
-    let audio_state       = app.audio_playback.state();
+    let audio_active_set: std::collections::HashSet<u32> =
+        app.audio_playback.active_cue_ids().into_iter().collect();
     #[cfg(not(feature = "audio"))]
-    let audio_active_id: Option<u32> = None;
+    let audio_active_set: std::collections::HashSet<u32> = std::collections::HashSet::new();
 
     let cue_count = app.cue_list.len();
 
@@ -244,13 +243,19 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 };
 
                 // Row state flags
-                let is_lx_active   = lx_active_id    == Some(cue_id) && is_lighting;
-                let is_lx_fading   = is_lx_active    && lx_fade.is_some();
-                let is_audio_active= audio_active_id  == Some(cue_id) && is_audio;
+                let is_lx_active   = lx_active_id == Some(cue_id) && is_lighting;
+                let is_lx_fading   = is_lx_active && lx_fade.is_some();
+                let is_audio_active = is_audio && audio_active_set.contains(&cue_id);
+                #[cfg(feature = "audio")]
+                let row_audio_state = if is_audio_active {
+                    app.audio_playback.stream_state(cue_id)
+                } else {
+                    None
+                };
                 #[cfg(feature = "audio")]
                 let is_audio_fading = is_audio_active && matches!(
-                    audio_state,
-                    crate::audio::AudioCueState::FadingIn { .. } | crate::audio::AudioCueState::FadingOut { .. }
+                    row_audio_state,
+                    Some(crate::audio::AudioCueState::FadingIn { .. } | crate::audio::AudioCueState::FadingOut { .. })
                 );
                 #[cfg(not(feature = "audio"))]
                 let is_audio_fading = false;
@@ -360,12 +365,12 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     } else if is_audio_active {
                         #[cfg(feature = "audio")]
                         {
-                            match audio_state {
-                                crate::audio::AudioCueState::FadingIn { progress } =>
+                            match row_audio_state {
+                                Some(crate::audio::AudioCueState::FadingIn { progress }) =>
                                     format!("⏵{:.0}%", progress * 100.0),
-                                crate::audio::AudioCueState::FadingOut { progress } =>
+                                Some(crate::audio::AudioCueState::FadingOut { progress }) =>
                                     format!("⏸{:.0}%", (1.0 - progress) * 100.0),
-                                crate::audio::AudioCueState::Playing => "⏵".to_string(),
+                                Some(crate::audio::AudioCueState::Playing) => "⏵".to_string(),
                                 _ => String::new(),
                             }
                         }
@@ -476,13 +481,16 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                     #[cfg(feature = "audio")]
                     {
                         ui.separator();
+                        let count = app.audio_playback.active_count();
+                        let multi = if count > 1 { format!(" ×{}", count) } else { String::new() };
                         let snd_str = match app.audio_playback.state() {
                             crate::audio::AudioCueState::Stopped => "🔊⏹".to_string(),
                             crate::audio::AudioCueState::FadingIn { progress } =>
-                                format!("🔊⏵{:.0}%", progress * 100.0),
-                            crate::audio::AudioCueState::Playing => "🔊⏵".to_string(),
+                                format!("🔊⏵{:.0}%{}", progress * 100.0, multi),
+                            crate::audio::AudioCueState::Playing =>
+                                format!("🔊⏵{}", multi),
                             crate::audio::AudioCueState::FadingOut { progress } =>
-                                format!("🔊⏸{:.0}%", (1.0 - progress) * 100.0),
+                                format!("🔊⏸{:.0}%{}", (1.0 - progress) * 100.0, multi),
                         };
                         ui.label(egui::RichText::new(snd_str).strong());
                         if let Some(id) = app.audio_playback.current_cue_id() {

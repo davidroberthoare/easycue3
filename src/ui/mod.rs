@@ -616,7 +616,7 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                     // Stop all playback
                     app.playback.stop();
                     #[cfg(feature = "audio")]
-                    app.audio_playback.stop(&mut app.audio_player);
+                    app.audio_playback.stop_all();
                     
                     // Activate blackout
                     if !app.ui_state.blackout_active {
@@ -643,7 +643,7 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                 if ui.add(all_stop_button).clicked() {
                     app.playback.stop();
                     #[cfg(feature = "audio")]
-                    app.audio_playback.stop(&mut app.audio_player);
+                    app.audio_playback.stop_all();
                     app.ui_state.status_message = "ALL STOP".to_string();
                     log::info!("All Stop activated");
                 }

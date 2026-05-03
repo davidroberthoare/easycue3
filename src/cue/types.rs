@@ -14,6 +14,7 @@ pub struct LightingData {
     #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_down: f32,
     /// Channel intensity values (0-100). Only non-zero channels stored.
+    #[serde(deserialize_with = "crate::serde_helpers::deserialize_channel_map")]
     pub channel_values: HashMap<u16, u8>,
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub triggers_audio_cue: Option<f32>,
@@ -60,6 +61,10 @@ pub struct AudioData {
     pub notes: String,
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub triggers_lighting_cue: Option<f32>,
+    /// Fixed playback duration in seconds. When elapsed the cue fades out (or stops if fade_out==0).
+    /// None = play until the file ends.
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
+    pub length: Option<f32>,
 }
 
 #[cfg(feature = "audio")]
@@ -77,6 +82,7 @@ impl AudioData {
             fade_out: 0.0,
             notes: String::new(),
             triggers_lighting_cue: None,
+            length: None,
         }
     }
 
