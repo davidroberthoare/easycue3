@@ -23,6 +23,15 @@ fn resolve_audio_path(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+/// In-progress per-stream volume ramp driven by an Adjust cue.
+struct VolumeAdjust {
+    start_vol: f32,
+    target_vol: f32,
+    fade_time: f32,
+    start: Instant,
+    stop_when_complete: bool,
+}
+
 struct ActiveAudioStream {
     cue_id: u32,
     sink: rodio::Sink,
@@ -34,6 +43,8 @@ struct ActiveAudioStream {
     /// Optional max play time from play_start; triggers fade/stop when elapsed.
     length: Option<f32>,
     play_start: Instant,
+    /// In-progress volume adjustment from an Adjust cue targeting this stream.
+    volume_adjust: Option<VolumeAdjust>,
 }
 
 /// Multi-track audio playback engine. Maintains a list of concurrently running streams.
@@ -98,6 +109,7 @@ impl AudioPlaybackEngine {
             fade_start,
             length: data.length,
             play_start: Instant::now(),
+            volume_adjust: None,
         });
 
         log::info!(
@@ -105,6 +117,27 @@ impl AudioPlaybackEngine {
             cue.number, cue.label, data.volume * 100.0, data.fade_in, data.length
         );
         true
+    }
+
+    /// Apply a volume ramp to the stream for a specific cue. Only takes effect while Playing.
+    /// If no stream for `cue_id` is active, this is a no-op.
+    pub fn adjust_stream(&mut self, cue_id: u32, target_vol: f32, fade_time: f32, stop_when_complete: bool) {
+        if let Some(stream) = self.streams.iter_mut().find(|s| s.cue_id == cue_id) {
+            if fade_time <= 0.0 {
+                stream.base_volume = target_vol;
+                if stop_when_complete {
+                    stream.sink.stop();
+                }
+            } else {
+                stream.volume_adjust = Some(VolumeAdjust {
+                    start_vol: stream.base_volume,
+                    target_vol,
+                    fade_time,
+                    start: Instant::now(),
+                    stop_when_complete,
+                });
+            }
+        }
     }
 
     /// Stop all active streams immediately.
@@ -139,6 +172,25 @@ impl AudioPlaybackEngine {
                             return false;
                         }
                     }
+                }
+            }
+
+            // Volume adjust from an Adjust cue — only runs while Playing
+            if matches!(stream.state, AudioCueState::Playing) {
+                if let Some(adj) = stream.volume_adjust.take() {
+                    let progress = if adj.fade_time > 0.0 {
+                        (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
+                    stream.base_volume = adj.start_vol + (adj.target_vol - adj.start_vol) * progress;
+                    if progress < 1.0 {
+                        stream.volume_adjust = Some(adj); // still running
+                    } else if adj.stop_when_complete {
+                        stream.sink.stop();
+                        return false;
+                    }
+                    // otherwise adj is done, volume_adjust stays None
                 }
             }
 

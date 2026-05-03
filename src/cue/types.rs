@@ -120,13 +120,16 @@ impl AudioData {
 #[cfg(feature = "audio")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdjustData {
-    /// Target sound master level (0.0–1.0, displayed as %)
+    /// Cue number of the specific audio cue to target. None = affect global sound master.
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
+    pub target_audio_cue: Option<f32>,
+    /// Target volume level (0.0–1.0)
     #[serde(default = "default_audio_volume", serialize_with = "crate::serde_helpers::round_f32_2")]
     pub volume: f32,
     /// Seconds to reach the target (0 = instant)
     #[serde(default, serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_time: f32,
-    /// Stop all active audio streams when the fade completes
+    /// Stop the targeted stream (or all streams) when the fade completes
     #[serde(default)]
     pub stop_when_complete: bool,
 }
@@ -134,7 +137,7 @@ pub struct AdjustData {
 #[cfg(feature = "audio")]
 impl AdjustData {
     pub fn new() -> Self {
-        Self { volume: 0.8, fade_time: 2.0, stop_when_complete: false }
+        Self { target_audio_cue: None, volume: 0.8, fade_time: 2.0, stop_when_complete: false }
     }
 }
 
