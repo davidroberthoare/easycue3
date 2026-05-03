@@ -91,6 +91,10 @@ pub struct UiState {
 
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
     pub go_cue_input: String,
+
+    /// Edit buffer for the Adjust cue "Target Cue" text field (persists across frames while typing).
+    #[cfg(feature = "audio")]
+    pub adjust_target_edit: String,
 }
 
 impl Default for UiState {
@@ -121,6 +125,8 @@ impl Default for UiState {
             show_device_selector: false,
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
+            #[cfg(feature = "audio")]
+            adjust_target_edit: String::new(),
             #[cfg(feature = "audio")]
             audio_file_cache: HashMap::new(),
             show_debug_ui: false,
