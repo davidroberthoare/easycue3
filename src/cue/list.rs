@@ -170,6 +170,32 @@ impl CueList {
         if end > 0 { Some(end - 1) } else { None }
     }
 
+    /// Move the cue at `index` one position earlier in the list. Returns false if already first.
+    pub fn move_up(&mut self, index: usize) -> bool {
+        if index == 0 || index >= self.cues.len() {
+            return false;
+        }
+        self.cues.swap(index - 1, index);
+        if let Some(cur) = self.current {
+            if cur == index { self.current = Some(index - 1); }
+            else if cur == index - 1 { self.current = Some(index); }
+        }
+        true
+    }
+
+    /// Move the cue at `index` one position later in the list. Returns false if already last.
+    pub fn move_down(&mut self, index: usize) -> bool {
+        if index + 1 >= self.cues.len() {
+            return false;
+        }
+        self.cues.swap(index, index + 1);
+        if let Some(cur) = self.current {
+            if cur == index { self.current = Some(index + 1); }
+            else if cur == index + 1 { self.current = Some(index); }
+        }
+        true
+    }
+
     // --- Utility ---
 
     pub fn clear(&mut self) {
