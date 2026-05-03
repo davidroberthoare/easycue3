@@ -667,26 +667,41 @@ impl EasyCueApp {
         fired
     }
 
-    /// Execute an Adjust cue: start a sound-master fade (or snap if fade_time == 0).
+    /// Execute an Adjust cue: ramp a specific audio stream's volume, or the global sound master.
     #[cfg(feature = "audio")]
     fn fire_adjust_cue(&mut self, data: crate::cue::AdjustData) {
-        if data.fade_time <= 0.0 {
-            self.ui_state.sound_master = data.volume;
-            if data.stop_when_complete {
-                self.audio_playback.stop_all();
+        if let Some(target_num) = data.target_audio_cue {
+            // Targeted: find the active stream by cue number
+            let cue_id = self.cue_list.cues().iter()
+                .find(|c| (c.number - target_num).abs() < 0.005)
+                .map(|c| c.id);
+            if let Some(cue_id) = cue_id {
+                self.audio_playback.adjust_stream(cue_id, data.volume, data.fade_time, data.stop_when_complete);
+                log::info!("Adjust: cue {} → {:.0}% over {:.1}s{}", target_num, data.volume * 100.0,
+                    data.fade_time, if data.stop_when_complete { " then stop" } else { "" });
+            } else {
+                log::warn!("Adjust: target cue {:.1} not found or not playing", target_num);
             }
-            log::info!("Adjust: snap to {:.0}%{}", data.volume * 100.0,
-                if data.stop_when_complete { " + stop" } else { "" });
         } else {
-            self.sound_fade = Some(SoundFadeState {
-                start_volume: self.ui_state.sound_master,
-                target_volume: data.volume,
-                fade_time: data.fade_time,
-                start: std::time::Instant::now(),
-                stop_when_complete: data.stop_when_complete,
-            });
-            log::info!("Adjust: fade to {:.0}% over {:.1}s{}", data.volume * 100.0, data.fade_time,
-                if data.stop_when_complete { " then stop" } else { "" });
+            // Global: ramp the sound master
+            if data.fade_time <= 0.0 {
+                self.ui_state.sound_master = data.volume;
+                if data.stop_when_complete {
+                    self.audio_playback.stop_all();
+                }
+                log::info!("Adjust: snap master to {:.0}%{}", data.volume * 100.0,
+                    if data.stop_when_complete { " + stop all" } else { "" });
+            } else {
+                self.sound_fade = Some(SoundFadeState {
+                    start_volume: self.ui_state.sound_master,
+                    target_volume: data.volume,
+                    fade_time: data.fade_time,
+                    start: std::time::Instant::now(),
+                    stop_when_complete: data.stop_when_complete,
+                });
+                log::info!("Adjust: fade master to {:.0}% over {:.1}s{}", data.volume * 100.0,
+                    data.fade_time, if data.stop_when_complete { " then stop all" } else { "" });
+            }
         }
     }
 

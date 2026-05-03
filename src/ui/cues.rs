@@ -291,10 +291,13 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         cue.adjust_data()
                             .map(|d| {
                                 let stop = if d.stop_when_complete { "+stop" } else { "" };
+                                let target = d.target_audio_cue
+                                    .map(|n| format!("Q{:.1} ", n))
+                                    .unwrap_or_else(|| "master ".to_string());
                                 if d.fade_time > 0.0 {
-                                    format!("→{:.0}% {:.1}s{}", d.volume * 100.0, d.fade_time, stop)
+                                    format!("{}→{:.0}% {:.1}s{}", target, d.volume * 100.0, d.fade_time, stop)
                                 } else {
-                                    format!("→{:.0}% snap{}", d.volume * 100.0, stop)
+                                    format!("{}→{:.0}% snap{}", target, d.volume * 100.0, stop)
                                 }
                             })
                             .unwrap_or_default()

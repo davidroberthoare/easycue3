@@ -353,9 +353,9 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
 
     let Some(idx) = abs_idx else { return };
 
-    let (volume, fade_time, stop_when_complete) = cue.adjust_data()
-        .map(|d| (d.volume, d.fade_time, d.stop_when_complete))
-        .unwrap_or((0.8, 2.0, false));
+    let (target_audio_cue, volume, fade_time, stop_when_complete) = cue.adjust_data()
+        .map(|d| (d.target_audio_cue, d.volume, d.fade_time, d.stop_when_complete))
+        .unwrap_or((None, 0.8, 2.0, false));
 
     egui::Grid::new("adjust_cue_props")
         .num_columns(2)
@@ -365,6 +365,24 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             let mut label = cue.label.clone();
             if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
                 if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            }
+            ui.end_row();
+
+            // Target cue: which audio cue to affect (None = global master)
+            ui.label("Target Cue:");
+            let mut target_str = target_audio_cue
+                .map(|n| format!("{:.1}", n))
+                .unwrap_or_default();
+            let target_resp = ui.add(
+                egui::TextEdit::singleline(&mut target_str)
+                    .desired_width(80.0)
+                    .hint_text("all (master)"),
+            );
+            if target_resp.lost_focus() {
+                let parsed = target_str.trim().parse::<f32>().ok();
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.adjust_data_mut() { d.target_audio_cue = parsed; }
+                }
             }
             ui.end_row();
 
