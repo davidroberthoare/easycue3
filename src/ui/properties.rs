@@ -211,8 +211,8 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
     let Some(idx) = abs_idx else { return };
 
-    let (path, volume, fade_in, fade_out) = cue.audio_data()
-        .map(|d| (d.audio_path.clone(), d.volume, d.fade_in, d.fade_out))
+    let (path, volume, fade_in, fade_out, length) = cue.audio_data()
+        .map(|d| (d.audio_path.clone(), d.volume, d.fade_in, d.fade_out, d.length))
         .unwrap_or_default();
 
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("(none)").to_string();
@@ -275,6 +275,30 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     if let Some(d) = c.audio_data_mut() { d.fade_out = fo; }
                 }
             }
+            ui.end_row();
+
+            // Length (optional auto-stop timer)
+            ui.label("Length:");
+            let mut len_enabled = length.is_some();
+            let mut len_val = length.unwrap_or(10.0_f32).max(0.1);
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut len_enabled, "").changed() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        if let Some(d) = c.audio_data_mut() {
+                            d.length = if len_enabled { Some(len_val) } else { None };
+                        }
+                    }
+                }
+                if len_enabled {
+                    if ui.add(egui::DragValue::new(&mut len_val).speed(0.5).range(0.1..=3600.0).suffix("s")).changed() {
+                        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                            if let Some(d) = c.audio_data_mut() { d.length = Some(len_val); }
+                        }
+                    }
+                } else {
+                    ui.label(egui::RichText::new("file end").color(egui::Color32::GRAY));
+                }
+            });
             ui.end_row();
 
             // Cross-trigger

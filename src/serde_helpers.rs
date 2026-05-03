@@ -4,6 +4,7 @@
 //! such as limiting decimal precision for f32 values.
 
 use serde::Serializer;
+use std::collections::HashMap;
 
 /// Round f32 to 2 decimal places for serialization
 /// 
@@ -43,4 +44,33 @@ where
         }
         None => serializer.serialize_none(),
     }
+}
+
+/// Deserialize `HashMap<u16, u8>` from JSON where keys are strings (e.g. `"10": 59`).
+/// JSON object keys are always strings; this parses them back to u16.
+pub fn deserialize_channel_map<'de, D>(deserializer: D) -> Result<HashMap<u16, u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{MapAccess, Visitor};
+    use std::fmt;
+
+    struct ChannelMapVisitor;
+
+    impl<'de> Visitor<'de> for ChannelMapVisitor {
+        type Value = HashMap<u16, u8>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("map of channel numbers to values")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> Result<Self::Value, A::Error> {
+            let mut map = HashMap::new();
+            while let Some((k, v)) = access.next_entry::<String, u8>()? {
+                let channel: u16 = k.parse().map_err(serde::de::Error::custom)?;
+                map.insert(channel, v);
+            }
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(ChannelMapVisitor)
 }

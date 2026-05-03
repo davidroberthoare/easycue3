@@ -492,7 +492,7 @@ impl EasyCueApp {
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Audio(_) => {
-                self.audio_playback.start(&cue, &mut self.audio_player)
+                self.audio_playback.start(&cue, &self.audio_player)
             }
         };
         if fired {
@@ -527,7 +527,7 @@ impl EasyCueApp {
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Audio(_) => {
-                self.audio_playback.start(&cue, &mut self.audio_player)
+                self.audio_playback.start(&cue, &self.audio_player)
             }
         };
         if fired {
@@ -571,7 +571,7 @@ impl EasyCueApp {
         let Some(next_idx) = self.cue_list.next_audio_index() else { return false };
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
-        let fired = self.audio_playback.start(&cue, &mut self.audio_player);
+        let fired = self.audio_playback.start(&cue, &self.audio_player);
         if fired {
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("Audio GO → cue {:.1} '{}'", cue.number, cue.label);
@@ -586,7 +586,7 @@ impl EasyCueApp {
         let Some(prev_idx) = self.cue_list.previous_audio_index() else { return false };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
-        let fired = self.audio_playback.start(&cue, &mut self.audio_player);
+        let fired = self.audio_playback.start(&cue, &self.audio_player);
         if fired {
             self.cue_list.set_current_index(Some(prev_idx));
             log::info!("Audio BACK → cue {:.1} '{}'", cue.number, cue.label);
@@ -607,7 +607,7 @@ impl EasyCueApp {
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Audio(_) => {
-                self.audio_playback.start(&cue, &mut self.audio_player)
+                self.audio_playback.start(&cue, &self.audio_player)
             }
         };
         if fired {
@@ -628,7 +628,7 @@ impl EasyCueApp {
             if let Some(idx) = audio_idx {
                 let cue = self.cue_list.get_cue(idx).cloned();
                 if let Some(cue) = cue {
-                    if self.audio_playback.start(&cue, &mut self.audio_player) {
+                    if self.audio_playback.start(&cue, &self.audio_player) {
                         log::info!("Cross-trigger: lighting → audio cue {:.2}", audio_num);
                     }
                 }
@@ -709,6 +709,8 @@ impl eframe::App for EasyCueApp {
 
         if stop {
             self.playback.stop();
+            #[cfg(feature = "audio")]
+            self.audio_playback.stop_all();
             self.autofollow_timer = None;
         }
         if record {
@@ -734,12 +736,10 @@ impl eframe::App for EasyCueApp {
 
         #[cfg(feature = "audio")]
         {
-            let base_volume = self.audio_playback.update(&mut self.audio_player);
-            let effective_volume = base_volume * self.ui_state.sound_master;
-            self.audio_player.set_volume(effective_volume);
+            self.audio_playback.update(self.ui_state.sound_master);
 
-            // Cross-trigger from audio→lighting (pending trigger set when audio cue starts)
-            if let Some(lighting_num) = self.audio_playback.take_pending_lighting_trigger() {
+            // Cross-triggers from audio→lighting queued at cue-start time
+            for lighting_num in self.audio_playback.take_pending_lighting_triggers() {
                 let light_idx = self.cue_list.cues().iter()
                     .position(|c| c.is_lighting() && (c.number - lighting_num).abs() < 0.01);
                 if let Some(idx) = light_idx {
