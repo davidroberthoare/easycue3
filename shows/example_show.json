@@ -1,105 +1,143 @@
 {
-  "audio_cues": [
-    {
-      "audio_path": "sample1.mp3",
-      "fade_in": 0.0,
-      "fade_out": 0.0,
-      "label": "Cue 1: sample1",
-      "notes": "",
-      "number": 1.0,
-      "triggers_lighting_cue": null,
-      "volume": 0.800000011920929
-    },
-    {
-      "audio_path": "sample2.mp3",
-      "fade_in": 0.0,
-      "fade_out": 0.0,
-      "label": "Cue 2: sample2",
-      "notes": "",
-      "number": 2.0,
-      "triggers_lighting_cue": null,
-      "volume": 0.800000011920929
-    },
-    {
-      "audio_path": "sample3.mp3",
-      "fade_in": 0.0,
-      "fade_out": 0.0,
-      "label": "Cue 3: sample3",
-      "notes": "",
-      "number": 3.0,
-      "triggers_lighting_cue": 4.0,
-      "volume": 0.800000011920929
-    }
-  ],
-  "created": "2026-05-01T11:11:05.114514070+00:00",
+  "audio_cues": [],
+  "created": "2026-05-03T01:22:22.151892654+00:00",
   "cues": [
     {
-      "channel_values": {
-        "1": 100,
-        "2": 100,
-        "3": 100,
-        "4": 100,
-        "5": 100
+      "id": 1,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
       },
-      "fade_down": 2.0,
-      "fade_up": 2.0,
-      "label": "House Lights",
-      "number": 1.0,
-      "triggers_audio_cue": null
+      "label": "Cue 1",
+      "number": 1.0
     },
     {
-      "channel_values": {},
-      "fade_down": 3.0,
-      "fade_up": 3.0,
-      "label": "Blackout",
-      "number": 2.0,
-      "triggers_audio_cue": 1.0
+      "id": 2,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "10": 59,
+            "11": 59,
+            "12": 59,
+            "13": 59,
+            "14": 59,
+            "15": 59,
+            "2": 96
+          },
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 2",
+      "number": 2.0
     },
     {
-      "channel_values": {
-        "10": 78,
-        "11": 78,
-        "12": 78,
-        "13": 78
+      "id": 3,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "1": 100,
+            "20": 100
+          },
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
       },
-      "fade_down": 5.0,
-      "fade_up": 5.0,
-      "label": "Warm Stage Wash",
-      "number": 3.0,
-      "triggers_audio_cue": null
+      "label": "Cue 3",
+      "number": 3.0
     },
     {
-      "channel_values": {
-        "10": 59,
-        "11": 59,
-        "12": 59,
-        "13": 59,
-        "20": 100
+      "id": 4,
+      "kind": {
+        "data": {
+          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample1.mp3",
+          "fade_in": 0.0,
+          "fade_out": 0.0,
+          "notes": "",
+          "triggers_lighting_cue": null,
+          "volume": 0.800000011920929
+        },
+        "type": "Audio"
       },
-      "fade_down": 2.0,
-      "fade_up": 2.0,
-      "label": "Spotlight Center",
-      "number": 4.0,
-      "triggers_audio_cue": null
+      "label": "sample1",
+      "number": 4.0
+    },
+    {
+      "id": 5,
+      "kind": {
+        "data": {
+          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample2.mp3",
+          "fade_in": 0.0,
+          "fade_out": 0.0,
+          "notes": "",
+          "triggers_lighting_cue": null,
+          "volume": 0.800000011920929
+        },
+        "type": "Audio"
+      },
+      "label": "sample2",
+      "number": 5.0
+    },
+    {
+      "id": 6,
+      "kind": {
+        "data": {
+          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample3.mp3",
+          "fade_in": 0.0,
+          "fade_out": 0.0,
+          "notes": "",
+          "triggers_lighting_cue": null,
+          "volume": 0.800000011920929
+        },
+        "type": "Audio"
+      },
+      "label": "sample3",
+      "number": 6.0
     }
   ],
   "description": "",
-  "modified": "2026-05-01T11:11:05.114660431+00:00",
+  "modified": "2026-05-03T01:22:22.151984185+00:00",
+  "next_cue_id": 7,
   "patch": [
     {
       "id": 1,
-      "label": "test",
+      "label": "dim1",
       "notes": "",
-      "profile_id": "rgbawuv",
+      "profile_id": "generic_dimmer",
       "start_address": 1,
       "universe": 1
     },
     {
       "id": 2,
-      "label": "dimmer",
+      "label": "d2",
       "notes": "",
       "profile_id": "generic_dimmer",
-      "start_address": 12,
+      "start_address": 2,
+      "universe": 1
+    },
+    {
+      "id": 3,
+      "label": "dice1",
+      "notes": "",
+      "profile_id": "rgbawuv",
+      "start_address": 10,
+      "universe": 1
+    },
+    {
+      "id": 4,
+      "label": "irgb1",
+      "notes": "",
+      "profile_id": "irgb",
+      "start_address": 20,
       "universe": 1
     }
   ],

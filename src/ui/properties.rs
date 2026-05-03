@@ -5,23 +5,47 @@ use crate::app::EasyCueApp;
 
 /// Render the properties panel
 pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
-    // Determine what's selected
     let has_channels = !app.ui_state.selected_channels.is_empty();
     let has_fixtures = !app.ui_state.selected_fixtures.is_empty();
-    
+    let has_cue     = app.ui_state.selected_cue_id.is_some();
+
+    // Cue properties take precedence over fixture/channel properties
+    if has_cue {
+        if let Some(sel_id) = app.ui_state.selected_cue_id {
+            let cue = app.cue_list.find_by_id(sel_id).cloned();
+            if let Some(cue) = cue {
+                let abs_idx = app.cue_list.cues().iter().position(|c| c.id == sel_id);
+                if cue.is_lighting() {
+                    render_lighting_cue_properties(ui, app, &cue, abs_idx);
+                } else {
+                    #[cfg(feature = "audio")]
+                    render_audio_cue_properties(ui, app, &cue, abs_idx);
+                    #[cfg(not(feature = "audio"))]
+                    ui.label("(audio feature not enabled)");
+                }
+            }
+        }
+        if !has_channels && !has_fixtures {
+            return;
+        }
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
+    }
+
     if !has_channels && !has_fixtures {
-        ui.vertical_centered(|ui| {
-            ui.add_space(20.0);
-            ui.label(egui::RichText::new("No Selection").color(egui::Color32::GRAY));
-            ui.add_space(10.0);
-            ui.label("Select a fixture or channel to view properties");
-            ui.add_space(10.0);
-            ui.label(egui::RichText::new("Tip: Ctrl/Cmd+Click to select multiple items").italics().small());
-        });
+        if !has_cue {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.label(egui::RichText::new("No Selection").color(egui::Color32::GRAY));
+                ui.add_space(10.0);
+                ui.label("Select a cue or channel to view properties");
+            });
+        }
         return;
     }
-    
-    // Show fixture properties if fixtures are selected (takes precedence)
+
+    // Fixture / channel properties (below cue section if cue also selected)
     if has_fixtures {
         if app.ui_state.selected_fixtures.len() == 1 {
             let fixture_id = *app.ui_state.selected_fixtures.iter().next().unwrap();
@@ -29,9 +53,7 @@ pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         } else {
             render_multi_fixture_properties(ui, app);
         }
-    }
-    // Show channel properties if channels are selected (and no fixtures)
-    else if has_channels {
+    } else if has_channels {
         if app.ui_state.selected_channels.len() == 1 {
             let channel = *app.ui_state.selected_channels.iter().next().unwrap();
             render_single_channel_properties(ui, app, channel);
@@ -39,6 +61,179 @@ pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             render_multi_channel_properties(ui, app);
         }
     }
+}
+
+// ── Cue properties ────────────────────────────────────────────────────────────
+
+fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
+    ui.label(egui::RichText::new(format!("💡 Cue {:.1}", cue.number)).strong());
+
+    let Some(idx) = abs_idx else { return };
+
+    egui::Grid::new("lx_cue_props")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            // Label
+            ui.label("Label:");
+            let mut label = cue.label.clone();
+            if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            }
+            ui.end_row();
+
+            // Fade times
+            let (fade_up, fade_down) = cue.lighting_data()
+                .map(|d| (d.fade_up, d.fade_down))
+                .unwrap_or((0.0, 0.0));
+
+            ui.label("Fade ↑:");
+            let mut fu = fade_up;
+            if ui.add(egui::DragValue::new(&mut fu).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.lighting_data_mut() { d.fade_up = fu; }
+                }
+            }
+            ui.end_row();
+
+            ui.label("Fade ↓:");
+            let mut fd = fade_down;
+            if ui.add(egui::DragValue::new(&mut fd).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.lighting_data_mut() { d.fade_down = fd; }
+                }
+            }
+            ui.end_row();
+
+            // Channel count
+            let ch_count = cue.lighting_data().map(|d| d.channel_values.len()).unwrap_or(0);
+            ui.label("Channels:");
+            ui.label(ch_count.to_string());
+            ui.end_row();
+        });
+
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        if ui.button("Load to Stage").on_hover_text("Push cue values to live output").clicked() {
+            let values: Vec<(u16, u8)> = cue.lighting_data()
+                .map(|d| d.channel_values.iter().map(|(&k, &v)| (k, v)).collect())
+                .unwrap_or_default();
+            if let Some(universe) = app.universes.first_mut() {
+                for (ch, val) in values {
+                    let _ = universe.set_channel(ch, val);
+                }
+            }
+            app.ui_state.status_message = format!("Loaded cue {:.1} to stage", cue.number);
+        }
+
+        if ui.button("Capture Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
+            let channel_values: Vec<(u16, u8)> = if let Some(universe) = app.universes.first() {
+                (1u16..=512)
+                    .filter_map(|ch| universe.get_channel(ch).ok().filter(|&v| v > 0).map(|v| (ch, v)))
+                    .collect()
+            } else { vec![] };
+            if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                if let Some(d) = c.lighting_data_mut() {
+                    d.channel_values.clear();
+                    for (ch, val) in channel_values {
+                        d.set_channel(ch, val);
+                    }
+                }
+            }
+            app.ui_state.status_message = format!("Captured stage to cue {:.1}", cue.number);
+        }
+    });
+
+    // Non-zero channel values (compact list)
+    if let Some(data) = cue.lighting_data() {
+        if !data.channel_values.is_empty() {
+            ui.add_space(6.0);
+            ui.collapsing(format!("Channel Values ({})", data.channel_values.len()), |ui| {
+                let mut pairs: Vec<(u16, u8)> = data.channel_values.iter().map(|(&k, &v)| (k, v)).collect();
+                pairs.sort_by_key(|(ch, _)| *ch);
+                egui::Grid::new("lx_cue_ch").num_columns(4).spacing([6.0, 2.0]).show(ui, |ui| {
+                    for (i, (ch, val)) in pairs.iter().enumerate() {
+                        ui.label(format!("{}: {}", ch, val));
+                        if (i + 1) % 4 == 0 { ui.end_row(); }
+                    }
+                });
+            });
+        }
+    }
+}
+
+#[cfg(feature = "audio")]
+fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
+    ui.label(egui::RichText::new(format!("🔊 Cue {:.1}", cue.number)).strong());
+
+    let Some(idx) = abs_idx else { return };
+
+    let (path, volume, fade_in, fade_out) = cue.audio_data()
+        .map(|d| (d.audio_path.clone(), d.volume, d.fade_in, d.fade_out))
+        .unwrap_or_default();
+
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("(none)").to_string();
+    let resolved = crate::cue::AudioData::new(path.clone()).resolved_path();
+    let file_ok = resolved.exists();
+
+    egui::Grid::new("audio_cue_props")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            ui.label("Label:");
+            let mut label = cue.label.clone();
+            if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            }
+            ui.end_row();
+
+            ui.label("File:");
+            ui.horizontal(|ui| {
+                let file_color = if file_ok { ui.style().visuals.text_color() } else { egui::Color32::RED };
+                ui.label(egui::RichText::new(&filename).color(file_color));
+                if ui.small_button("…").on_hover_text("Choose different file").clicked() {
+                    if let Some(new_path) = rfd::FileDialog::new()
+                        .add_filter("Audio", &["mp3","wav","flac","ogg","aac","m4a"])
+                        .pick_file()
+                    {
+                        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                            if let Some(d) = c.audio_data_mut() {
+                                d.set_path(new_path);
+                            }
+                        }
+                        app.ui_state.audio_file_cache.clear();
+                    }
+                }
+            });
+            ui.end_row();
+
+            ui.label("Volume:");
+            let mut vol_pct = (volume * 100.0) as i32;
+            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.audio_data_mut() { d.volume = vol_pct as f32 / 100.0; }
+                }
+            }
+            ui.end_row();
+
+            ui.label("Fade In:");
+            let mut fi = fade_in;
+            if ui.add(egui::DragValue::new(&mut fi).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.audio_data_mut() { d.fade_in = fi; }
+                }
+            }
+            ui.end_row();
+
+            ui.label("Fade Out:");
+            let mut fo = fade_out;
+            if ui.add(egui::DragValue::new(&mut fo).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.audio_data_mut() { d.fade_out = fo; }
+                }
+            }
+            ui.end_row();
+        });
 }
 
 /// Render properties for a single selected channel

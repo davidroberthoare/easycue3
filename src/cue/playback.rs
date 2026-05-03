@@ -1,28 +1,26 @@
-//! Cue playback engine with crossfade support
+//! Lighting cue playback engine with crossfade support
 
-use crate::cue::{Cue, CueList, CueState};
+use crate::cue::{Cue, CueState};
 use crate::dmx::Universe;
 use std::time::Instant;
 
-/// Manages cue playback and crossfades
+/// Manages lighting cue playback and crossfades.
+/// Navigation (which cue is next) is the caller's responsibility;
+/// this engine only starts, updates, and stops fades.
 pub struct PlaybackEngine {
-    /// Current playback state
     state: CueState,
-    /// When the current fade started
+    current_cue_id: Option<u32>,
     fade_start: Option<Instant>,
-    /// Duration of the current fade in seconds
     fade_duration: f32,
-    /// Previous cue values (for crossfade from)
     previous_values: [u8; 512],
-    /// Target cue values (for crossfade to)
     target_values: [u8; 512],
 }
 
 impl PlaybackEngine {
-    /// Create a new playback engine
     pub fn new() -> Self {
         Self {
             state: CueState::Stopped,
+            current_cue_id: None,
             fade_start: None,
             fade_duration: 0.0,
             previous_values: [0; 512],
@@ -30,73 +28,35 @@ impl PlaybackEngine {
         }
     }
 
-    /// Start playing a cue (GO command)
-    pub fn go(&mut self, cue_list: &mut CueList, universe: &Universe) -> bool {
-        if let Some(next_idx) = cue_list.next_index() {
-            if let Some(cue) = cue_list.get_cue(next_idx) {
-                self.start_cue(cue, universe);
-                cue_list.set_current_index(Some(next_idx));
-                return true;
-            }
-        }
-        false
-    }
+    /// Start fading to the given lighting cue. The caller has already decided which cue to fire.
+    pub fn start(&mut self, cue: &Cue, universe: &Universe) {
+        let Some(data) = cue.lighting_data() else { return };
 
-    /// Go back to previous cue (BACK command)
-    pub fn back(&mut self, cue_list: &mut CueList, universe: &Universe) -> bool {
-        if let Some(prev_idx) = cue_list.previous_index() {
-            if let Some(cue) = cue_list.get_cue(prev_idx) {
-                self.start_cue(cue, universe);
-                cue_list.set_current_index(Some(prev_idx));
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Jump to a specific cue by index
-    pub fn go_to_cue(&mut self, cue_list: &CueList, cue_index: usize, universe: &Universe) -> bool {
-        if let Some(cue) = cue_list.get_cue(cue_index) {
-            self.start_cue(cue, universe);
-            // Note: We can't mutate cue_list here since we only have &CueList
-            // The caller will need to update current_index separately
-            return true;
-        }
-        false
-    }
-
-    /// Stop playback
-    pub fn stop(&mut self) {
-        self.state = CueState::Stopped;
-        self.fade_start = None;
-    }
-
-    /// Start playing a specific cue
-    fn start_cue(&mut self, cue: &Cue, universe: &Universe) {
-        // Capture current live output as starting point for fade
-        // This prevents snapping when interrupting an existing fade
         for channel in 1..=512 {
-            let value = universe.get_channel(channel).unwrap_or(0);
-            self.previous_values[(channel - 1) as usize] = value;
+            self.previous_values[(channel - 1) as usize] = universe.get_channel(channel).unwrap_or(0);
         }
-        
-        // Set target values from cue
+
         self.target_values.fill(0);
-        for (&channel, &value) in &cue.channel_values {
+        for (&channel, &value) in &data.channel_values {
             if channel >= 1 && channel <= 512 {
                 self.target_values[(channel - 1) as usize] = value;
             }
         }
 
-        // Start fade
-        self.fade_duration = cue.fade_up;
+        self.fade_duration = data.fade_up;
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
+        self.current_cue_id = Some(cue.id);
 
-        log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, cue.fade_up);
+        log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, data.fade_up);
     }
 
-    /// Update the playback state and apply to universe
+    pub fn stop(&mut self) {
+        self.state = CueState::Stopped;
+        self.fade_start = None;
+    }
+
+    /// Update playback state and write interpolated values to universe.
     pub fn update(&mut self, universe: &mut Universe) {
         match self.state {
             CueState::Fading { .. } => {
@@ -108,15 +68,12 @@ impl PlaybackEngine {
                         1.0
                     };
 
-                    // Linear crossfade (TODO: support other curves)
                     for channel in 1..=512 {
                         let prev = self.previous_values[(channel - 1) as usize] as f32;
                         let target = self.target_values[(channel - 1) as usize] as f32;
-                        let current = prev + (target - prev) * progress;
-                        let _ = universe.set_channel(channel, current as u8);
+                        let _ = universe.set_channel(channel, (prev + (target - prev) * progress) as u8);
                     }
 
-                    // Update state
                     if progress >= 1.0 {
                         self.state = CueState::Active;
                         self.previous_values = self.target_values;
@@ -126,23 +83,33 @@ impl PlaybackEngine {
                     }
                 }
             }
-            CueState::Active => {
-                // Holding steady - no updates needed
-            }
-            CueState::Stopped => {
-                // Not playing
-            }
+            CueState::Active | CueState::Stopped => {}
         }
     }
 
-    /// Get the current playback state
     pub fn state(&self) -> CueState {
         self.state
     }
 
-    /// Check if currently playing
     pub fn is_playing(&self) -> bool {
         !matches!(self.state, CueState::Stopped)
+    }
+
+    /// The stable ID of the cue currently active or fading. Used for row coloring in UI.
+    pub fn current_cue_id(&self) -> Option<u32> {
+        if matches!(self.state, CueState::Stopped) {
+            None
+        } else {
+            self.current_cue_id
+        }
+    }
+
+    /// Fade progress [0,1] if currently fading, None otherwise.
+    pub fn fade_progress(&self) -> Option<f32> {
+        match self.state {
+            CueState::Fading { progress } => Some(progress),
+            _ => None,
+        }
     }
 }
 

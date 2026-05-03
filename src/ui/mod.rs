@@ -3,8 +3,7 @@
 //! egui-based UI panels and widgets.
 
 mod channels;
-mod lighting_cues;
-mod sound_cues;
+mod cues;
 mod properties;
 mod patching;
 
@@ -12,8 +11,7 @@ use egui::Context;
 use crate::app::{EasyCueApp, TabKind};
 
 pub use channels::render_channels_panel;
-pub use lighting_cues::render_lighting_cues_panel;
-pub use sound_cues::render_sound_cues_panel;
+pub use cues::render_cues_panel;
 pub use properties::render_properties_panel;
 pub use patching::{render_patching_panel, PatchingPanelState};
 
@@ -245,14 +243,14 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
         
         match tab {
             TabKind::Channels => render_channels_panel(ui, self.app),
-            TabKind::LightingCues => render_lighting_cues_panel(ui, self.app),
-            TabKind::SoundCues => render_sound_cues_panel(ui, self.app),
+            TabKind::Cues => render_cues_panel(ui, self.app),
             TabKind::Patching => {
                 let mut patching_state = std::mem::take(&mut self.app.patching_state);
                 render_patching_panel(ui, self.app, &mut patching_state);
                 self.app.patching_state = patching_state;
             }
             TabKind::Properties => render_properties_panel(ui, self.app),
+            TabKind::Unknown => { ui.label("(unknown tab)"); }
         }
     }
 
@@ -277,7 +275,9 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.playback.stop();
                     app.show_title = "New Show".to_string();
                     app.current_file_path = None;
-                    app.ui_state.selected_cue_index = None;
+                    app.ui_state.selected_cue_id = None;
+                    app.ui_state.selected_lighting_cue_id = None;
+                    app.ui_state.selected_audio_cue_id = None;
                     app.ui_state.selected_channels.clear();
                     app.ui_state.channel_base_levels.clear();
                     app.ui_state.group_master = 100;
@@ -377,12 +377,8 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Channels);
                     ui.close_menu();
                 }
-                if ui.button("Lighting Cues").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::LightingCues);
-                    ui.close_menu();
-                }
-                if ui.button("Sound Cues").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::SoundCues);
+                if ui.button("Cues").clicked() {
+                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Cues);
                     ui.close_menu();
                 }
                 if ui.button("Patching").clicked() {
