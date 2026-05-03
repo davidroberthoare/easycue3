@@ -21,6 +21,7 @@ pub enum TabKind {
     Cues,       // unified lighting + audio cue list
     Patching,
     Properties,
+    InstrumentProperties,
     // Legacy variants kept for saved dock state deserialization — never shown
     #[serde(other)]
     Unknown,
@@ -32,7 +33,8 @@ impl std::fmt::Display for TabKind {
             TabKind::Channels => write!(f, "Channels"),
             TabKind::Cues => write!(f, "Cues"),
             TabKind::Patching => write!(f, "Patching"),
-            TabKind::Properties => write!(f, "Properties"),
+            TabKind::Properties => write!(f, "Cue Properties"),
+            TabKind::InstrumentProperties => write!(f, "Instrument Properties"),
             TabKind::Unknown => write!(f, "?"),
         }
     }
@@ -357,8 +359,9 @@ impl EasyCueApp {
     fn create_default_dock_layout() -> DockState<TabKind> {
         let mut dock_state = DockState::new(vec![TabKind::Channels]);
         let tree = dock_state.main_surface_mut();
-        let [_channels, _properties] = tree.split_right(egui_dock::NodeIndex::root(), 0.7, vec![TabKind::Properties]);
+        let [_channels, right] = tree.split_right(egui_dock::NodeIndex::root(), 0.7, vec![TabKind::Properties]);
         let [_, _] = tree.split_below(egui_dock::NodeIndex::root(), 0.5, vec![TabKind::Cues, TabKind::Patching]);
+        let [_, _] = tree.split_below(right, 0.5, vec![TabKind::InstrumentProperties]);
         dock_state
     }
 

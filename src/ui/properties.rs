@@ -1,51 +1,38 @@
-//! Properties panel - shows details of selected channel or cue
+//! Properties panels — cue properties and instrument properties
 
 use egui::Ui;
 use crate::app::EasyCueApp;
 
-/// Render the properties panel
-pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
-    let has_channels = !app.ui_state.selected_channels.is_empty();
-    let has_fixtures = !app.ui_state.selected_fixtures.is_empty();
-    let has_cue     = app.ui_state.selected_cue_id.is_some();
-
-    // Cue properties take precedence over fixture/channel properties
-    if has_cue {
-        if let Some(sel_id) = app.ui_state.selected_cue_id {
-            let cue = app.cue_list.find_by_id(sel_id).cloned();
-            if let Some(cue) = cue {
-                let abs_idx = app.cue_list.cues().iter().position(|c| c.id == sel_id);
-                if cue.is_lighting() {
-                    render_lighting_cue_properties(ui, app, &cue, abs_idx);
-                } else {
-                    #[cfg(feature = "audio")]
-                    render_audio_cue_properties(ui, app, &cue, abs_idx);
-                    #[cfg(not(feature = "audio"))]
-                    ui.label("(audio feature not enabled)");
-                }
+/// Render cue properties for the selected cue.
+pub fn render_cue_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
+    if let Some(sel_id) = app.ui_state.selected_cue_id {
+        let cue = app.cue_list.find_by_id(sel_id).cloned();
+        if let Some(cue) = cue {
+            let abs_idx = app.cue_list.cues().iter().position(|c| c.id == sel_id);
+            if cue.is_lighting() {
+                render_lighting_cue_properties(ui, app, &cue, abs_idx);
+            } else {
+                #[cfg(feature = "audio")]
+                render_audio_cue_properties(ui, app, &cue, abs_idx);
+                #[cfg(not(feature = "audio"))]
+                ui.label("(audio feature not enabled)");
             }
-        }
-        if !has_channels && !has_fixtures {
             return;
         }
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(4.0);
     }
+    ui.vertical_centered(|ui| {
+        ui.add_space(20.0);
+        ui.label(egui::RichText::new("No Cue Selected").color(egui::Color32::GRAY));
+        ui.add_space(10.0);
+        ui.label("Select a cue to view its properties");
+    });
+}
 
-    if !has_channels && !has_fixtures {
-        if !has_cue {
-            ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
-                ui.label(egui::RichText::new("No Selection").color(egui::Color32::GRAY));
-                ui.add_space(10.0);
-                ui.label("Select a cue or channel to view properties");
-            });
-        }
-        return;
-    }
+/// Render instrument/channel properties for the current selection.
+pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
+    let has_channels = !app.ui_state.selected_channels.is_empty();
+    let has_fixtures = !app.ui_state.selected_fixtures.is_empty();
 
-    // Fixture / channel properties (below cue section if cue also selected)
     if has_fixtures {
         if app.ui_state.selected_fixtures.len() == 1 {
             let fixture_id = *app.ui_state.selected_fixtures.iter().next().unwrap();
@@ -60,6 +47,13 @@ pub fn render_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         } else {
             render_multi_channel_properties(ui, app);
         }
+    } else {
+        ui.vertical_centered(|ui| {
+            ui.add_space(20.0);
+            ui.label(egui::RichText::new("No Selection").color(egui::Color32::GRAY));
+            ui.add_space(10.0);
+            ui.label("Select a channel or fixture to view properties");
+        });
     }
 }
 
