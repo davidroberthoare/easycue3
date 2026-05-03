@@ -373,11 +373,23 @@ impl EasyCueApp {
             sound_fade: None,
         };
 
-        let example_path = std::path::Path::new("shows/example_show.json");
-        if example_path.exists() {
-            match app.load_show(example_path) {
-                Ok(_) => log::info!("Loaded example show on startup"),
-                Err(e) => log::warn!("Could not load example show: {}", e),
+        let last_file = cc.storage
+            .and_then(|s| s.get_string("last_file"))
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.exists());
+
+        if let Some(path) = last_file {
+            match app.load_show(&path) {
+                Ok(_) => log::info!("Loaded last used show: {}", path.display()),
+                Err(e) => log::warn!("Could not load last used show: {}", e),
+            }
+        } else {
+            let default_path = std::path::Path::new("shows/default_show.json");
+            if default_path.exists() {
+                match app.load_show(default_path) {
+                    Ok(_) => log::info!("Loaded default show on startup"),
+                    Err(e) => log::warn!("Could not load default show: {}", e),
+                }
             }
         }
 
@@ -948,6 +960,9 @@ impl eframe::App for EasyCueApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "dock_state", &self.dock_state);
+        if let Some(path) = &self.current_file_path {
+            storage.set_string("last_file", path.to_string_lossy().to_string());
+        }
         log::info!("Saved UI layout");
     }
 }
