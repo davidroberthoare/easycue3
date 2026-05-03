@@ -92,6 +92,19 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
 
         #[cfg(feature = "audio")]
+        if ui.button("➕ Adjust").on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
+            let next_number = app.cue_list.cues().iter()
+                .last()
+                .map(|c| c.number.floor() + 1.0)
+                .unwrap_or(1.0);
+            let cue = crate::cue::Cue::new_adjust(next_number);
+            let id = app.cue_list.next_id();
+            app.cue_list.add_cue(cue);
+            app.ui_state.selected_cue_id = Some(id);
+            app.ui_state.status_message = format!("Added adjust cue {:.0}", next_number);
+        }
+
+        #[cfg(feature = "audio")]
         if ui.button("➕ Audio").clicked() {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Audio Files", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
@@ -263,11 +276,31 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 let is_audio = cue.is_audio();
                 #[cfg(not(feature = "audio"))]
                 let is_audio = false;
+                #[cfg(feature = "audio")]
+                let is_adjust = cue.is_adjust();
+                #[cfg(not(feature = "audio"))]
+                let is_adjust = false;
 
                 // Info column text (contextual)
                 let info_text = if is_lighting {
                     let fade = cue.lighting_data().map(|d| d.fade_up).unwrap_or(0.0);
                     if fade > 0.0 { format!("↑{:.1}s", fade) } else { "instant".to_string() }
+                } else if is_adjust {
+                    #[cfg(feature = "audio")]
+                    {
+                        cue.adjust_data()
+                            .map(|d| {
+                                let stop = if d.stop_when_complete { "+stop" } else { "" };
+                                if d.fade_time > 0.0 {
+                                    format!("→{:.0}% {:.1}s{}", d.volume * 100.0, d.fade_time, stop)
+                                } else {
+                                    format!("→{:.0}% snap{}", d.volume * 100.0, stop)
+                                }
+                            })
+                            .unwrap_or_default()
+                    }
+                    #[cfg(not(feature = "audio"))]
+                    String::new()
                 } else {
                     #[cfg(feature = "audio")]
                     {
@@ -358,7 +391,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Col 1: type icon
                 row.col(|ui| {
                     paint_bg(ui);
-                    let icon = if is_lighting { "💡" } else { "🔊" };
+                    let icon = if is_lighting { "💡" } else if is_adjust { "🎚" } else { "🔊" };
                     ui.label(egui::RichText::new(icon).size(13.0));
                 });
 

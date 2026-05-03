@@ -164,6 +164,20 @@ pub struct EasyCueApp {
 
     /// Pending autofollow: time the current cue fired + delay to wait before calling go_next()
     pub autofollow_timer: Option<(std::time::Instant, f32)>,
+
+    /// In-progress sound master fade driven by an Adjust cue.
+    #[cfg(feature = "audio")]
+    pub sound_fade: Option<SoundFadeState>,
+}
+
+/// Tracks a timed fade of the sound master, driven by an Adjust cue.
+#[cfg(feature = "audio")]
+pub struct SoundFadeState {
+    pub start_volume: f32,
+    pub target_volume: f32,
+    pub fade_time: f32,
+    pub start: std::time::Instant,
+    pub stop_when_complete: bool,
 }
 
 impl EasyCueApp {
@@ -347,6 +361,8 @@ impl EasyCueApp {
             #[cfg(not(feature = "audio"))]
             audio_playback: crate::audio::AudioPlaybackEngine::new(),
             autofollow_timer: None,
+            #[cfg(feature = "audio")]
+            sound_fade: None,
         };
 
         let example_path = std::path::Path::new("shows/example_show.json");
@@ -501,6 +517,11 @@ impl EasyCueApp {
             crate::cue::CueKind::Audio(_) => {
                 self.audio_playback.start(&cue, &self.audio_player)
             }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Adjust(data) => {
+                self.fire_adjust_cue(data.clone());
+                true
+            }
         };
         if fired {
             self.cue_list.set_current_index(Some(next_idx));
@@ -535,6 +556,11 @@ impl EasyCueApp {
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Audio(_) => {
                 self.audio_playback.start(&cue, &self.audio_player)
+            }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Adjust(data) => {
+                self.fire_adjust_cue(data.clone());
+                true
             }
         };
         if fired {
@@ -618,6 +644,11 @@ impl EasyCueApp {
             crate::cue::CueKind::Audio(_) => {
                 self.audio_playback.start(&cue, &self.audio_player)
             }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Adjust(data) => {
+                self.fire_adjust_cue(data.clone());
+                true
+            }
         };
         if fired {
             self.cue_list.set_current_index(Some(abs_idx));
@@ -634,6 +665,29 @@ impl EasyCueApp {
             }
         }
         fired
+    }
+
+    /// Execute an Adjust cue: start a sound-master fade (or snap if fade_time == 0).
+    #[cfg(feature = "audio")]
+    fn fire_adjust_cue(&mut self, data: crate::cue::AdjustData) {
+        if data.fade_time <= 0.0 {
+            self.ui_state.sound_master = data.volume;
+            if data.stop_when_complete {
+                self.audio_playback.stop_all();
+            }
+            log::info!("Adjust: snap to {:.0}%{}", data.volume * 100.0,
+                if data.stop_when_complete { " + stop" } else { "" });
+        } else {
+            self.sound_fade = Some(SoundFadeState {
+                start_volume: self.ui_state.sound_master,
+                target_volume: data.volume,
+                fade_time: data.fade_time,
+                start: std::time::Instant::now(),
+                stop_when_complete: data.stop_when_complete,
+            });
+            log::info!("Adjust: fade to {:.0}% over {:.1}s{}", data.volume * 100.0, data.fade_time,
+                if data.stop_when_complete { " then stop" } else { "" });
+        }
     }
 
     /// Fire the audio cross-trigger linked to the given lighting cue, if any.
@@ -764,6 +818,25 @@ impl eframe::App for EasyCueApp {
             if start.elapsed().as_secs_f32() >= delay {
                 self.autofollow_timer = None;
                 self.go_next();
+            }
+        }
+
+        // Adjust cue: ramp sound master toward target
+        #[cfg(feature = "audio")]
+        if let Some(fade) = self.sound_fade.take() {
+            let elapsed = fade.start.elapsed().as_secs_f32();
+            let progress = if fade.fade_time > 0.0 {
+                (elapsed / fade.fade_time).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            self.ui_state.sound_master =
+                fade.start_volume + (fade.target_volume - fade.start_volume) * progress;
+            if progress < 1.0 {
+                self.sound_fade = Some(fade); // put it back, still running
+            } else if fade.stop_when_complete {
+                self.audio_playback.stop_all();
+                log::debug!("Adjust fade complete: stopping all audio");
             }
         }
 
