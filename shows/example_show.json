@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-03T03:40:35.488768102+00:00",
+  "created": "2026-05-03T03:49:03.133684869+00:00",
   "cues": [
     {
       "autofollow": null,
@@ -18,7 +18,7 @@
       "number": 1.0
     },
     {
-      "autofollow": null,
+      "autofollow": 2.0,
       "id": 2,
       "kind": {
         "data": {
@@ -114,7 +114,7 @@
     }
   ],
   "description": "",
-  "modified": "2026-05-03T03:40:35.489102710+00:00",
+  "modified": "2026-05-03T03:49:03.133774649+00:00",
   "next_cue_id": 7,
   "patch": [
     {

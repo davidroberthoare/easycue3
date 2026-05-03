@@ -13,19 +13,58 @@ const COLOR_NEXT:            egui::Color32 = egui::Color32::from_rgb(30, 50, 80)
 pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Toolbar ──────────────────────────────────────────────────────────────
     ui.horizontal(|ui| {
-        // Transport
-        let go_enabled = app.cue_list.next_any_index().is_some();
+        // ── Transport ───────────────────────────────────────────────────────
+
+        // Resolve the on-deck target: typed cue number overrides the default next cue.
+        let next_idx = app.cue_list.next_any_index();
+        let go_target_idx: Option<usize> = {
+            let input = app.ui_state.go_cue_input.trim();
+            if input.is_empty() {
+                next_idx
+            } else {
+                input.parse::<f32>().ok().and_then(|num| {
+                    app.cue_list.cues().iter()
+                        .position(|c| (c.number - num).abs() < 0.005)
+                })
+            }
+        };
+        let next_hint = next_idx
+            .and_then(|i| app.cue_list.get_cue(i))
+            .map(|c| format!("{:.1}", c.number))
+            .unwrap_or_default();
+
+        let go_enabled = go_target_idx.is_some();
         let back_enabled = app.cue_list.previous_any_index().is_some();
+
+        // On-deck number box
+        let ondeck_resp = ui.add(
+            egui::TextEdit::singleline(&mut app.ui_state.go_cue_input)
+                .desired_width(45.0)
+                .hint_text(&next_hint)
+                .font(egui::TextStyle::Monospace),
+        );
+        let enter_in_box = ondeck_resp.lost_focus()
+            && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
         let go_btn = egui::Button::new("⏵ GO")
             .fill(if go_enabled { egui::Color32::from_rgb(50, 120, 50) } else { egui::Color32::from_rgb(30, 60, 30) });
-        if ui.add_enabled(go_enabled, go_btn).clicked() {
-            if app.go_next() {
-                let label = app.cue_list.current_index()
-                    .and_then(|i| app.cue_list.get_cue(i))
+        if ui.add_enabled(go_enabled, go_btn).clicked() || (go_enabled && enter_in_box) {
+            if app.ui_state.go_cue_input.trim().is_empty() {
+                if app.go_next() {
+                    let label = app.cue_list.current_index()
+                        .and_then(|i| app.cue_list.get_cue(i))
+                        .map(|c| format!("Q{:.1} {}", c.number, c.label))
+                        .unwrap_or_default();
+                    app.ui_state.status_message = format!("GO → {}", label);
+                }
+            } else if let Some(abs_idx) = go_target_idx {
+                let label_str = app.cue_list.get_cue(abs_idx)
                     .map(|c| format!("Q{:.1} {}", c.number, c.label))
                     .unwrap_or_default();
-                app.ui_state.status_message = format!("GO → {}", label);
+                if app.go_to_cue(abs_idx) {
+                    app.ui_state.go_cue_input.clear();
+                    app.ui_state.status_message = format!("GO → {}", label_str);
+                }
             }
         }
 

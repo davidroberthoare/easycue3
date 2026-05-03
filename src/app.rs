@@ -88,6 +88,9 @@ pub struct UiState {
     pub show_quit_confirmation: bool,
     pub show_device_selector: bool,
     pub selected_usb_port: String,
+
+    /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
+    pub go_cue_input: String,
 }
 
 impl Default for UiState {
@@ -117,6 +120,7 @@ impl Default for UiState {
             show_quit_confirmation: false,
             show_device_selector: false,
             selected_usb_port: String::new(),
+            go_cue_input: String::new(),
             #[cfg(feature = "audio")]
             audio_file_cache: HashMap::new(),
             show_debug_ui: false,
@@ -597,8 +601,10 @@ impl EasyCueApp {
         fired
     }
 
-    /// Jump to and fire the cue at `abs_idx` (regardless of kind). Updates the play head.
+    /// Jump to and fire the cue at `abs_idx` (regardless of kind). Updates the play head,
+    /// arms autofollow, and fires any cross-triggers — identical behaviour to go_next().
     pub fn go_to_cue(&mut self, abs_idx: usize) -> bool {
+        self.autofollow_timer = None;
         let cue = self.cue_list.get_cue(abs_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
@@ -615,6 +621,17 @@ impl EasyCueApp {
         };
         if fired {
             self.cue_list.set_current_index(Some(abs_idx));
+            log::info!("GO→ cue {:.1} '{}'", cue.number, cue.label);
+            if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
+                self.autofollow_timer = Some((std::time::Instant::now(), delay));
+                log::info!("  autofollow armed: {:.1}s", delay);
+            }
+            #[cfg(feature = "audio")]
+            if cue.is_lighting() {
+                self.fire_audio_cross_trigger(cue.id);
+            } else {
+                self.fire_lighting_cross_trigger(cue.id);
+            }
         }
         fired
     }
@@ -722,7 +739,24 @@ impl eframe::App for EasyCueApp {
             self.ui_state.selected_lighting_cue_id = Some(id);
         }
         if go {
-            self.go_next();
+            let pending_idx = {
+                let input = self.ui_state.go_cue_input.trim();
+                if input.is_empty() {
+                    None
+                } else {
+                    input.parse::<f32>().ok().and_then(|num| {
+                        self.cue_list.cues().iter()
+                            .position(|c| (c.number - num).abs() < 0.005)
+                    })
+                }
+            };
+            if let Some(abs_idx) = pending_idx {
+                if self.go_to_cue(abs_idx) {
+                    self.ui_state.go_cue_input.clear();
+                }
+            } else {
+                self.go_next();
+            }
         }
 
         // Autofollow: fire next cue when timer elapses
