@@ -1,10 +1,86 @@
 {
   "audio_cues": [],
-  "created": "2026-05-03T15:05:33.750275826+00:00",
+  "created": "2026-05-03T15:43:27.599561175+00:00",
   "cues": [
     {
       "autofollow": null,
-      "id": 1,
+      "id": 9,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "99": 88
+          },
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 5",
+      "number": 5.0
+    },
+    {
+      "autofollow": null,
+      "id": 10,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "98": 54
+          },
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 6",
+      "number": 6.0
+    },
+    {
+      "autofollow": null,
+      "id": 11,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "2": 82,
+            "3": 32
+          },
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 7",
+      "number": 7.0
+    },
+    {
+      "autofollow": null,
+      "id": 12,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "1": 96,
+            "2": 4,
+            "20": 67,
+            "21": 73,
+            "22": 52,
+            "3": 90,
+            "98": 100,
+            "99": 98
+          },
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 8",
+      "number": 8.0
+    },
+    {
+      "autofollow": null,
+      "id": 8,
       "kind": {
         "data": {
           "channel_values": {},
@@ -14,8 +90,8 @@
         },
         "type": "Lighting"
       },
-      "label": "Cue 1",
-      "number": 1.0
+      "label": "Blackout",
+      "number": 4.0
     },
     {
       "autofollow": null,
@@ -34,47 +110,6 @@
       },
       "label": "sample1",
       "number": 4.0
-    },
-    {
-      "autofollow": 2.0,
-      "id": 2,
-      "kind": {
-        "data": {
-          "channel_values": {
-            "10": 59,
-            "11": 59,
-            "12": 59,
-            "13": 59,
-            "14": 59,
-            "15": 59,
-            "2": 96
-          },
-          "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
-        },
-        "type": "Lighting"
-      },
-      "label": "Cue 2",
-      "number": 2.0
-    },
-    {
-      "autofollow": null,
-      "id": 3,
-      "kind": {
-        "data": {
-          "channel_values": {
-            "1": 100,
-            "20": 100
-          },
-          "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
-        },
-        "type": "Lighting"
-      },
-      "label": "Cue 3",
-      "number": 3.0
     },
     {
       "autofollow": null,
@@ -108,33 +143,18 @@
       },
       "label": "fade out sample 1",
       "number": 7.0
-    },
-    {
-      "autofollow": null,
-      "id": 8,
-      "kind": {
-        "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
-        },
-        "type": "Lighting"
-      },
-      "label": "Blackout",
-      "number": 4.0
     }
   ],
   "description": "",
-  "modified": "2026-05-03T15:05:33.750424294+00:00",
-  "next_cue_id": 9,
+  "modified": "2026-05-03T15:43:27.599800441+00:00",
+  "next_cue_id": 13,
   "patch": [
     {
       "id": 1,
       "label": "dim1",
       "notes": "",
       "profile_id": "generic_dimmer",
-      "start_address": 1,
+      "start_address": 99,
       "universe": 1
     },
     {
@@ -142,7 +162,7 @@
       "label": "d2",
       "notes": "",
       "profile_id": "generic_dimmer",
-      "start_address": 2,
+      "start_address": 98,
       "universe": 1
     },
     {
@@ -150,7 +170,7 @@
       "label": "dice1",
       "notes": "",
       "profile_id": "rgbawuv",
-      "start_address": 10,
+      "start_address": 1,
       "universe": 1
     },
     {
