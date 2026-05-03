@@ -1,8 +1,9 @@
 {
   "audio_cues": [],
-  "created": "2026-05-03T01:22:22.151892654+00:00",
+  "created": "2026-05-03T03:40:35.488768102+00:00",
   "cues": [
     {
+      "autofollow": null,
       "id": 1,
       "kind": {
         "data": {
@@ -17,6 +18,7 @@
       "number": 1.0
     },
     {
+      "autofollow": null,
       "id": 2,
       "kind": {
         "data": {
@@ -39,6 +41,7 @@
       "number": 2.0
     },
     {
+      "autofollow": null,
       "id": 3,
       "kind": {
         "data": {
@@ -56,12 +59,14 @@
       "number": 3.0
     },
     {
+      "autofollow": 4.0,
       "id": 4,
       "kind": {
         "data": {
           "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample1.mp3",
           "fade_in": 0.0,
-          "fade_out": 0.0,
+          "fade_out": 2.0,
+          "length": 4.0,
           "notes": "",
           "triggers_lighting_cue": null,
           "volume": 0.800000011920929
@@ -72,12 +77,14 @@
       "number": 4.0
     },
     {
+      "autofollow": null,
       "id": 5,
       "kind": {
         "data": {
           "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample2.mp3",
           "fade_in": 0.0,
           "fade_out": 0.0,
+          "length": null,
           "notes": "",
           "triggers_lighting_cue": null,
           "volume": 0.800000011920929
@@ -88,12 +95,14 @@
       "number": 5.0
     },
     {
+      "autofollow": null,
       "id": 6,
       "kind": {
         "data": {
           "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample3.mp3",
           "fade_in": 0.0,
           "fade_out": 0.0,
+          "length": null,
           "notes": "",
           "triggers_lighting_cue": null,
           "volume": 0.800000011920929
@@ -105,7 +114,7 @@
     }
   ],
   "description": "",
-  "modified": "2026-05-03T01:22:22.151984185+00:00",
+  "modified": "2026-05-03T03:40:35.489102710+00:00",
   "next_cue_id": 7,
   "patch": [
     {
