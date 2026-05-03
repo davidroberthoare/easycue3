@@ -370,16 +370,22 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
 
             // Target cue: which audio cue to affect (None = global master)
             ui.label("Target Cue:");
-            let mut target_str = target_audio_cue
-                .map(|n| format!("{:.1}", n))
-                .unwrap_or_default();
+            let target_id = ui.id().with("adjust_target_cue");
+            // Only sync from storage when the field is not actively being edited,
+            // so the user's in-progress typing isn't overwritten each frame.
+            if !ui.memory(|m| m.has_focus(target_id)) {
+                app.ui_state.adjust_target_edit = target_audio_cue
+                    .map(|n| format!("{:.1}", n))
+                    .unwrap_or_default();
+            }
             let target_resp = ui.add(
-                egui::TextEdit::singleline(&mut target_str)
+                egui::TextEdit::singleline(&mut app.ui_state.adjust_target_edit)
+                    .id(target_id)
                     .desired_width(80.0)
                     .hint_text("all (master)"),
             );
             if target_resp.lost_focus() {
-                let parsed = target_str.trim().parse::<f32>().ok();
+                let parsed = app.ui_state.adjust_target_edit.trim().parse::<f32>().ok();
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
                     if let Some(d) = c.adjust_data_mut() { d.target_audio_cue = parsed; }
                 }
