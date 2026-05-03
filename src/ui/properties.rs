@@ -13,7 +13,13 @@ pub fn render_cue_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 render_lighting_cue_properties(ui, app, &cue, abs_idx);
             } else {
                 #[cfg(feature = "audio")]
-                render_audio_cue_properties(ui, app, &cue, abs_idx);
+                {
+                    if cue.is_adjust() {
+                        render_adjust_cue_properties(ui, app, &cue, abs_idx);
+                    } else {
+                        render_audio_cue_properties(ui, app, &cue, abs_idx);
+                    }
+                }
                 #[cfg(not(feature = "audio"))]
                 ui.label("(audio feature not enabled)");
             }
@@ -312,6 +318,84 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     if let Some(d) = c.audio_data_mut() {
                         d.triggers_lighting_cue = parsed;
                     }
+                }
+            }
+            ui.end_row();
+
+            // Auto-follow
+            ui.label("Auto-follow:");
+            let mut af_enabled = cue.autofollow.is_some();
+            let mut af_delay = cue.autofollow.unwrap_or(2.0_f32).max(0.1);
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut af_enabled, "").changed() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        c.autofollow = if af_enabled { Some(af_delay) } else { None };
+                    }
+                }
+                if af_enabled {
+                    if ui.add(egui::DragValue::new(&mut af_delay).speed(0.1).range(0.1..=300.0).suffix("s")).changed() {
+                        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                            c.autofollow = Some(af_delay);
+                        }
+                    }
+                } else {
+                    ui.label(egui::RichText::new("off").color(egui::Color32::GRAY));
+                }
+            });
+            ui.end_row();
+        });
+}
+
+/// Render properties for an Adjust cue (sound master ramp + optional stop)
+#[cfg(feature = "audio")]
+fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
+    ui.label(egui::RichText::new(format!("🎚 Cue {:.1}", cue.number)).strong());
+
+    let Some(idx) = abs_idx else { return };
+
+    let (volume, fade_time, stop_when_complete) = cue.adjust_data()
+        .map(|d| (d.volume, d.fade_time, d.stop_when_complete))
+        .unwrap_or((0.8, 2.0, false));
+
+    egui::Grid::new("adjust_cue_props")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            ui.label("Label:");
+            let mut label = cue.label.clone();
+            if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            }
+            ui.end_row();
+
+            ui.label("Target Vol:");
+            let mut vol_pct = (volume * 100.0) as i32;
+            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.adjust_data_mut() { d.volume = vol_pct as f32 / 100.0; }
+                }
+            }
+            ui.end_row();
+
+            ui.label("Fade Time:");
+            let mut ft = fade_time;
+            ui.horizontal(|ui| {
+                if ui.add(egui::DragValue::new(&mut ft).speed(0.1).range(0.0..=60.0).suffix("s")).changed() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        if let Some(d) = c.adjust_data_mut() { d.fade_time = ft; }
+                    }
+                }
+                if ft == 0.0 {
+                    ui.label(egui::RichText::new("(instant)").color(egui::Color32::GRAY));
+                }
+            });
+            ui.end_row();
+
+            ui.label("Stop when done:");
+            let mut stop = stop_when_complete;
+            if ui.checkbox(&mut stop, "").changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.adjust_data_mut() { d.stop_when_complete = stop; }
                 }
             }
             ui.end_row();

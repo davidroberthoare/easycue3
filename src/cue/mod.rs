@@ -6,6 +6,6 @@ pub mod playback;
 
 pub use types::{Cue, CueKind, CueState, LightingData};
 #[cfg(feature = "audio")]
-pub use types::AudioData;
+pub use types::{AudioData, AdjustData};
 pub use list::CueList;
 pub use playback::PlaybackEngine;
