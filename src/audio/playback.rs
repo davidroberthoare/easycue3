@@ -260,6 +260,21 @@ impl AudioPlaybackEngine {
         !self.streams.is_empty()
     }
 
+    /// Returns the 0–1 progress of the active volume-adjust fade for a stream, or None if no
+    /// fade is running on that stream (or the stream doesn't exist).
+    pub fn volume_adjust_progress(&self, cue_id: u32) -> Option<f32> {
+        self.streams.iter()
+            .find(|s| s.cue_id == cue_id)
+            .and_then(|s| s.volume_adjust.as_ref())
+            .map(|adj| {
+                if adj.fade_time > 0.0 {
+                    (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                }
+            })
+    }
+
     /// Drain audio→lighting cross-triggers queued since last call.
     pub fn take_pending_lighting_triggers(&mut self) -> Vec<f32> {
         std::mem::take(&mut self.pending_lighting_triggers)

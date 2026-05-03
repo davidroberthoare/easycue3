@@ -225,6 +225,16 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     #[cfg(not(feature = "audio"))]
     let audio_active_set: std::collections::HashSet<u32> = std::collections::HashSet::new();
 
+    // Pre-compute global sound-fade state so we can highlight the triggering Adjust cue row.
+    #[cfg(feature = "audio")]
+    let sound_fade_trigger: Option<u32> = app.sound_fade.as_ref().map(|sf| sf.trigger_cue_id);
+    #[cfg(feature = "audio")]
+    let sound_fade_progress: f32 = app.sound_fade.as_ref().map(|sf| {
+        if sf.fade_time > 0.0 {
+            (sf.start.elapsed().as_secs_f32() / sf.fade_time).clamp(0.0, 1.0)
+        } else { 1.0 }
+    }).unwrap_or(0.0);
+
     let cue_count = app.cue_list.len();
 
     if cue_count == 0 {
@@ -352,8 +362,31 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 #[cfg(not(feature = "audio"))]
                 let is_audio_fading = false;
 
-                let is_active  = is_lx_active   || is_audio_active;
-                let is_fading  = is_lx_fading   || is_audio_fading;
+                // Adjust cue: active while its targeted stream has a volume-adjust in progress,
+                // or while the global sound fade it triggered is still running.
+                #[cfg(feature = "audio")]
+                let adjust_progress: Option<f32> = if is_adjust {
+                    cue.adjust_data().and_then(|d| {
+                        if let Some(target_num) = d.target_audio_cue {
+                            let target_id = app.cue_list.cues().iter()
+                                .find(|c| (c.number - target_num).abs() < 0.005)
+                                .map(|c| c.id);
+                            target_id.and_then(|tid| app.audio_playback.volume_adjust_progress(tid))
+                        } else if sound_fade_trigger == Some(cue_id) {
+                            Some(sound_fade_progress)
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                };
+                #[cfg(not(feature = "audio"))]
+                let adjust_progress: Option<f32> = None;
+                let is_adjust_active = adjust_progress.is_some();
+
+                let is_active  = is_lx_active   || is_audio_active || is_adjust_active;
+                let is_fading  = is_lx_fading   || is_audio_fading || is_adjust_active;
                 let is_selected = selected_id   == Some(cue_id);
                 let is_next    = next_any_idx   == Some(abs_idx);
 
@@ -454,6 +487,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         format!("⏵{:.0}%", lx_fade.unwrap_or(0.0) * 100.0)
                     } else if is_lx_active {
                         "⏸".to_string()
+                    } else if is_adjust_active {
+                        #[cfg(feature = "audio")]
+                        {
+                            let pct = (adjust_progress.unwrap_or(0.0) * 100.0) as u32;
+                            format!("⏵{}%", pct)
+                        }
+                        #[cfg(not(feature = "audio"))]
+                        String::new()
                     } else if is_audio_active {
                         #[cfg(feature = "audio")]
                         {

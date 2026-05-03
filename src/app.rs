@@ -184,6 +184,8 @@ pub struct SoundFadeState {
     pub fade_time: f32,
     pub start: std::time::Instant,
     pub stop_when_complete: bool,
+    /// Stable ID of the Adjust cue that triggered this fade (for row highlighting).
+    pub trigger_cue_id: u32,
 }
 
 impl EasyCueApp {
@@ -525,7 +527,7 @@ impl EasyCueApp {
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Adjust(data) => {
-                self.fire_adjust_cue(data.clone());
+                self.fire_adjust_cue(cue.id, data.clone());
                 true
             }
         };
@@ -565,7 +567,7 @@ impl EasyCueApp {
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Adjust(data) => {
-                self.fire_adjust_cue(data.clone());
+                self.fire_adjust_cue(cue.id, data.clone());
                 true
             }
         };
@@ -652,7 +654,7 @@ impl EasyCueApp {
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Adjust(data) => {
-                self.fire_adjust_cue(data.clone());
+                self.fire_adjust_cue(cue.id, data.clone());
                 true
             }
         };
@@ -675,14 +677,14 @@ impl EasyCueApp {
 
     /// Execute an Adjust cue: ramp a specific audio stream's volume, or the global sound master.
     #[cfg(feature = "audio")]
-    fn fire_adjust_cue(&mut self, data: crate::cue::AdjustData) {
+    fn fire_adjust_cue(&mut self, adjust_cue_id: u32, data: crate::cue::AdjustData) {
         if let Some(target_num) = data.target_audio_cue {
             // Targeted: find the active stream by cue number
-            let cue_id = self.cue_list.cues().iter()
+            let target_id = self.cue_list.cues().iter()
                 .find(|c| (c.number - target_num).abs() < 0.005)
                 .map(|c| c.id);
-            if let Some(cue_id) = cue_id {
-                self.audio_playback.adjust_stream(cue_id, data.volume, data.fade_time, data.stop_when_complete);
+            if let Some(target_id) = target_id {
+                self.audio_playback.adjust_stream(target_id, data.volume, data.fade_time, data.stop_when_complete);
                 log::info!("Adjust: cue {} → {:.0}% over {:.1}s{}", target_num, data.volume * 100.0,
                     data.fade_time, if data.stop_when_complete { " then stop" } else { "" });
             } else {
@@ -704,6 +706,7 @@ impl EasyCueApp {
                     fade_time: data.fade_time,
                     start: std::time::Instant::now(),
                     stop_when_complete: data.stop_when_complete,
+                    trigger_cue_id: adjust_cue_id,
                 });
                 log::info!("Adjust: fade master to {:.0}% over {:.1}s{}", data.volume * 100.0,
                     data.fade_time, if data.stop_when_complete { " then stop all" } else { "" });
@@ -796,9 +799,12 @@ impl eframe::App for EasyCueApp {
             log::info!("Theme reapplied in update()");
         }
 
+        // Suppress hotkeys while any text field (label editors, property boxes, etc.) has focus.
+        // Ctrl+R (record) is safe to allow regardless.
+        let text_focused = ctx.memory(|m| m.focused().is_some());
         let (go, stop, record) = ctx.input(|i| (
-            i.key_pressed(egui::Key::Space) && !i.modifiers.any(),
-            i.key_pressed(egui::Key::S)     && !i.modifiers.any(),
+            i.key_pressed(egui::Key::Space) && !i.modifiers.any() && !text_focused,
+            i.key_pressed(egui::Key::S)     && !i.modifiers.any() && !text_focused,
             i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
         ));
 

@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-03T04:32:50.230824896+00:00",
+  "created": "2026-05-03T15:05:33.750275826+00:00",
   "cues": [
     {
       "autofollow": null,
@@ -16,6 +16,24 @@
       },
       "label": "Cue 1",
       "number": 1.0
+    },
+    {
+      "autofollow": null,
+      "id": 4,
+      "kind": {
+        "data": {
+          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample1.mp3",
+          "fade_in": 0.0,
+          "fade_out": 2.0,
+          "length": null,
+          "notes": "",
+          "triggers_lighting_cue": null,
+          "volume": 0.800000011920929
+        },
+        "type": "Audio"
+      },
+      "label": "sample1",
+      "number": 4.0
     },
     {
       "autofollow": 2.0,
@@ -60,31 +78,13 @@
     },
     {
       "autofollow": null,
-      "id": 4,
-      "kind": {
-        "data": {
-          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample1.mp3",
-          "fade_in": 0.0,
-          "fade_out": 2.0,
-          "length": null,
-          "notes": "",
-          "triggers_lighting_cue": null,
-          "volume": 0.800000011920929
-        },
-        "type": "Audio"
-      },
-      "label": "sample1",
-      "number": 4.0
-    },
-    {
-      "autofollow": null,
       "id": 5,
       "kind": {
         "data": {
           "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample2.mp3",
-          "fade_in": 0.0,
-          "fade_out": 0.0,
-          "length": null,
+          "fade_in": 2.0,
+          "fade_out": 2.0,
+          "length": 10.0,
           "notes": "",
           "triggers_lighting_cue": null,
           "volume": 0.800000011920929
@@ -93,24 +93,6 @@
       },
       "label": "sample2",
       "number": 5.0
-    },
-    {
-      "autofollow": null,
-      "id": 6,
-      "kind": {
-        "data": {
-          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample3.mp3",
-          "fade_in": 0.0,
-          "fade_out": 0.0,
-          "length": null,
-          "notes": "",
-          "triggers_lighting_cue": null,
-          "volume": 0.800000011920929
-        },
-        "type": "Audio"
-      },
-      "label": "sample3",
-      "number": 6.0
     },
     {
       "autofollow": null,
@@ -124,13 +106,28 @@
         },
         "type": "Adjust"
       },
-      "label": "fade out",
+      "label": "fade out sample 1",
       "number": 7.0
+    },
+    {
+      "autofollow": null,
+      "id": 8,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Blackout",
+      "number": 4.0
     }
   ],
   "description": "",
-  "modified": "2026-05-03T04:32:50.231603393+00:00",
-  "next_cue_id": 8,
+  "modified": "2026-05-03T15:05:33.750424294+00:00",
+  "next_cue_id": 9,
   "patch": [
     {
       "id": 1,
