@@ -105,6 +105,49 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             }
             ui.end_row();
 
+            // Cross-trigger
+            ui.label("Triggers SFX:");
+            let mut trigger_str = cue.lighting_data()
+                .and_then(|d| d.triggers_audio_cue)
+                .map(|n| format!("{:.1}", n))
+                .unwrap_or_default();
+            let trigger_resp = ui.add(
+                egui::TextEdit::singleline(&mut trigger_str)
+                    .desired_width(80.0)
+                    .hint_text("cue #"),
+            );
+            if trigger_resp.lost_focus() {
+                let parsed = trigger_str.trim().parse::<f32>().ok();
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.lighting_data_mut() {
+                        d.triggers_audio_cue = parsed;
+                    }
+                }
+            }
+            ui.end_row();
+
+            // Auto-follow
+            ui.label("Auto-follow:");
+            let mut af_enabled = cue.autofollow.is_some();
+            let mut af_delay = cue.autofollow.unwrap_or(2.0_f32).max(0.1);
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut af_enabled, "").changed() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        c.autofollow = if af_enabled { Some(af_delay) } else { None };
+                    }
+                }
+                if af_enabled {
+                    if ui.add(egui::DragValue::new(&mut af_delay).speed(0.1).range(0.1..=300.0).suffix("s")).changed() {
+                        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                            c.autofollow = Some(af_delay);
+                        }
+                    }
+                } else {
+                    ui.label(egui::RichText::new("off").color(egui::Color32::GRAY));
+                }
+            });
+            ui.end_row();
+
             // Channel count
             let ch_count = cue.lighting_data().map(|d| d.channel_values.len()).unwrap_or(0);
             ui.label("Channels:");
@@ -232,6 +275,49 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     if let Some(d) = c.audio_data_mut() { d.fade_out = fo; }
                 }
             }
+            ui.end_row();
+
+            // Cross-trigger
+            ui.label("Triggers LX:");
+            let mut trigger_str = cue.audio_data()
+                .and_then(|d| d.triggers_lighting_cue)
+                .map(|n| format!("{:.1}", n))
+                .unwrap_or_default();
+            let trigger_resp = ui.add(
+                egui::TextEdit::singleline(&mut trigger_str)
+                    .desired_width(80.0)
+                    .hint_text("cue #"),
+            );
+            if trigger_resp.lost_focus() {
+                let parsed = trigger_str.trim().parse::<f32>().ok();
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.audio_data_mut() {
+                        d.triggers_lighting_cue = parsed;
+                    }
+                }
+            }
+            ui.end_row();
+
+            // Auto-follow
+            ui.label("Auto-follow:");
+            let mut af_enabled = cue.autofollow.is_some();
+            let mut af_delay = cue.autofollow.unwrap_or(2.0_f32).max(0.1);
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut af_enabled, "").changed() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        c.autofollow = if af_enabled { Some(af_delay) } else { None };
+                    }
+                }
+                if af_enabled {
+                    if ui.add(egui::DragValue::new(&mut af_delay).speed(0.1).range(0.1..=300.0).suffix("s")).changed() {
+                        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                            c.autofollow = Some(af_delay);
+                        }
+                    }
+                } else {
+                    ui.label(egui::RichText::new("off").color(egui::Color32::GRAY));
+                }
+            });
             ui.end_row();
         });
 }

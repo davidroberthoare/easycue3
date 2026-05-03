@@ -130,6 +130,9 @@ pub struct Cue {
     pub number: f32,
     /// Optional text label
     pub label: String,
+    /// Seconds after this cue fires to automatically fire the next sequential cue. None = manual only.
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
+    pub autofollow: Option<f32>,
     /// Cue type and its data
     pub kind: CueKind,
 }
@@ -140,6 +143,7 @@ impl Cue {
             id: 0,
             number,
             label: String::new(),
+            autofollow: None,
             kind: CueKind::Lighting(LightingData::default()),
         }
     }
@@ -150,6 +154,7 @@ impl Cue {
             id: 0,
             number,
             label: String::new(),
+            autofollow: None,
             kind: CueKind::Audio(AudioData::new(path)),
         }
     }
