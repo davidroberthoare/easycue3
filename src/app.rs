@@ -155,6 +155,9 @@ pub struct EasyCueApp {
     pub audio_player: crate::audio::AudioPlayer,
     #[cfg(not(feature = "audio"))]
     pub audio_playback: crate::audio::AudioPlaybackEngine,
+
+    /// Pending autofollow: time the current cue fired + delay to wait before calling go_next()
+    pub autofollow_timer: Option<(std::time::Instant, f32)>,
 }
 
 impl EasyCueApp {
@@ -337,6 +340,7 @@ impl EasyCueApp {
             audio_player: crate::audio::AudioPlayer::new().unwrap(),
             #[cfg(not(feature = "audio"))]
             audio_playback: crate::audio::AudioPlaybackEngine::new(),
+            autofollow_timer: None,
         };
 
         let example_path = std::path::Path::new("shows/example_show.json");
@@ -475,6 +479,7 @@ impl EasyCueApp {
 
     /// Advance to the next cue of any kind (unified GO). Returns true if a cue fired.
     pub fn go_next(&mut self) -> bool {
+        self.autofollow_timer = None;
         let Some(next_idx) = self.cue_list.next_any_index() else { return false };
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
@@ -493,6 +498,10 @@ impl EasyCueApp {
         if fired {
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("GO → cue {:.1} '{}'", cue.number, cue.label);
+            if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
+                self.autofollow_timer = Some((std::time::Instant::now(), delay));
+                log::info!("  autofollow armed: {:.1}s", delay);
+            }
             #[cfg(feature = "audio")]
             if cue.is_lighting() {
                 self.fire_audio_cross_trigger(cue.id);
@@ -505,6 +514,7 @@ impl EasyCueApp {
 
     /// Return to the previous cue of any kind (unified BACK). Returns true if a cue fired.
     pub fn go_back(&mut self) -> bool {
+        self.autofollow_timer = None;
         let Some(prev_idx) = self.cue_list.previous_any_index() else { return false };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
@@ -697,7 +707,10 @@ impl eframe::App for EasyCueApp {
             i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
         ));
 
-        if stop { self.playback.stop(); }
+        if stop {
+            self.playback.stop();
+            self.autofollow_timer = None;
+        }
         if record {
             let id = self.record_cue();
             self.ui_state.selected_cue_id = Some(id);
@@ -705,6 +718,14 @@ impl eframe::App for EasyCueApp {
         }
         if go {
             self.go_next();
+        }
+
+        // Autofollow: fire next cue when timer elapses
+        if let Some((start, delay)) = self.autofollow_timer {
+            if start.elapsed().as_secs_f32() >= delay {
+                self.autofollow_timer = None;
+                self.go_next();
+            }
         }
 
         if let Some(universe) = self.universes.first_mut() {
