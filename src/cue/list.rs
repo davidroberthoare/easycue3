@@ -1,13 +1,14 @@
-//! Cue list management
+//! Cue list management — unified lighting and audio cues
 
 use crate::cue::Cue;
 use anyhow::Result;
 
-/// Manages a list of cues
+/// Manages the unified cue list with a single shared play head
 #[derive(Debug, Clone)]
 pub struct CueList {
     cues: Vec<Cue>,
-    current_index: Option<usize>,
+    /// Index of the last-fired cue (any kind); both lighting and audio GO advance from here
+    current: Option<usize>,
     next_id: u32,
 }
 
@@ -18,16 +19,15 @@ impl Default for CueList {
 }
 
 impl CueList {
-    /// Create a new empty cue list
     pub fn new() -> Self {
         Self {
             cues: Vec::new(),
-            current_index: None,
+            current: None,
             next_id: 1,
         }
     }
 
-    /// Add a cue to the list, assigning a stable ID if the cue has none (id == 0)
+    /// Add a cue, assigning a stable ID if id == 0. Inserts in sorted order by number.
     pub fn add_cue(&mut self, mut cue: Cue) {
         if cue.id == 0 {
             cue.id = self.next_id;
@@ -35,11 +35,16 @@ impl CueList {
         } else {
             self.next_id = self.next_id.max(cue.id + 1);
         }
-        // Insert in sorted order by cue number
         let insert_pos = self.cues
             .binary_search_by(|c| c.number.partial_cmp(&cue.number).unwrap())
             .unwrap_or_else(|e| e);
         self.cues.insert(insert_pos, cue);
+
+        if let Some(cur) = self.current {
+            if insert_pos <= cur {
+                self.current = Some(cur + 1);
+            }
+        }
     }
 
     /// Look up a cue by its stable ID
@@ -47,89 +52,128 @@ impl CueList {
         self.cues.iter().find(|c| c.id == id)
     }
 
-    /// Current value of the ID counter (used when saving the show file)
     pub fn next_id(&self) -> u32 {
         self.next_id
     }
 
-    /// Advance the counter to at least `id`, used after loading a show file
     pub fn set_next_id(&mut self, id: u32) {
         self.next_id = self.next_id.max(id);
     }
 
-    /// Remove a cue by index
     pub fn remove_cue(&mut self, index: usize) -> Result<Cue> {
         if index >= self.cues.len() {
             anyhow::bail!("Cue index {} out of range", index);
         }
-        
-        // Adjust current index if needed
-        if let Some(current) = self.current_index {
-            if index < current {
-                self.current_index = Some(current - 1);
-            } else if index == current {
-                self.current_index = None;
+        if let Some(cur) = self.current {
+            if index < cur {
+                self.current = Some(cur - 1);
+            } else if index == cur {
+                self.current = None;
             }
         }
-        
         Ok(self.cues.remove(index))
     }
 
-    /// Get a cue by index
     pub fn get_cue(&self, index: usize) -> Option<&Cue> {
         self.cues.get(index)
     }
 
-    /// Get a mutable reference to a cue by index
     pub fn get_cue_mut(&mut self, index: usize) -> Option<&mut Cue> {
         self.cues.get_mut(index)
     }
 
-    /// Get all cues
     pub fn cues(&self) -> &[Cue] {
         &self.cues
     }
 
-    /// Get the number of cues
     pub fn len(&self) -> usize {
         self.cues.len()
     }
 
-    /// Check if the list is empty
     pub fn is_empty(&self) -> bool {
         self.cues.is_empty()
     }
 
-    /// Get the current cue index
+    // --- Play head ---
+
     pub fn current_index(&self) -> Option<usize> {
-        self.current_index
+        self.current
     }
 
-    /// Set the current cue index
     pub fn set_current_index(&mut self, index: Option<usize>) {
-        self.current_index = index;
+        self.current = index;
     }
 
-    /// Get the next cue index (for GO command)
-    pub fn next_index(&self) -> Option<usize> {
-        match self.current_index {
-            None if !self.cues.is_empty() => Some(0),
-            Some(idx) if idx + 1 < self.cues.len() => Some(idx + 1),
-            _ => None,
+    // --- Kind-filtered navigation (all share the single play head) ---
+
+    /// Next lighting cue after current (searches forward in unified list)
+    pub fn next_lighting_index(&self) -> Option<usize> {
+        let start = self.current.map(|i| i + 1).unwrap_or(0);
+        self.cues[start..]
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c.is_lighting())
+            .map(|(i, _)| start + i)
+    }
+
+    /// Previous lighting cue before current
+    pub fn previous_lighting_index(&self) -> Option<usize> {
+        let end = self.current?;
+        if end == 0 {
+            return None;
         }
+        self.cues[..end]
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, c)| c.is_lighting())
+            .map(|(i, _)| i)
     }
 
-    /// Get the previous cue index (for BACK command)
-    pub fn previous_index(&self) -> Option<usize> {
-        match self.current_index {
-            Some(idx) if idx > 0 => Some(idx - 1),
-            _ => None,
+    /// Next audio cue after current (searches forward in unified list)
+    #[cfg(feature = "audio")]
+    pub fn next_audio_index(&self) -> Option<usize> {
+        let start = self.current.map(|i| i + 1).unwrap_or(0);
+        self.cues[start..]
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c.is_audio())
+            .map(|(i, _)| start + i)
+    }
+
+    /// Previous audio cue before current
+    #[cfg(feature = "audio")]
+    pub fn previous_audio_index(&self) -> Option<usize> {
+        let end = self.current?;
+        if end == 0 {
+            return None;
         }
+        self.cues[..end]
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, c)| c.is_audio())
+            .map(|(i, _)| i)
     }
 
-    /// Clear all cues
+    // --- Unified navigation (any kind) ---
+
+    /// Next cue of any kind after current (sequential list order)
+    pub fn next_any_index(&self) -> Option<usize> {
+        let start = self.current.map(|i| i + 1).unwrap_or(0);
+        if start < self.cues.len() { Some(start) } else { None }
+    }
+
+    /// Previous cue of any kind before current
+    pub fn previous_any_index(&self) -> Option<usize> {
+        let end = self.current?;
+        if end > 0 { Some(end - 1) } else { None }
+    }
+
+    // --- Utility ---
+
     pub fn clear(&mut self) {
         self.cues.clear();
-        self.current_index = None;
+        self.current = None;
     }
 }

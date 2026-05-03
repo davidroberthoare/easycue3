@@ -1,11 +1,11 @@
-//! Cue system - data structures and playback engine
-//!
-//! Manages cue lists, playback, and recording.
+//! Cue system - unified data structures and playback engine
 
 pub mod types;
 pub mod list;
 pub mod playback;
 
-pub use types::{Cue, CueState};
+pub use types::{Cue, CueKind, CueState, LightingData};
+#[cfg(feature = "audio")]
+pub use types::AudioData;
 pub use list::CueList;
 pub use playback::PlaybackEngine;
