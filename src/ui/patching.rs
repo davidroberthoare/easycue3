@@ -4,6 +4,7 @@
 
 use crate::app::EasyCueApp;
 use egui::{Color32, RichText, ScrollArea};
+use egui_phosphor::regular as ph;
 
 /// State for the patching panel
 #[derive(Default)]
@@ -42,7 +43,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
     ui.heading("Fixture Patch");
 
     ui.horizontal(|ui| {
-        if ui.button("➕ Add Fixture").clicked() {
+        if ui.button(format!("{} Add Fixture", ph::PLUS)).clicked() {
             // Default to first profile if available
             let default_profile = app.fixtures.profile_ids().first().cloned();
             state.open_add_dialog(default_profile);
@@ -190,7 +191,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
 
                         // Actions
                         row.col(|ui| {
-                            if ui.small_button("🗑").clicked() {
+                            if ui.small_button(ph::TRASH).clicked() {
                                 to_remove = Some(patch.id);
                             }
                         });
