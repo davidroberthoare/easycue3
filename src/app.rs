@@ -403,9 +403,19 @@ impl EasyCueApp {
     fn create_default_dock_layout() -> DockState<TabKind> {
         let mut dock_state = DockState::new(vec![TabKind::Channels]);
         let tree = dock_state.main_surface_mut();
-        let [_channels, right] = tree.split_right(egui_dock::NodeIndex::root(), 0.7, vec![TabKind::Properties]);
-        let [_, _] = tree.split_below(egui_dock::NodeIndex::root(), 0.5, vec![TabKind::Cues, TabKind::Patching]);
-        let [_, _] = tree.split_below(right, 0.5, vec![TabKind::InstrumentProperties]);
+        // Match first-load layout: Channels (TL), Instrument Properties/Patching (TR),
+        // Cues/Patching (BL), Cue Properties (BR).
+        let [_channels, right] = tree.split_right(
+            egui_dock::NodeIndex::root(),
+            0.62,
+            vec![TabKind::InstrumentProperties, TabKind::Patching],
+        );
+        let [_, _] = tree.split_below(
+            egui_dock::NodeIndex::root(),
+            0.52,
+            vec![TabKind::Cues, TabKind::Patching],
+        );
+        let [_, _] = tree.split_below(right, 0.52, vec![TabKind::Properties]);
         dock_state
     }
 
