@@ -12,22 +12,22 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 - Record cues from current channel state
 - Edit cue labels, fade times, and notes inline
 - EOS-style command line (`1 Thru 10 At 50`)
-- Fixture patching (assign fixtures to DMX addresses)
-- Channel grid for live control
+- Fixture patching with parameter-based control (color pickers, intensity sliders)
+- Virtual intensity — scale brightness of RGB fixtures without losing color hue
+- Channel grid and fixture instrument list for live control
 - Audio cues with fade in/out and cross-triggering to/from lighting cues
 - Save and load show files (JSON, human-readable)
 - Virtual DMX backend for working without hardware
 - USB DMX output (Enttec USB Pro)
-- Art-Net DMX over ethernet
 
 Supports up to 2 universes (1024 channels). That's plenty for a 200-seat black box.
 
 ## What it doesn't do (yet)
 
-- Video playback — planned, not started
-- Multiple simultaneous audio streams
-- Effects/chases
 - Groups and presets
+- Video playback — planned, not started
+- Art-Net DMX over ethernet
+- Effects/chases
 - Anything resembling a moving light programmer
 
 ---
@@ -91,17 +91,76 @@ sudo usermod -a -G dialout $USER
 
 ---
 
+## Command line
+
+EOS-style command syntax. Type directly — no need to click a text field first.
+
+```
+4a50          → Channel 4 at 50%
+1thru10a75    → Channels 1-10 at 75%
+1t10a75       → Same (t is shorthand for thru)
+1-10a75       → Same (hyphen works too)
+1+3+5afull    → Channels 1, 3, 5 at 100%
+4aout         → Channel 4 to 0%
+a50           → Set currently selected channels to 50%
+4a255         → Channel 4 at raw DMX 255
+```
+
+Click channels to build a selection, then type just the level (`a50` then Enter). Shift+click adds a range; Ctrl+click toggles individual channels. The command line always reflects your current selection.
+
+The command line is context-aware: lighting commands activate when the Channels or Lighting Cues panel is focused.
+
+---
+
+## Media files
+
+Put audio files in the `media/` directory next to your project. Show files reference them by filename only (`song.mp3` rather than a full path), so shows stay portable across machines. Absolute paths still work.
+
+---
+
+## Custom fixtures
+
+13 fixture profiles ship with the app: dimmer, RGB/RGBA/RGBW/RGBAW/RGBAWUV variants, LED PAR, and moving head. Add your own in `fixture_profiles/` (bundled) or `~/.config/easycue3/fixture_profiles/` (user, survives updates).
+
+```json
+{
+  "id": "my_fixture",
+  "manufacturer": "MyBrand",
+  "name": "Custom RGB",
+  "channel_count": 3,
+  "parameters": [
+    { "parameter": "Red",   "channel_offset": 1 },
+    { "parameter": "Green", "channel_offset": 2 },
+    { "parameter": "Blue",  "channel_offset": 3 }
+  ]
+}
+```
+
+Restart EasyCue3 and the profile appears in the Patching panel dropdown. See `fixture_profiles/rgb.json` for a working example.
+
+---
+
 ## Show files
 
-JSON format, lives in `shows/`. Human-readable and git-friendly — you can diff them between rehearsals. Fixture profiles go in `fixture_profiles/` or `~/.config/easycue3/`.
+JSON format, lives in `shows/`. Human-readable and git-friendly — you can diff them between rehearsals.
 
 ---
 
 ## Status
 
-Works well enough that I'd use it for a real show, with the caveat that it's still rough around the edges. The core cue engine, audio playback, and fixture patching are solid. Hardware DMX has been tested with an Enttec USB Pro. The UI is functional but not polished.
+Core cue engine, fixture patching, audio playback, and USB DMX have all been tested. The UI is functional but not polished, and a few corners are rough.
 
-See `docs/STATUS.md` for details on what's built and what's next.
+**Working:**
+- Lighting cues with smooth crossfades
+- Fixture patching (add/delete, color picker, individual channel sliders)
+- Virtual intensity for RGB fixtures (preserves hue when scaling brightness)
+- Audio cues with cross-triggering
+- EOS-style command line
+- USB DMX (Enttec USB Pro, tested)
+
+**Still rough or missing:**
+- No groups, presets, or effects
+- Art-Net planned, not implemented
 
 ---
 
