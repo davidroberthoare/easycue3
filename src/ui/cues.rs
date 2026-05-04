@@ -9,7 +9,7 @@ const COLOR_ACTIVE:          egui::Color32 = egui::Color32::from_rgb(40, 110, 40
 const COLOR_FADING:          egui::Color32 = egui::Color32::from_rgb(120, 90, 20);
 const COLOR_SELECTED:        egui::Color32 = egui::Color32::from_rgb(60, 60, 120);
 const COLOR_ACTIVE_SELECTED: egui::Color32 = egui::Color32::from_rgb(60, 110, 130);
-const COLOR_NEXT:            egui::Color32 = egui::Color32::from_rgb(30, 50, 80);
+const COLOR_NEXT:            egui::Color32 = egui::Color32::from_rgb(140, 100, 20);
 
 pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Toolbar ──────────────────────────────────────────────────────────────

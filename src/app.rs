@@ -548,6 +548,7 @@ impl EasyCueApp {
             }
         };
         if fired {
+            self.ui_state.selected_cue_id = None;
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("GO → cue {:.1} '{}'", cue.number, cue.label);
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
@@ -675,6 +676,7 @@ impl EasyCueApp {
             }
         };
         if fired {
+            self.ui_state.selected_cue_id = None;
             self.cue_list.set_current_index(Some(abs_idx));
             log::info!("GO→ cue {:.1} '{}'", cue.number, cue.label);
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
