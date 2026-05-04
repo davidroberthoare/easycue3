@@ -151,23 +151,6 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
 
-        // Reorder buttons — enabled only when a cue is selected and movement is possible
-        let sel_abs_idx = app.ui_state.selected_cue_id
-            .and_then(|id| app.cue_list.cues().iter().position(|c| c.id == id));
-        let can_move_up   = sel_abs_idx.map(|i| i > 0).unwrap_or(false);
-        let can_move_down = sel_abs_idx.map(|i| i + 1 < app.cue_list.len()).unwrap_or(false);
-
-        if ui.add_enabled(can_move_up, egui::Button::new("↑")).on_hover_text("Move cue up").clicked() {
-            if let Some(idx) = sel_abs_idx {
-                app.cue_list.move_up(idx);
-            }
-        }
-        if ui.add_enabled(can_move_down, egui::Button::new("↓")).on_hover_text("Move cue down").clicked() {
-            if let Some(idx) = sel_abs_idx {
-                app.cue_list.move_down(idx);
-            }
-        }
-
         ui.separator();
 
         // Masters — compact

@@ -170,30 +170,20 @@ impl CueList {
         if end > 0 { Some(end - 1) } else { None }
     }
 
-    /// Move the cue at `index` one position earlier in the list. Returns false if already first.
-    pub fn move_up(&mut self, index: usize) -> bool {
-        if index == 0 || index >= self.cues.len() {
-            return false;
+    /// Change the number of a cue by stable ID, reject duplicates, re-sort the list.
+    pub fn renumber_cue(&mut self, cue_id: u32, new_number: f32) -> Result<()> {
+        if self.cues.iter().any(|c| c.id != cue_id && (c.number - new_number).abs() < 0.005) {
+            anyhow::bail!("Cue number {:.1} is already in use", new_number);
         }
-        self.cues.swap(index - 1, index);
-        if let Some(cur) = self.current {
-            if cur == index { self.current = Some(index - 1); }
-            else if cur == index - 1 { self.current = Some(index); }
-        }
-        true
-    }
+        let Some(cue) = self.cues.iter_mut().find(|c| c.id == cue_id) else {
+            anyhow::bail!("Cue id {} not found", cue_id);
+        };
+        cue.number = new_number;
 
-    /// Move the cue at `index` one position later in the list. Returns false if already last.
-    pub fn move_down(&mut self, index: usize) -> bool {
-        if index + 1 >= self.cues.len() {
-            return false;
-        }
-        self.cues.swap(index, index + 1);
-        if let Some(cur) = self.current {
-            if cur == index { self.current = Some(index + 1); }
-            else if cur == index + 1 { self.current = Some(index); }
-        }
-        true
+        let current_id = self.current.and_then(|i| self.cues.get(i)).map(|c| c.id);
+        self.cues.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(std::cmp::Ordering::Equal));
+        self.current = current_id.and_then(|id| self.cues.iter().position(|c| c.id == id));
+        Ok(())
     }
 
     // --- Utility ---

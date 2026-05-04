@@ -66,6 +66,30 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
 // ── Cue properties ────────────────────────────────────────────────────────────
 
+/// Render the editable cue-number row inside a 2-column grid.
+/// Returns Some(new_number) if the user committed a valid change, None otherwise.
+fn cue_number_row(ui: &mut egui::Ui, cue: &crate::cue::Cue, cue_list: &crate::cue::CueList) -> Option<f32> {
+    ui.label("Number:");
+    let mut num = cue.number;
+    let resp = ui.add(
+        egui::DragValue::new(&mut num)
+            .speed(0.1)
+            .range(0.01..=9999.0)
+            .custom_formatter(|n, _| format!("{:.1}", n))
+            .custom_parser(|s| s.parse::<f64>().ok()),
+    );
+    let committed = resp.lost_focus() && ui.input(|i| !i.key_pressed(egui::Key::Escape));
+    if committed && (num - cue.number).abs() > 0.001 {
+        let duplicate = cue_list.cues().iter().any(|c| c.id != cue.id && (c.number - num).abs() < 0.005);
+        if duplicate {
+            ui.colored_label(egui::Color32::RED, "duplicate");
+            return None;
+        }
+        return Some(num);
+    }
+    None
+}
+
 fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
     ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::LIGHTBULB, cue.number)).strong());
 
@@ -75,6 +99,12 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
+            // Number (editable)
+            if let Some(new_num) = cue_number_row(ui, cue, &app.cue_list) {
+                let _ = app.cue_list.renumber_cue(cue.id, new_num);
+            }
+            ui.end_row();
+
             // Label
             ui.label("Label:");
             let mut label = cue.label.clone();
@@ -224,6 +254,11 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
+            if let Some(new_num) = cue_number_row(ui, cue, &app.cue_list) {
+                let _ = app.cue_list.renumber_cue(cue.id, new_num);
+            }
+            ui.end_row();
+
             ui.label("Label:");
             let mut label = cue.label.clone();
             if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
@@ -362,6 +397,11 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
+            if let Some(new_num) = cue_number_row(ui, cue, &app.cue_list) {
+                let _ = app.cue_list.renumber_cue(cue.id, new_num);
+            }
+            ui.end_row();
+
             ui.label("Label:");
             let mut label = cue.label.clone();
             if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
