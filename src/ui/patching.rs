@@ -120,17 +120,23 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                     })
                     .collect();
 
-                // Track patches to remove (can't remove during iteration)
                 let mut to_remove: Option<usize> = None;
                 let mut label_updates: Vec<(usize, String)> = Vec::new();
                 let mut profile_updates: Vec<(usize, String, u16)> = Vec::new();
                 let mut address_updates: Vec<(usize, u16, u16)> = Vec::new();
+                let mut id_updates: Vec<(usize, usize)> = Vec::new();
 
                 for (patch, profile_name, profile_missing, channel_count) in patch_data {
                     body.row(24.0, |mut row| {
-                        // ID
+                        // ID (editable)
                         row.col(|ui| {
-                            ui.label(patch.id.to_string());
+                            let mut id_val = patch.id as i32;
+                            let resp = ui.add(
+                                egui::DragValue::new(&mut id_val).range(1..=9999).speed(1.0)
+                            );
+                            if resp.changed() && id_val >= 1 {
+                                id_updates.push((patch.id, id_val as usize));
+                            }
                         });
 
                         // Label (inline editable)
@@ -232,6 +238,14 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                         .fixtures
                         .update_patch_address(id, new_start_address, channel_count)
                     {
+                        app.ui_state.status_message = format!("Error: {}", e);
+                    }
+                }
+
+                for (old_id, new_id) in id_updates {
+                    // Drop VirtualIntensity state for the old ID so it reinitialises cleanly.
+                    app.virtual_intensity.remove_fixture(old_id);
+                    if let Err(e) = app.fixtures.rename_fixture_id(old_id, new_id) {
                         app.ui_state.status_message = format!("Error: {}", e);
                     }
                 }
