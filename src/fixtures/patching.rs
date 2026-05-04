@@ -118,17 +118,64 @@ impl PatchList {
         let id = self.next_id;
         self.next_id += 1;
 
+        self.add_patch_with_explicit_id(id, label, profile_id, start_address, end_address)
+    }
+
+    /// Add a patch with a caller-supplied fixture ID. Checks that the ID is not already used.
+    pub fn add_patch_with_id(
+        &mut self,
+        fixture_id: usize,
+        label: String,
+        profile_id: String,
+        start_address: u16,
+        channel_count: u16,
+        channel_counts: &HashMap<String, u16>,
+    ) -> Result<usize> {
+        if start_address == 0 || start_address > 512 {
+            return Err(anyhow!("Invalid start address {}: must be between 1 and 512", start_address));
+        }
+        let end_address = start_address + channel_count - 1;
+        if end_address > 512 {
+            return Err(anyhow!("Fixture extends beyond channel 512 (end: {})", end_address));
+        }
+        if self.patches.iter().any(|p| p.id == fixture_id) {
+            return Err(anyhow!("Fixture number {} is already in use", fixture_id));
+        }
+        if let Some(conflict) = self.find_overlap(start_address, channel_count, None, channel_counts) {
+            let cc = channel_counts.get(&conflict.profile_id).copied().unwrap_or(1);
+            return Err(anyhow!(
+                "Address range {}-{} overlaps with fixture '{}' ({}-{})",
+                start_address, end_address, conflict.label,
+                conflict.start_address, conflict.end_address(cc)
+            ));
+        }
+        self.next_id = self.next_id.max(fixture_id + 1);
+        self.add_patch_with_explicit_id(fixture_id, label, profile_id, start_address, end_address)
+    }
+
+    fn add_patch_with_explicit_id(
+        &mut self,
+        id: usize,
+        label: String,
+        profile_id: String,
+        start_address: u16,
+        end_address: u16,
+    ) -> Result<usize> {
         let patch = Patch::new(id, label, profile_id, start_address);
         self.patches.push(patch);
-
-        log::info!(
-            "Patched fixture #{} at address {}-{}",
-            id,
-            start_address,
-            end_address
-        );
-
+        log::info!("Patched fixture #{} at address {}-{}", id, start_address, end_address);
         Ok(id)
+    }
+
+    /// Returns the lowest positive integer not yet used as a fixture ID.
+    pub fn next_available_id(&self) -> usize {
+        let mut id = 1usize;
+        let mut used: Vec<usize> = self.patches.iter().map(|p| p.id).collect();
+        used.sort_unstable();
+        for used_id in &used {
+            if *used_id == id { id += 1; } else { break; }
+        }
+        id
     }
 
     /// Remove a patch by ID

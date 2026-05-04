@@ -9,29 +9,28 @@ use egui_phosphor::regular as ph;
 /// State for the patching panel
 #[derive(Default)]
 pub struct PatchingPanelState {
-    /// Show add/edit patch dialog
     pub show_patch_dialog: bool,
-    /// ID of patch being edited (None for new patch)
     pub editing_patch_id: Option<usize>,
-    /// Input fields for patch dialog
     pub label_input: String,
     pub selected_profile_id: String,
     pub address_input: String,
+    pub fixture_number_input: String,
+    pub quantity: u32,
     pub error_message: String,
 }
 
 impl PatchingPanelState {
-    /// Open dialog to add a new patch
-    pub fn open_add_dialog(&mut self, default_profile: Option<String>) {
+    pub fn open_add_dialog(&mut self, default_profile: Option<String>, next_fixture_id: usize) {
         self.show_patch_dialog = true;
         self.editing_patch_id = None;
         self.label_input.clear();
         self.selected_profile_id = default_profile.unwrap_or_default();
         self.address_input.clear();
+        self.fixture_number_input = next_fixture_id.to_string();
+        self.quantity = 1;
         self.error_message.clear();
     }
 
-    /// Close the patch dialog
     pub fn close_dialog(&mut self) {
         self.show_patch_dialog = false;
         self.error_message.clear();
@@ -44,9 +43,9 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
 
     ui.horizontal(|ui| {
         if ui.button(format!("{} Add Fixture", ph::PLUS)).clicked() {
-            // Default to first profile if available
             let default_profile = app.fixtures.profile_ids().first().cloned();
-            state.open_add_dialog(default_profile);
+            let next_id = app.fixtures.next_available_fixture_id();
+            state.open_add_dialog(default_profile, next_id);
         }
 
         ui.separator();
@@ -258,11 +257,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
 /// Render the add/edit patch dialog
 fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut PatchingPanelState) {
     let is_editing = state.editing_patch_id.is_some();
-    let title = if is_editing {
-        "Edit Fixture"
-    } else {
-        "Add Fixture"
-    };
+    let title = if is_editing { "Edit Fixture" } else { "Add Fixture" };
 
     egui::Window::new(title)
         .collapsible(false)
@@ -271,65 +266,87 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
         .show(ui.ctx(), |ui| {
             ui.set_min_width(400.0);
 
-            // Label input
-            ui.horizontal(|ui| {
-                ui.label("Label:");
-                ui.text_edit_singleline(&mut state.label_input);
-            });
+            egui::Grid::new("add_fixture_grid")
+                .num_columns(2)
+                .spacing([8.0, 6.0])
+                .show(ui, |ui| {
+                    // Fixture number
+                    ui.label("Fixture #:");
+                    ui.text_edit_singleline(&mut state.fixture_number_input);
+                    ui.end_row();
 
-            ui.add_space(8.0);
+                    // Label (optional)
+                    ui.label("Label (optional):");
+                    ui.text_edit_singleline(&mut state.label_input);
+                    ui.end_row();
 
-            // Profile selector
-            ui.horizontal(|ui| {
-                ui.label("Type:");
-                egui::ComboBox::from_id_salt("profile_selector")
-                    .selected_text(if state.selected_profile_id.is_empty() {
-                        "Select profile..."
-                    } else {
-                        app.fixtures
-                            .get_profile(&state.selected_profile_id)
-                            .map(|p| p.name.as_str())
-                            .unwrap_or(&state.selected_profile_id)
-                    })
-                    .show_ui(ui, |ui| {
-                        let profile_ids = app.fixtures.profile_ids();
-                        for profile_id in profile_ids {
-                            if let Some(profile) = app.fixtures.get_profile(&profile_id) {
-                                let selected = state.selected_profile_id == profile_id;
-                                if ui.selectable_label(selected, &profile.name).clicked() {
-                                    state.selected_profile_id = profile_id.clone();
+                    // Profile selector
+                    ui.label("Type:");
+                    egui::ComboBox::from_id_salt("profile_selector")
+                        .selected_text(if state.selected_profile_id.is_empty() {
+                            "Select profile..."
+                        } else {
+                            app.fixtures
+                                .get_profile(&state.selected_profile_id)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or(&state.selected_profile_id)
+                        })
+                        .show_ui(ui, |ui| {
+                            let profile_ids = app.fixtures.profile_ids();
+                            for profile_id in profile_ids {
+                                if let Some(profile) = app.fixtures.get_profile(&profile_id) {
+                                    let selected = state.selected_profile_id == profile_id;
+                                    if ui.selectable_label(selected, &profile.name).clicked() {
+                                        state.selected_profile_id = profile_id.clone();
+                                    }
                                 }
                             }
-                        }
+                        });
+                    ui.end_row();
+
+                    // Channel count info
+                    if let Some(profile) = app.fixtures.get_profile(&state.selected_profile_id) {
+                        ui.label("");
+                        ui.label(RichText::new(format!("{} channels", profile.channel_count)).color(Color32::GRAY));
+                        ui.end_row();
+                    }
+
+                    // DMX start address
+                    ui.label("DMX Address:");
+                    ui.horizontal(|ui| {
+                        ui.text_edit_singleline(&mut state.address_input);
+                        ui.label(RichText::new("(1–512)").color(Color32::GRAY).small());
                     });
-            });
+                    ui.end_row();
 
-            // Show channel count for selected profile
-            if let Some(profile) = app.fixtures.get_profile(&state.selected_profile_id) {
-                ui.label(
-                    RichText::new(format!("({} channels)", profile.channel_count))
-                        .color(Color32::GRAY),
-                );
-            }
+                    // Quantity (only shown for new patches)
+                    if !is_editing {
+                        ui.label("Quantity:");
+                        let mut qty = state.quantity.max(1) as i32;
+                        if ui.add(egui::DragValue::new(&mut qty).range(1..=50)).changed() {
+                            state.quantity = qty as u32;
+                        }
+                        ui.end_row();
 
-            ui.add_space(8.0);
+                        // Preview end address
+                        if let Some(profile) = app.fixtures.get_profile(&state.selected_profile_id) {
+                            if let Ok(addr) = state.address_input.trim().parse::<u16>() {
+                                let end = addr + profile.channel_count * state.quantity as u16 - 1;
+                                ui.label("");
+                                let color = if end > 512 { Color32::RED } else { Color32::GRAY };
+                                ui.label(RichText::new(format!("uses DMX {addr}–{end}")).color(color).small());
+                                ui.end_row();
+                            }
+                        }
+                    }
+                });
 
-            // Address input
-            ui.horizontal(|ui| {
-                ui.label("DMX Address:");
-                ui.text_edit_singleline(&mut state.address_input);
-                ui.label("(1-512)");
-            });
-
-            ui.add_space(8.0);
-
-            // Show error message if any
             if !state.error_message.is_empty() {
+                ui.add_space(4.0);
                 ui.label(RichText::new(&state.error_message).color(Color32::RED));
-                ui.add_space(8.0);
             }
 
-            // Buttons
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("Cancel").clicked() {
                     state.close_dialog();
@@ -337,49 +354,72 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
 
                 ui.add_space(10.0);
 
-                let can_submit = !state.label_input.is_empty()
-                    && !state.selected_profile_id.is_empty()
-                    && !state.address_input.is_empty();
+                let can_submit = !state.selected_profile_id.is_empty()
+                    && !state.address_input.is_empty()
+                    && !state.fixture_number_input.trim().is_empty();
 
-                if ui
-                    .add_enabled(can_submit, egui::Button::new(if is_editing { "Update" } else { "Add" }))
-                    .clicked()
-                {
-                    // Parse address
-                    match state.address_input.parse::<u16>() {
-                        Ok(address) if address >= 1 && address <= 512 => {
-                            // Attempt to add or update patch
-                            let result = if is_editing {
-                                // TODO: Implement patch update
-                                state.error_message =
-                                    "Editing not yet implemented".to_string();
-                                Err(anyhow::anyhow!("Not implemented"))
+                let btn_label: String = if is_editing {
+                    "Update".into()
+                } else if state.quantity > 1 {
+                    format!("Add {}", state.quantity)
+                } else {
+                    "Add".into()
+                };
+
+                if ui.add_enabled(can_submit, egui::Button::new(btn_label)).clicked() {
+                    let addr_result = state.address_input.trim().parse::<u16>();
+                    let fnum_result = state.fixture_number_input.trim().parse::<usize>();
+                    match (addr_result, fnum_result) {
+                        (Ok(address), Ok(fixture_num)) => {
+                            if address < 1 || address > 512 {
+                                state.error_message = "DMX address must be 1–512".to_string();
+                            } else if fixture_num < 1 {
+                                state.error_message = "Fixture number must be ≥ 1".to_string();
+                            } else if is_editing {
+                                state.error_message = "Edit not yet implemented".to_string();
                             } else {
-                                app.fixtures.add_patch(
-                                    state.label_input.clone(),
-                                    state.selected_profile_id.clone(),
-                                    address,
-                                )
-                            };
-
-                            match result {
-                                Ok(id) => {
-                                    app.ui_state.status_message = format!(
-                                        "Added fixture #{}: {} at address {}",
-                                        id, state.label_input, address
-                                    );
-                                    state.close_dialog();
+                                let qty = state.quantity.max(1) as usize;
+                                let ch_count = app.fixtures
+                                    .get_profile(&state.selected_profile_id)
+                                    .map(|p| p.channel_count as usize)
+                                    .unwrap_or(1);
+                                let mut last_id = 0usize;
+                                let mut errors: Vec<String> = Vec::new();
+                                for i in 0..qty {
+                                    let fid = fixture_num + i;
+                                    let addr = address + (i * ch_count) as u16;
+                                    let label = if state.label_input.is_empty() {
+                                        String::new()
+                                    } else if qty == 1 {
+                                        state.label_input.clone()
+                                    } else {
+                                        format!("{} {}", state.label_input, i + 1)
+                                    };
+                                    match app.fixtures.add_patch_with_id(
+                                        fid, label,
+                                        state.selected_profile_id.clone(), addr,
+                                    ) {
+                                        Ok(id) => { last_id = id; }
+                                        Err(e) => { errors.push(format!("#{fid}: {e}")); }
+                                    }
                                 }
-                                Err(e) => {
-                                    state.error_message = e.to_string();
+                                if errors.is_empty() {
+                                    app.ui_state.status_message = if qty == 1 {
+                                        format!("Added fixture #{} at {}", last_id, address)
+                                    } else {
+                                        format!("Added {} fixtures starting at #{}", qty, fixture_num)
+                                    };
+                                    state.close_dialog();
+                                } else {
+                                    state.error_message = errors.join("; ");
                                 }
                             }
                         }
-                        Ok(_) => {
-                            state.error_message = "Address must be between 1 and 512".to_string();
+                        (Err(_), _) => {
+                            state.error_message = "Invalid DMX address".to_string();
                         }
-                        Err(_) => {
-                            state.error_message = "Invalid address format".to_string();
+                        (_, Err(_)) => {
+                            state.error_message = "Fixture number must be a positive integer".to_string();
                         }
                     }
                 }

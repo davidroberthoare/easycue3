@@ -181,6 +181,29 @@ impl FixtureLibrary {
             )
     }
 
+    /// Add a fixture with a caller-supplied fixture number (ID). Rejects duplicate IDs.
+    pub fn add_patch_with_id(
+        &mut self,
+        fixture_id: usize,
+        label: String,
+        profile_id: String,
+        start_address: u16,
+    ) -> Result<usize> {
+        let profile = self
+            .get_profile(&profile_id)
+            .ok_or_else(|| anyhow!("Profile '{}' not found", profile_id))?;
+        let channel_count = profile.channel_count;
+        let channel_counts = self.get_channel_counts();
+        self.patch_list.add_patch_with_id(
+            fixture_id, label, profile_id, start_address, channel_count, &channel_counts,
+        )
+    }
+
+    /// Lowest positive integer not yet used as a fixture ID.
+    pub fn next_available_fixture_id(&self) -> usize {
+        self.patch_list.next_available_id()
+    }
+
     /// Update a patched fixture address
     pub fn update_patch_address(
         &mut self,
