@@ -498,27 +498,23 @@ impl EasyCueApp {
         Ok(())
     }
 
-    /// Check if adding a lighting→audio trigger would create a circular dependency
+    /// Check if adding a lighting→audio trigger (by stable IDs) would create a circular dependency
     #[cfg(feature = "audio")]
-    pub fn would_create_circular_light_to_audio(&self, lighting_cue_num: f32, audio_cue_num: f32) -> bool {
-        self.cue_list.cues().iter()
-            .filter(|c| c.is_audio())
-            .find(|c| (c.number - audio_cue_num).abs() < 0.01)
+    pub fn would_create_circular_light_to_audio(&self, lighting_cue_id: u32, audio_cue_id: u32) -> bool {
+        self.cue_list.find_by_id(audio_cue_id)
             .and_then(|c| c.audio_data())
             .and_then(|d| d.triggers_lighting_cue)
-            .map(|trigger| (trigger - lighting_cue_num).abs() < 0.01)
+            .map(|back_id| back_id == lighting_cue_id)
             .unwrap_or(false)
     }
 
-    /// Check if adding an audio→lighting trigger would create a circular dependency
+    /// Check if adding an audio→lighting trigger (by stable IDs) would create a circular dependency
     #[cfg(feature = "audio")]
-    pub fn would_create_circular_audio_to_light(&self, audio_cue_num: f32, lighting_cue_num: f32) -> bool {
-        self.cue_list.cues().iter()
-            .filter(|c| c.is_lighting())
-            .find(|c| (c.number - lighting_cue_num).abs() < 0.01)
+    pub fn would_create_circular_audio_to_light(&self, audio_cue_id: u32, lighting_cue_id: u32) -> bool {
+        self.cue_list.find_by_id(lighting_cue_id)
             .and_then(|c| c.lighting_data())
             .and_then(|d| d.triggers_audio_cue)
-            .map(|trigger| (trigger - audio_cue_num).abs() < 0.01)
+            .map(|back_id| back_id == audio_cue_id)
             .unwrap_or(false)
     }
 
@@ -735,17 +731,16 @@ impl EasyCueApp {
     /// Fire the audio cross-trigger linked to the given lighting cue, if any.
     #[cfg(feature = "audio")]
     fn fire_audio_cross_trigger(&mut self, lighting_cue_id: u32) {
-        let trigger_num = self.cue_list.find_by_id(lighting_cue_id)
+        let trigger_id = self.cue_list.find_by_id(lighting_cue_id)
             .and_then(|c| c.lighting_data())
             .and_then(|d| d.triggers_audio_cue);
-        if let Some(audio_num) = trigger_num {
-            let audio_idx = self.cue_list.cues().iter()
-                .position(|c| c.is_audio() && (c.number - audio_num).abs() < 0.01);
+        if let Some(audio_id) = trigger_id {
+            let audio_idx = self.cue_list.cues().iter().position(|c| c.id == audio_id);
             if let Some(idx) = audio_idx {
                 let cue = self.cue_list.get_cue(idx).cloned();
                 if let Some(cue) = cue {
                     if self.audio_playback.start(&cue, &self.audio_player) {
-                        log::info!("Cross-trigger: lighting → audio cue {:.2}", audio_num);
+                        log::info!("Cross-trigger: lighting → audio cue {}", audio_id);
                     }
                 }
             }
@@ -755,18 +750,17 @@ impl EasyCueApp {
     /// Fire the lighting cross-trigger linked to the given audio cue, if any.
     #[cfg(feature = "audio")]
     fn fire_lighting_cross_trigger(&mut self, audio_cue_id: u32) {
-        let trigger_num = self.cue_list.find_by_id(audio_cue_id)
+        let trigger_id = self.cue_list.find_by_id(audio_cue_id)
             .and_then(|c| c.audio_data())
             .and_then(|d| d.triggers_lighting_cue);
-        if let Some(light_num) = trigger_num {
-            let light_idx = self.cue_list.cues().iter()
-                .position(|c| c.is_lighting() && (c.number - light_num).abs() < 0.01);
+        if let Some(light_id) = trigger_id {
+            let light_idx = self.cue_list.cues().iter().position(|c| c.id == light_id);
             if let Some(idx) = light_idx {
                 let cue = self.cue_list.get_cue(idx).cloned();
                 if let Some(cue) = cue {
                     if let Some(universe) = self.universes.first() {
                         self.playback.start(&cue, universe);
-                        log::info!("Cross-trigger: audio → lighting cue {:.2}", light_num);
+                        log::info!("Cross-trigger: audio → lighting cue {}", light_id);
                     }
                 }
             }
@@ -911,15 +905,14 @@ impl eframe::App for EasyCueApp {
             self.audio_playback.update(self.ui_state.sound_master);
 
             // Cross-triggers from audio→lighting queued at cue-start time
-            for lighting_num in self.audio_playback.take_pending_lighting_triggers() {
-                let light_idx = self.cue_list.cues().iter()
-                    .position(|c| c.is_lighting() && (c.number - lighting_num).abs() < 0.01);
+            for light_id in self.audio_playback.take_pending_lighting_triggers() {
+                let light_idx = self.cue_list.cues().iter().position(|c| c.id == light_id);
                 if let Some(idx) = light_idx {
                     let cue = self.cue_list.get_cue(idx).cloned();
                     if let Some(cue) = cue {
                         if let Some(universe) = self.universes.first() {
                             self.playback.start(&cue, universe);
-                            log::info!("Audio cross-trigger: lighting cue {:.2}", lighting_num);
+                            log::info!("Audio cross-trigger: lighting cue {}", light_id);
                         }
                     }
                 }

@@ -51,7 +51,7 @@ struct ActiveAudioStream {
 pub struct AudioPlaybackEngine {
     streams: Vec<ActiveAudioStream>,
     /// Cross-triggers queued at start() time, drained each frame by app.rs.
-    pending_lighting_triggers: Vec<f32>,
+    pending_lighting_triggers: Vec<u32>,
 }
 
 impl AudioPlaybackEngine {
@@ -276,7 +276,7 @@ impl AudioPlaybackEngine {
     }
 
     /// Drain audio→lighting cross-triggers queued since last call.
-    pub fn take_pending_lighting_triggers(&mut self) -> Vec<f32> {
+    pub fn take_pending_lighting_triggers(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.pending_lighting_triggers)
     }
 }

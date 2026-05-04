@@ -18,7 +18,7 @@ pub struct AudioCue {
     pub fade_out: f32,
     pub notes: String,
     #[serde(default)]
-    pub triggers_lighting_cue: Option<f32>,
+    pub triggers_lighting_cue: Option<u32>,
 }
 
 /// Current state of audio cue playback

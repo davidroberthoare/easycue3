@@ -136,22 +136,33 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             }
             ui.end_row();
 
-            // Cross-trigger
+            // Cross-trigger: lighting → audio
             ui.label("Triggers SFX:");
-            let mut trigger_str = cue.lighting_data()
-                .and_then(|d| d.triggers_audio_cue)
-                .map(|n| format!("{:.1}", n))
-                .unwrap_or_default();
-            let trigger_resp = ui.add(
-                egui::TextEdit::singleline(&mut trigger_str)
-                    .desired_width(80.0)
-                    .hint_text("cue #"),
-            );
-            if trigger_resp.lost_focus() {
-                let parsed = trigger_str.trim().parse::<f32>().ok();
-                if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.lighting_data_mut() {
-                        d.triggers_audio_cue = parsed;
+            {
+                let current_trigger = cue.lighting_data().and_then(|d| d.triggers_audio_cue);
+                let audio_options: Vec<(u32, String)> = app.cue_list.cues().iter()
+                    .filter(|c| c.is_audio())
+                    .map(|c| (c.id, format!("Q{:.1} {}", c.number, c.label)))
+                    .collect();
+                let selected_label = current_trigger
+                    .and_then(|id| app.cue_list.find_by_id(id))
+                    .map(|c| format!("Q{:.1} {}", c.number, c.label))
+                    .unwrap_or_else(|| "(none)".to_string());
+                let mut new_trigger = current_trigger;
+                egui::ComboBox::from_id_salt("lx_trigger_audio")
+                    .selected_text(&selected_label)
+                    .width(160.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut new_trigger, None, "(none)");
+                        for (id, label) in &audio_options {
+                            ui.selectable_value(&mut new_trigger, Some(*id), label);
+                        }
+                    });
+                if new_trigger != current_trigger {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        if let Some(d) = c.lighting_data_mut() {
+                            d.triggers_audio_cue = new_trigger;
+                        }
                     }
                 }
             }
@@ -337,22 +348,33 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             });
             ui.end_row();
 
-            // Cross-trigger
+            // Cross-trigger: audio → lighting
             ui.label("Triggers LX:");
-            let mut trigger_str = cue.audio_data()
-                .and_then(|d| d.triggers_lighting_cue)
-                .map(|n| format!("{:.1}", n))
-                .unwrap_or_default();
-            let trigger_resp = ui.add(
-                egui::TextEdit::singleline(&mut trigger_str)
-                    .desired_width(80.0)
-                    .hint_text("cue #"),
-            );
-            if trigger_resp.lost_focus() {
-                let parsed = trigger_str.trim().parse::<f32>().ok();
-                if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.audio_data_mut() {
-                        d.triggers_lighting_cue = parsed;
+            {
+                let current_trigger = cue.audio_data().and_then(|d| d.triggers_lighting_cue);
+                let lx_options: Vec<(u32, String)> = app.cue_list.cues().iter()
+                    .filter(|c| c.is_lighting() && c.id != cue.id)
+                    .map(|c| (c.id, format!("Q{:.1} {}", c.number, c.label)))
+                    .collect();
+                let selected_label = current_trigger
+                    .and_then(|id| app.cue_list.find_by_id(id))
+                    .map(|c| format!("Q{:.1} {}", c.number, c.label))
+                    .unwrap_or_else(|| "(none)".to_string());
+                let mut new_trigger = current_trigger;
+                egui::ComboBox::from_id_salt("audio_trigger_lx")
+                    .selected_text(&selected_label)
+                    .width(160.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut new_trigger, None, "(none)");
+                        for (id, label) in &lx_options {
+                            ui.selectable_value(&mut new_trigger, Some(*id), label);
+                        }
+                    });
+                if new_trigger != current_trigger {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        if let Some(d) = c.audio_data_mut() {
+                            d.triggers_lighting_cue = new_trigger;
+                        }
                     }
                 }
             }
