@@ -677,7 +677,7 @@ fn render_fixture_properties(
         ui.add_space(8.0);
         
         // Individual color sliders
-        ui.collapsing("Color Channels", |ui| {
+        egui::CollapsingHeader::new("Color Channels").default_open(true).show(ui, |ui| {
             egui::Grid::new("rgb_sliders")
                 .num_columns(2)
                 .spacing([10.0, 6.0])
@@ -766,31 +766,6 @@ fn render_fixture_properties(
                 });
         });
     }
-    
-    ui.add_space(8.0);
-    
-    // Other parameters
-    ui.collapsing("All Parameters", |ui| {
-        egui::Grid::new("fixture_params")
-            .num_columns(3)
-            .spacing([10.0, 6.0])
-            .show(ui, |ui| {
-                ui.label("Parameter");
-                ui.label("Channel");
-                ui.label("Value");
-                ui.end_row();
-                
-                for param_map in &profile.parameters {
-                    let ch = patch.start_address + param_map.channel_offset;
-                    let value = universe.get_channel(ch).unwrap_or(0);
-                    
-                    ui.label(format!("{:?}", param_map.parameter));
-                    ui.label(format!("{}", ch));
-                    ui.label(format!("{}", value));
-                    ui.end_row();
-                }
-            });
-    });
     
     ui.add_space(10.0);
     ui.label(

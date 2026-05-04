@@ -241,16 +241,24 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let mut clicked_id:     Option<u32>   = None;
     let mut go_to_abs_idx:  Option<usize> = None;
 
+    const COL_PLAY: f32  = 24.0;
+    const COL_ICON: f32  = 22.0;
+    const COL_NUM: f32   = 55.0;
+    const COL_INFO: f32  = 140.0;
+    const COL_STATE: f32 = 55.0;
+    let fixed = COL_PLAY + COL_ICON + COL_NUM + COL_INFO + COL_STATE;
+    let label_w = (ui.available_width() - fixed).max(80.0);
+
     TableBuilder::new(ui)
         .striped(true)
-        .resizable(true)
+        .resizable(false)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::exact(24.0))   // play button
-        .column(Column::exact(22.0))   // type icon
-        .column(Column::initial(55.0).at_least(40.0))  // Q#
-        .column(Column::remainder().at_least(120.0))   // label
-        .column(Column::initial(130.0).at_least(80.0)) // info
-        .column(Column::initial(55.0).at_least(40.0))  // status
+        .column(Column::exact(COL_PLAY))           // play button
+        .column(Column::exact(COL_ICON))           // type icon
+        .column(Column::exact(COL_NUM))            // Q#
+        .column(Column::exact(label_w).clip(true)) // label — fills remaining width
+        .column(Column::exact(COL_INFO))           // info
+        .column(Column::exact(COL_STATE))          // status
         .min_scrolled_height(0.0)
         .max_scroll_height(available_height)
         .header(20.0, |mut h| {
