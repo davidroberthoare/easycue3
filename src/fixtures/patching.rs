@@ -205,6 +205,7 @@ impl PatchList {
             .ok_or_else(|| anyhow::anyhow!("Fixture {} not found", old_id))?;
         patch.id = new_id;
         self.next_id = self.next_id.max(new_id + 1);
+        self.patches.sort_by_key(|p| p.id);
         Ok(())
     }
 
