@@ -883,6 +883,23 @@ impl eframe::App for EasyCueApp {
             self.playback.update(universe);
         }
 
+        // Keep VirtualIntensity state in sync with whatever the playback engine wrote to the
+        // universe this frame, so that intensity reads in the UI panels are never stale.
+        if self.playback.is_playing() {
+            if let Some(universe) = self.universes.first() {
+                let patches: Vec<_> = self.fixtures.patch_list().patches().to_vec();
+                for patch in &patches {
+                    if let Some(profile) = self.fixtures.get_profile(&patch.profile_id) {
+                        if !profile.has_intensity() {
+                            self.virtual_intensity.update_from_universe(
+                                patch.id, universe, patch, profile,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         #[cfg(feature = "audio")]
         {
             self.audio_playback.update(self.ui_state.sound_master);
