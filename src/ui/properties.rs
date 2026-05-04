@@ -78,14 +78,11 @@ fn cue_number_row(ui: &mut egui::Ui, cue: &crate::cue::Cue, cue_list: &crate::cu
             .custom_formatter(|n, _| format!("{:.1}", n))
             .custom_parser(|s| s.parse::<f64>().ok()),
     );
-    let committed = resp.lost_focus() && ui.input(|i| !i.key_pressed(egui::Key::Escape));
-    if committed && (num - cue.number).abs() > 0.001 {
+    if resp.changed() && (num - cue.number).abs() > 0.001 {
         let duplicate = cue_list.cues().iter().any(|c| c.id != cue.id && (c.number - num).abs() < 0.005);
-        if duplicate {
-            ui.colored_label(egui::Color32::RED, "duplicate");
-            return None;
+        if !duplicate {
+            return Some(num);
         }
-        return Some(num);
     }
     None
 }

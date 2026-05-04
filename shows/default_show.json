@@ -1,7 +1,22 @@
 {
   "audio_cues": [],
-  "created": "2026-05-03T16:12:29.853969633+00:00",
+  "created": "2026-05-04T01:50:07.614638141+00:00",
   "cues": [
+    {
+      "autofollow": null,
+      "id": 8,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0,
+          "triggers_audio_cue": null
+        },
+        "type": "Lighting"
+      },
+      "label": "Blackout",
+      "number": 3.0999999046325684
+    },
     {
       "autofollow": null,
       "id": 4,
@@ -22,21 +37,6 @@
     },
     {
       "autofollow": null,
-      "id": 8,
-      "kind": {
-        "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
-        },
-        "type": "Lighting"
-      },
-      "label": "Blackout",
-      "number": 4.0
-    },
-    {
-      "autofollow": null,
       "id": 5,
       "kind": {
         "data": {
@@ -45,7 +45,7 @@
           "fade_out": 2.0,
           "length": 10.0,
           "notes": "",
-          "triggers_lighting_cue": null,
+          "triggers_lighting_cue": 11,
           "volume": 0.800000011920929
         },
         "type": "Audio"
@@ -68,7 +68,7 @@
         "type": "Lighting"
       },
       "label": "Cue 5",
-      "number": 5.0
+      "number": 5.5
     },
     {
       "autofollow": null,
@@ -118,7 +118,7 @@
         "type": "Lighting"
       },
       "label": "Cue 7",
-      "number": 7.0
+      "number": 7.5
     },
     {
       "autofollow": null,
@@ -146,27 +146,43 @@
     }
   ],
   "description": "",
-  "modified": "2026-05-03T16:12:29.854080989+00:00",
+  "modified": "2026-05-04T01:50:07.614763547+00:00",
   "next_cue_id": 13,
   "patch": [
     {
       "id": 1,
-      "label": "dim1",
+      "label": "irgb1",
       "notes": "",
-      "profile_id": "generic_dimmer",
-      "start_address": 99,
+      "profile_id": "irgb",
+      "start_address": 41,
       "universe": 1
     },
     {
       "id": 2,
-      "label": "d2",
+      "label": "",
       "notes": "",
-      "profile_id": "generic_dimmer",
-      "start_address": 98,
+      "profile_id": "irgb",
+      "start_address": 150,
       "universe": 1
     },
     {
-      "id": 3,
+      "id": 4,
+      "label": "d2",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 123,
+      "universe": 1
+    },
+    {
+      "id": 5,
+      "label": "dim1",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 128,
+      "universe": 1
+    },
+    {
+      "id": 6,
       "label": "dice1",
       "notes": "",
       "profile_id": "rgbawuv",
@@ -174,11 +190,43 @@
       "universe": 1
     },
     {
-      "id": 4,
-      "label": "irgb1",
+      "id": 14,
+      "label": "",
       "notes": "",
       "profile_id": "irgb",
-      "start_address": 20,
+      "start_address": 154,
+      "universe": 1
+    },
+    {
+      "id": 20,
+      "label": "",
+      "notes": "",
+      "profile_id": "irgb",
+      "start_address": 158,
+      "universe": 1
+    },
+    {
+      "id": 21,
+      "label": "",
+      "notes": "",
+      "profile_id": "irgb",
+      "start_address": 162,
+      "universe": 1
+    },
+    {
+      "id": 22,
+      "label": "",
+      "notes": "",
+      "profile_id": "irgb",
+      "start_address": 166,
+      "universe": 1
+    },
+    {
+      "id": 23,
+      "label": "",
+      "notes": "",
+      "profile_id": "irgb",
+      "start_address": 170,
       "universe": 1
     }
   ],
