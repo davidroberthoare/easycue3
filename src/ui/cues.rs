@@ -10,6 +10,9 @@ const COLOR_FADING:          egui::Color32 = egui::Color32::from_rgb(120, 90, 20
 const COLOR_SELECTED:        egui::Color32 = egui::Color32::from_rgb(60, 60, 120);
 const COLOR_ACTIVE_SELECTED: egui::Color32 = egui::Color32::from_rgb(60, 110, 130);
 const COLOR_NEXT:            egui::Color32 = egui::Color32::from_rgb(140, 100, 20);
+// Idle row tints by cue type (subtle — state colours override these)
+const COLOR_ROW_LX:          egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 60, 90, 30);
+const COLOR_ROW_AUDIO:       egui::Color32 = egui::Color32::from_rgba_premultiplied(20, 80, 40, 30);
 
 pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Toolbar ──────────────────────────────────────────────────────────────
@@ -403,14 +406,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     COLOR_SELECTED
                 } else if is_next {
                     COLOR_NEXT
+                } else if is_lighting {
+                    COLOR_ROW_LX
                 } else {
-                    egui::Color32::TRANSPARENT
+                    COLOR_ROW_AUDIO
                 };
 
                 let paint_bg = |ui: &mut egui::Ui| {
-                    if bg_color != egui::Color32::TRANSPARENT {
-                        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
-                    }
+                    ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
                 };
 
                 let mut row_responses = Vec::new();
