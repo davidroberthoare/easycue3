@@ -1,6 +1,6 @@
 {
   "id": "led_par",
-  "name": "LED PAR (7-channel)",
+  "name": "LED PAR (7-ch)",
   "manufacturer": null,
   "channel_count": 7,
   "parameters": [

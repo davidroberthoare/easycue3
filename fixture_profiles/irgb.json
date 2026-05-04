@@ -1,6 +1,6 @@
 {
   "id": "irgb",
-  "name": "iRGB (Intensity + RGB)",
+  "name": "iRGB",
   "manufacturer": null,
   "channel_count": 4,
   "parameters": [

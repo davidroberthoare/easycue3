@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-04T01:50:07.614638141+00:00",
+  "created": "2026-05-04T23:18:36.909133807+00:00",
   "cues": [
     {
       "autofollow": null,
@@ -146,87 +146,47 @@
     }
   ],
   "description": "",
-  "modified": "2026-05-04T01:50:07.614763547+00:00",
+  "modified": "2026-05-04T23:18:36.909176539+00:00",
   "next_cue_id": 13,
   "patch": [
     {
       "id": 1,
-      "label": "irgb1",
-      "notes": "",
-      "profile_id": "irgb",
-      "start_address": 41,
-      "universe": 1
-    },
-    {
-      "id": 2,
-      "label": "",
-      "notes": "",
-      "profile_id": "irgb",
-      "start_address": 150,
-      "universe": 1
-    },
-    {
-      "id": 4,
-      "label": "d2",
-      "notes": "",
-      "profile_id": "generic_dimmer",
-      "start_address": 123,
-      "universe": 1
-    },
-    {
-      "id": 5,
       "label": "dim1",
       "notes": "",
       "profile_id": "generic_dimmer",
-      "start_address": 128,
-      "universe": 1
-    },
-    {
-      "id": 6,
-      "label": "dice1",
-      "notes": "",
-      "profile_id": "rgbawuv",
       "start_address": 1,
       "universe": 1
     },
     {
-      "id": 14,
-      "label": "",
+      "id": 2,
+      "label": "dim2",
       "notes": "",
-      "profile_id": "irgb",
-      "start_address": 154,
+      "profile_id": "generic_dimmer",
+      "start_address": 2,
       "universe": 1
     },
     {
-      "id": 20,
-      "label": "",
+      "id": 3,
+      "label": "dice1",
       "notes": "",
-      "profile_id": "irgb",
-      "start_address": 158,
+      "profile_id": "rgbawuv",
+      "start_address": 10,
       "universe": 1
     },
     {
-      "id": 21,
-      "label": "",
+      "id": 4,
+      "label": "irgb1",
       "notes": "",
       "profile_id": "irgb",
-      "start_address": 162,
+      "start_address": 20,
       "universe": 1
     },
     {
-      "id": 22,
-      "label": "",
+      "id": 5,
+      "label": "irgb2",
       "notes": "",
       "profile_id": "irgb",
-      "start_address": 166,
-      "universe": 1
-    },
-    {
-      "id": 23,
-      "label": "",
-      "notes": "",
-      "profile_id": "irgb",
-      "start_address": 170,
+      "start_address": 30,
       "universe": 1
     }
   ],

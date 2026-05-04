@@ -1,6 +1,6 @@
 {
   "id": "irgba",
-  "name": "iRGBA (Intensity + RGBA)",
+  "name": "iRGBA",
   "manufacturer": null,
   "channel_count": 5,
   "parameters": [

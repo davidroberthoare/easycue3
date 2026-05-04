@@ -1,6 +1,6 @@
 {
   "id": "moving_head",
-  "name": "Moving Head (16-channel)",
+  "name": "Mover (16-ch)",
   "manufacturer": null,
   "channel_count": 16,
   "parameters": [
