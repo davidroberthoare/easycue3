@@ -24,12 +24,6 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 }
             }
             
-            if !app.ui_state.selected_fixtures.is_empty() {
-                if ui.button("Clear Selection").clicked() {
-                    app.ui_state.selected_fixtures.clear();
-                    app.ui_state.last_selected_fixture = None;
-                }
-            }
         }
     });
     
@@ -65,7 +59,7 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
     let footer_height = 40.0;
     let max_scroll_height = ui.available_height() - footer_height - 10.0;
 
-    egui::ScrollArea::vertical()
+    let scroll_output = egui::ScrollArea::vertical()
         .id_salt("instrument_scroll")
         .auto_shrink([false, false])
         .max_height(max_scroll_height)
@@ -75,6 +69,7 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
                 .filter_map(|p| app.fixtures.get_profile(&p.profile_id).cloned().map(|prof| (p.clone(), prof)))
                 .collect();
 
+            let mut any_tile_clicked = false;
             let rows = (items.len() + cols - 1) / cols;
             for row in 0..rows {
                 ui.horizontal(|ui| {
@@ -82,13 +77,29 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
                     for col in 0..cols {
                         let idx = row * cols + col;
                         if let Some((patch, profile)) = items.get(idx) {
-                            render_fixture_tile(ui, app, patch, profile, TILE_W, TILE_H);
+                            if render_fixture_tile(ui, app, patch, profile, TILE_W, TILE_H) {
+                                any_tile_clicked = true;
+                            }
                         }
                     }
                 });
                 ui.add_space(GAP);
             }
+            any_tile_clicked
         });
+
+    // Click on empty background deselects all
+    let bg_clicked = ui.input(|i| {
+        if let Some(pos) = i.pointer.interact_pos() {
+            scroll_output.inner_rect.contains(pos) && i.pointer.button_clicked(egui::PointerButton::Primary)
+        } else {
+            false
+        }
+    });
+    if bg_clicked && !scroll_output.inner {
+        app.ui_state.selected_fixtures.clear();
+        app.ui_state.last_selected_fixture = None;
+    }
 
     ui.separator();
 
@@ -140,6 +151,7 @@ fn set_selected_fixtures_intensity(app: &mut EasyCueApp, intensity: f32) {
 }
 
 /// Render a single compact fixture tile. Click to select, drag vertically to adjust intensity.
+/// Returns true if the tile was clicked this frame.
 fn render_fixture_tile(
     ui: &mut Ui,
     app: &mut EasyCueApp,
@@ -147,7 +159,7 @@ fn render_fixture_tile(
     profile: &crate::fixtures::FixtureProfile,
     tile_w: f32,
     tile_h: f32,
-) {
+) -> bool {
     let fixture_id = patch.id;
     let is_selected = app.ui_state.selected_fixtures.contains(&fixture_id);
 
@@ -189,8 +201,10 @@ fn render_fixture_tile(
 
     let (rect, response) = ui.allocate_exact_size(Vec2::new(tile_w, tile_h), Sense::click_and_drag());
 
+    let tile_clicked = response.clicked();
+
     // Selection handling
-    if response.clicked() {
+    if tile_clicked {
         let modifiers = ui.input(|i| i.modifiers);
         if modifiers.shift {
             if let Some(last_id) = app.ui_state.last_selected_fixture {
@@ -300,6 +314,8 @@ fn render_fixture_tile(
         p.rect_filled(swatch, 2.0, color);
         p.rect_stroke(swatch, 2.0, Stroke::new(0.5, Color32::from_gray(80)), egui::epaint::StrokeKind::Inside);
     }
+
+    tile_clicked
 }
 
 fn intensity_color(intensity: f32) -> Color32 {
