@@ -315,17 +315,19 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     String::new()
                 };
 
-                // Trigger indicator
+                // Trigger indicator — look up the target cue number from its stable ID
                 let trigger_label = if is_lighting {
                     cue.lighting_data()
                         .and_then(|d| d.triggers_audio_cue)
-                        .map(|n| format!("→{}{:.1}", ph::SPEAKER_HIGH, n))
+                        .and_then(|id| app.cue_list.find_by_id(id))
+                        .map(|t| format!("→{}{:.1}", ph::SPEAKER_HIGH, t.number))
                 } else {
                     #[cfg(feature = "audio")]
                     {
                         cue.audio_data()
                             .and_then(|d| d.triggers_lighting_cue)
-                            .map(|n| format!("→{}{:.1}", ph::LIGHTBULB, n))
+                            .and_then(|id| app.cue_list.find_by_id(id))
+                            .map(|t| format!("→{}{:.1}", ph::LIGHTBULB, t.number))
                     }
                     #[cfg(not(feature = "audio"))]
                     None
