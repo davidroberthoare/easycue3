@@ -12,7 +12,8 @@
 			"cargo search": true,
 			"cargo info": true,
 			"cargo run": true,
-			"cargo test": true
+			"cargo test": true,
+			"cargo check": true
 		}
 	}
 }

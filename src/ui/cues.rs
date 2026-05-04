@@ -241,27 +241,33 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let mut clicked_id:     Option<u32>   = None;
     let mut go_to_abs_idx:  Option<usize> = None;
 
-    const COL_PLAY: f32  = 24.0;
-    const COL_ICON: f32  = 22.0;
-    const COL_NUM: f32   = 55.0;
-    const COL_INFO: f32  = 140.0;
-    const COL_STATE: f32 = 55.0;
-    let fixed = COL_PLAY + COL_ICON + COL_NUM + COL_INFO + COL_STATE;
-    let label_w = (ui.available_width() - fixed).max(80.0);
+    const COL_PLAY: f32      = 24.0;
+    const COL_ICON: f32      = 22.0;
+    const COL_NUM: f32       = 55.0;
+    const COL_NUM_MIN: f32   = 42.0;
+    const COL_LABEL_MIN: f32 = 80.0;
+    const COL_INFO: f32      = 140.0;
+    const COL_INFO_MIN: f32  = 72.0;
+    const COL_STATE: f32     = 55.0;
+    const COL_STATE_MIN: f32 = 44.0;
 
-    TableBuilder::new(ui)
+    let table = TableBuilder::new(ui)
+        .id_salt("cue_list_table")
         .striped(true)
         .resizable(false)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::exact(COL_PLAY))           // play button
-        .column(Column::exact(COL_ICON))           // type icon
-        .column(Column::exact(COL_NUM))            // Q#
-        .column(Column::exact(label_w).clip(true)) // label — fills remaining width
-        .column(Column::exact(COL_INFO))           // info
-        .column(Column::exact(COL_STATE))          // status
+        .column(Column::exact(COL_PLAY))                               // play button
+        .column(Column::exact(COL_ICON))                               // type icon
+        .column(Column::initial(COL_NUM).at_least(COL_NUM_MIN).clip(true))
+        .column(Column::remainder().at_least(COL_LABEL_MIN).clip(true))
+        .column(Column::initial(COL_INFO).at_least(COL_INFO_MIN).clip(true))
+        .column(Column::initial(COL_STATE).at_least(COL_STATE_MIN).clip(true))
         .min_scrolled_height(0.0)
-        .max_scroll_height(available_height)
-        .header(20.0, |mut h| {
+        .max_scroll_height(available_height);
+
+    table.reset();
+
+    table.header(20.0, |mut h| {
             h.col(|ui| { ui.strong(""); });
             h.col(|ui| { ui.strong(""); });
             h.col(|ui| { ui.strong("Q#"); });
@@ -430,7 +436,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Col 2: cue number
                 row.col(|ui| {
                     paint_bg(ui);
-                    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+                    let rect = ui.max_rect();
+                    let resp = ui.interact(rect, ui.id().with(("cue-number", cue_id)), egui::Sense::click());
                     ui.painter().text(
                         rect.left_center() + egui::vec2(4.0, 0.0),
                         egui::Align2::LEFT_CENTER,
@@ -446,7 +453,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     paint_bg(ui);
                     let mut label = cue_label.clone();
                     let resp = ui.add(
-                        egui::TextEdit::singleline(&mut label).desired_width(ui.available_width())
+                        egui::TextEdit::singleline(&mut label)
+                            .desired_width(ui.available_width())
                     );
                     if resp.changed() {
                         if let Some(c) = app.cue_list.get_cue_mut(abs_idx) {
@@ -465,7 +473,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     } else {
                         info_text
                     };
-                    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+                    let rect = ui.max_rect();
+                    let resp = ui.interact(rect, ui.id().with(("cue-info", cue_id)), egui::Sense::click());
                     ui.painter().text(
                         rect.left_center() + egui::vec2(4.0, 0.0),
                         egui::Align2::LEFT_CENTER,
@@ -508,7 +517,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     } else {
                         String::new()
                     };
-                    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+                    let rect = ui.max_rect();
+                    let resp = ui.interact(rect, ui.id().with(("cue-state", cue_id)), egui::Sense::click());
                     if !state_str.is_empty() {
                         ui.painter().text(
                             rect.left_center() + egui::vec2(4.0, 0.0),
