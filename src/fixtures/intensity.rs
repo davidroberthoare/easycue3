@@ -211,6 +211,11 @@ impl VirtualIntensity {
         Ok(())
     }
     
+    /// Remove stored state for a fixture (e.g., when its ID is changed).
+    pub fn remove_fixture(&mut self, fixture_id: usize) {
+        self.fixture_states.remove(&fixture_id);
+    }
+
     /// Update fixture state after DMX values change (e.g., during cue playback fade)
     /// Recalculates ratios from current DMX to allow subsequent intensity control
     pub fn update_from_universe(

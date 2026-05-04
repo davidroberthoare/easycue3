@@ -204,6 +204,11 @@ impl FixtureLibrary {
         self.patch_list.next_available_id()
     }
 
+    /// Rename a fixture's ID (overlap-checked).
+    pub fn rename_fixture_id(&mut self, old_id: usize, new_id: usize) -> anyhow::Result<()> {
+        self.patch_list.rename_id(old_id, new_id)
+    }
+
     /// Update a patched fixture address
     pub fn update_patch_address(
         &mut self,

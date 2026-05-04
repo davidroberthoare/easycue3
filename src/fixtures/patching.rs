@@ -192,6 +192,22 @@ impl PatchList {
         Ok(())
     }
 
+    /// Change a fixture's ID, checking that the new ID is not already in use.
+    pub fn rename_id(&mut self, old_id: usize, new_id: usize) -> Result<()> {
+        if new_id == 0 {
+            anyhow::bail!("Fixture number must be ≥ 1");
+        }
+        if self.patches.iter().any(|p| p.id == new_id) {
+            anyhow::bail!("Fixture number {} is already in use", new_id);
+        }
+        let patch = self.patches.iter_mut()
+            .find(|p| p.id == old_id)
+            .ok_or_else(|| anyhow::anyhow!("Fixture {} not found", old_id))?;
+        patch.id = new_id;
+        self.next_id = self.next_id.max(new_id + 1);
+        Ok(())
+    }
+
     /// Get a patch by ID
     pub fn get_patch(&self, id: usize) -> Option<&Patch> {
         self.patches.iter().find(|p| p.id == id)
