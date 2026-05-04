@@ -9,6 +9,7 @@ mod patching;
 
 use egui::Context;
 use crate::app::{EasyCueApp, TabKind};
+use egui_phosphor::regular as ph;
 
 pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
@@ -405,10 +406,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 
                 ui.separator();
-                ui.checkbox(&mut app.ui_state.show_debug_ui, "🐛 Show Debug Info (FPS)");
+                ui.checkbox(&mut app.ui_state.show_debug_ui, format!("{} Show Debug Info (FPS)", ph::BUG));
                 
                 ui.separator();
-                ui.label(egui::RichText::new("💡 Drag tabs to rearrange").italics().small());
+                ui.label(egui::RichText::new(format!("{} Drag tabs to rearrange", ph::LIGHTBULB)).italics().small());
             });
             
             // Settings menu
@@ -641,7 +642,7 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                     log::warn!("PANIC button activated");
                 }
                 
-                let all_stop_button = egui::Button::new("⏹ ALL STOP")
+                let all_stop_button = egui::Button::new(format!("{} ALL STOP", ph::STOP))
                     .fill(egui::Color32::from_rgb(120, 50, 50))
                     .min_size(egui::vec2(95.0, 20.0));
                 

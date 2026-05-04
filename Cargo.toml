@@ -39,6 +39,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rfd = "0.14"  # Native file dialogs
 image = { version = "0.25", default-features = false, features = ["png"] }  # Icon loading
 dirs = "5.0"  # Platform-specific config directories
+egui-phosphor = "0.9.0"
 
 [features]
 default = ["usb", "audio"]  # Enable USB DMX and audio by default

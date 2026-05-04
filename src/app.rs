@@ -304,6 +304,10 @@ impl EasyCueApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::configure_cobalt_theme(&cc.egui_ctx);
 
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        cc.egui_ctx.set_fonts(fonts);
+
         let universes = vec![Universe::new(0), Universe::new(1)];
 
         let dmx_backend: Box<dyn DmxBackend> = {
@@ -934,7 +938,7 @@ impl eframe::App for EasyCueApp {
         let ui_render_time = ui_render_start.elapsed();
 
         if self.ui_state.show_debug_ui {
-            egui::Window::new("🐛 Debug Info")
+            egui::Window::new(format!("{} Debug Info", egui_phosphor::regular::BUG))
                 .default_pos([10.0, 10.0])
                 .default_width(280.0)
                 .show(ctx, |ui| {

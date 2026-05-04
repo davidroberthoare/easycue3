@@ -2,6 +2,7 @@
 
 use egui::Ui;
 use crate::app::EasyCueApp;
+use egui_phosphor::regular as ph;
 
 /// Render cue properties for the selected cue.
 pub fn render_cue_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
@@ -66,7 +67,7 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 // ── Cue properties ────────────────────────────────────────────────────────────
 
 fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
-    ui.label(egui::RichText::new(format!("💡 Cue {:.1}", cue.number)).strong());
+    ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::LIGHTBULB, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
 
@@ -207,7 +208,7 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
 
 #[cfg(feature = "audio")]
 fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
-    ui.label(egui::RichText::new(format!("🔊 Cue {:.1}", cue.number)).strong());
+    ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::SPEAKER_HIGH, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
 
@@ -349,7 +350,7 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 /// Render properties for an Adjust cue (sound master ramp + optional stop)
 #[cfg(feature = "audio")]
 fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
-    ui.label(egui::RichText::new(format!("🎚 Cue {:.1}", cue.number)).strong());
+    ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::SLIDERS, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
 

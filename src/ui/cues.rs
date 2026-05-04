@@ -3,6 +3,7 @@
 use egui::Ui;
 use egui_extras::{TableBuilder, Column};
 use crate::app::EasyCueApp;
+use egui_phosphor::regular as ph;
 
 const COLOR_ACTIVE:          egui::Color32 = egui::Color32::from_rgb(40, 110, 40);
 const COLOR_FADING:          egui::Color32 = egui::Color32::from_rgb(120, 90, 20);
@@ -46,7 +47,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let enter_in_box = ondeck_resp.lost_focus()
             && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-        let go_btn = egui::Button::new("⏵ GO")
+        let go_btn = egui::Button::new(format!("{} GO", ph::PLAY))
             .fill(if go_enabled { egui::Color32::from_rgb(50, 120, 50) } else { egui::Color32::from_rgb(30, 60, 30) });
         if ui.add_enabled(go_enabled, go_btn).clicked() || (go_enabled && enter_in_box) {
             if app.ui_state.go_cue_input.trim().is_empty() {
@@ -68,14 +69,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
 
-        let back_btn = egui::Button::new("⏮ BACK")
+        let back_btn = egui::Button::new(format!("{} BACK", ph::SKIP_BACK))
             .fill(if back_enabled { egui::Color32::from_rgb(50, 80, 120) } else { egui::Color32::from_rgb(30, 40, 60) });
         if ui.add_enabled(back_enabled, back_btn).clicked() {
             app.go_back();
             app.ui_state.status_message = "BACK".to_string();
         }
 
-        if ui.button("⏹ STOP").clicked() {
+        if ui.button(format!("{} STOP", ph::STOP)).clicked() {
             app.playback.stop();
             #[cfg(feature = "audio")]
             app.audio_playback.stop_all();
@@ -85,14 +86,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         ui.separator();
 
         // Edit actions
-        if ui.button("➕ Record LX").clicked() {
+        if ui.button(format!("{} Record LX", ph::RECORD)).clicked() {
             let id = app.record_cue();
             app.ui_state.selected_cue_id = Some(id);
             app.ui_state.selected_lighting_cue_id = Some(id);
         }
 
         #[cfg(feature = "audio")]
-        if ui.button("➕ Adjust").on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
+        if ui.button(format!("{} Adjust", ph::PLUS)).on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
             let next_number = app.cue_list.cues().iter()
                 .last()
                 .map(|c| c.number.floor() + 1.0)
@@ -105,7 +106,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
 
         #[cfg(feature = "audio")]
-        if ui.button("➕ Audio").clicked() {
+        if ui.button(format!("{} Audio", ph::PLUS)).clicked() {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Audio Files", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
                 .set_title("Select Audio File")
@@ -129,7 +130,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
 
-        if ui.button("🗑 Delete").clicked() {
+        if ui.button(format!("{} Delete", ph::TRASH)).clicked() {
             if let Some(sel_id) = app.ui_state.selected_cue_id {
                 if let Some(abs_idx) = app.cue_list.cues().iter().position(|c| c.id == sel_id) {
                     let num = app.cue_list.get_cue(abs_idx).map(|c| c.number).unwrap_or(0.0);
@@ -167,7 +168,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         ui.separator();
 
         // Masters — compact
-        let bo_text = if app.ui_state.blackout_active { "⚫" } else { "💡" };
+        let bo_text = if app.ui_state.blackout_active { "●" } else { ph::LIGHTBULB };
         let bo_fill = if app.ui_state.blackout_active { egui::Color32::from_rgb(80, 40, 40) } else { egui::Color32::from_rgb(50, 50, 50) };
         if ui.add(egui::Button::new(bo_text).fill(bo_fill).min_size(egui::vec2(26.0, 20.0))).clicked() {
             if app.ui_state.blackout_active {
@@ -187,7 +188,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
         #[cfg(feature = "audio")]
         {
-            let mute_text = if app.ui_state.audio_mute_active { "🔇" } else { "🔊" };
+            let mute_text = if app.ui_state.audio_mute_active { ph::SPEAKER_SLASH } else { ph::SPEAKER_HIGH };
             let mute_fill = if app.ui_state.audio_mute_active { egui::Color32::from_rgb(80, 40, 40) } else { egui::Color32::from_rgb(50, 50, 50) };
             if ui.add(egui::Button::new(mute_text).fill(mute_fill).min_size(egui::vec2(26.0, 20.0))).clicked() {
                 if app.ui_state.audio_mute_active {
@@ -294,7 +295,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Info column text (contextual)
                 let info_text = if is_lighting {
                     let fade = cue.lighting_data().map(|d| d.fade_up).unwrap_or(0.0);
-                    if fade > 0.0 { format!("↑{:.1}s", fade) } else { "instant".to_string() }
+                    if fade > 0.0 { format!("{} {:.1}s", ph::CLOCK, fade) } else { "instant".to_string() }
                 } else if is_adjust {
                     #[cfg(feature = "audio")]
                     {
@@ -332,13 +333,13 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 let trigger_label = if is_lighting {
                     cue.lighting_data()
                         .and_then(|d| d.triggers_audio_cue)
-                        .map(|n| format!("→🔊{:.1}", n))
+                        .map(|n| format!("→{}{:.1}", ph::SPEAKER_HIGH, n))
                 } else {
                     #[cfg(feature = "audio")]
                     {
                         cue.audio_data()
                             .and_then(|d| d.triggers_lighting_cue)
-                            .map(|n| format!("→💡{:.1}", n))
+                            .map(|n| format!("→{}{:.1}", ph::LIGHTBULB, n))
                     }
                     #[cfg(not(feature = "audio"))]
                     None
@@ -417,8 +418,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Col 0: play button
                 row.col(|ui| {
                     paint_bg(ui);
-                    // Show ▷ for next-to-fire, ⏵ for manual jump
-                    let btn_text = if is_next { "▷" } else { "⏵" };
+                    let btn_text = if is_next { ph::CARET_RIGHT } else { ph::PLAY };
                     if ui.small_button(btn_text).on_hover_text("Fire this cue").clicked() {
                         go_to_abs_idx = Some(abs_idx);
                     }
@@ -427,7 +427,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Col 1: type icon
                 row.col(|ui| {
                     paint_bg(ui);
-                    let icon = if is_lighting { "💡" } else if is_adjust { "🎚" } else { "🔊" };
+                    let icon = if is_lighting { ph::LIGHTBULB } else if is_adjust { ph::SLIDERS } else { ph::SPEAKER_HIGH };
                     ui.label(egui::RichText::new(icon).size(13.0));
                 });
 
@@ -484,14 +484,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 row.col(|ui| {
                     paint_bg(ui);
                     let state_str = if is_lx_fading {
-                        format!("⏵{:.0}%", lx_fade.unwrap_or(0.0) * 100.0)
+                        format!("{}{:.0}%", ph::PLAY, lx_fade.unwrap_or(0.0) * 100.0)
                     } else if is_lx_active {
-                        "⏸".to_string()
+                        ph::PAUSE.to_string()
                     } else if is_adjust_active {
                         #[cfg(feature = "audio")]
                         {
                             let pct = (adjust_progress.unwrap_or(0.0) * 100.0) as u32;
-                            format!("⏵{}%", pct)
+                            format!("{}{}%", ph::PLAY, pct)
                         }
                         #[cfg(not(feature = "audio"))]
                         String::new()
@@ -500,10 +500,10 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         {
                             match row_audio_state {
                                 Some(crate::audio::AudioCueState::FadingIn { progress }) =>
-                                    format!("⏵{:.0}%", progress * 100.0),
+                                    format!("{}{:.0}%", ph::PLAY, progress * 100.0),
                                 Some(crate::audio::AudioCueState::FadingOut { progress }) =>
-                                    format!("⏸{:.0}%", (1.0 - progress) * 100.0),
-                                Some(crate::audio::AudioCueState::Playing) => "⏵".to_string(),
+                                    format!("{}{:.0}%", ph::PAUSE, (1.0 - progress) * 100.0),
+                                Some(crate::audio::AudioCueState::Playing) => ph::PLAY.to_string(),
                                 _ => String::new(),
                             }
                         }
@@ -600,9 +600,9 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                 ui.horizontal(|ui| {
                     // Lighting state
                     let lx_str = match app.playback.fade_progress() {
-                        Some(p) => format!("💡⏵{:.0}%", p * 100.0),
-                        None if app.playback.is_playing() => "💡⏸".to_string(),
-                        _ => "💡⏹".to_string(),
+                        Some(p) => format!("{}{}{:.0}%", ph::LIGHTBULB, ph::PLAY, p * 100.0),
+                        None if app.playback.is_playing() => format!("{}{}", ph::LIGHTBULB, ph::PAUSE),
+                        _ => format!("{}{}", ph::LIGHTBULB, ph::STOP),
                     };
                     ui.label(egui::RichText::new(lx_str).strong());
                     if let Some(id) = app.playback.current_cue_id() {
@@ -617,13 +617,14 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                         let count = app.audio_playback.active_count();
                         let multi = if count > 1 { format!(" ×{}", count) } else { String::new() };
                         let snd_str = match app.audio_playback.state() {
-                            crate::audio::AudioCueState::Stopped => "🔊⏹".to_string(),
+                            crate::audio::AudioCueState::Stopped =>
+                                format!("{}{}", ph::SPEAKER_HIGH, ph::STOP),
                             crate::audio::AudioCueState::FadingIn { progress } =>
-                                format!("🔊⏵{:.0}%{}", progress * 100.0, multi),
+                                format!("{}{}{:.0}%{}", ph::SPEAKER_HIGH, ph::PLAY, progress * 100.0, multi),
                             crate::audio::AudioCueState::Playing =>
-                                format!("🔊⏵{}", multi),
+                                format!("{}{}{}", ph::SPEAKER_HIGH, ph::PLAY, multi),
                             crate::audio::AudioCueState::FadingOut { progress } =>
-                                format!("🔊⏸{:.0}%{}", (1.0 - progress) * 100.0, multi),
+                                format!("{}{}{:.0}%{}", ph::SPEAKER_HIGH, ph::PAUSE, (1.0 - progress) * 100.0, multi),
                         };
                         ui.label(egui::RichText::new(snd_str).strong());
                         if let Some(id) = app.audio_playback.current_cue_id() {
@@ -639,9 +640,9 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
                         ui.horizontal(|ui| {
                             let ctx_icon = match app.ui_state.command_context {
-                                crate::command::CommandContext::Lighting => "💡",
-                                crate::command::CommandContext::Sound => "🔊",
-                                _ => "⌨",
+                                crate::command::CommandContext::Lighting => ph::LIGHTBULB,
+                                crate::command::CommandContext::Sound => ph::SPEAKER_HIGH,
+                                _ => ph::KEYBOARD,
                             };
                             ui.label(egui::RichText::new(ctx_icon).size(16.0));
                             let resp = ui.add(
@@ -653,7 +654,7 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 crate::ui::execute_command_line(app);
                             }
-                            if ui.button("⏎").clicked() { crate::ui::execute_command_line(app); }
+                            if ui.button(ph::ARROW_BEND_DOWN_LEFT).clicked() { crate::ui::execute_command_line(app); }
                             if ui.button("✖").clicked() {
                                 app.ui_state.command_input.clear();
                             }
