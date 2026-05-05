@@ -22,6 +22,7 @@ pub enum TabKind {
     Patching,
     Properties,
     InstrumentProperties,
+    MagicSheet,
     // Legacy variants kept for saved dock state deserialization — never shown
     #[serde(other)]
     Unknown,
@@ -35,7 +36,30 @@ impl std::fmt::Display for TabKind {
             TabKind::Patching => write!(f, "Patching"),
             TabKind::Properties => write!(f, "Cue Properties"),
             TabKind::InstrumentProperties => write!(f, "Instrument Properties"),
+            TabKind::MagicSheet => write!(f, "Magic Sheet"),
             TabKind::Unknown => write!(f, "?"),
+        }
+    }
+}
+
+/// Ephemeral per-session state for the magic sheet panel (not saved to disk).
+pub struct MagicSheetState {
+    pub edit_mode: bool,
+    /// ID of the shape currently selected in edit mode.
+    pub selected_shape_id: Option<u32>,
+    /// Canvas pan offset in screen pixels.
+    pub canvas_offset: egui::Vec2,
+    /// Zoom level: 1.0 = 100%.
+    pub canvas_zoom: f32,
+}
+
+impl Default for MagicSheetState {
+    fn default() -> Self {
+        Self {
+            edit_mode: false,
+            selected_shape_id: None,
+            canvas_offset: egui::Vec2::ZERO,
+            canvas_zoom: 1.0,
         }
     }
 }
@@ -155,6 +179,10 @@ pub struct EasyCueApp {
     pub virtual_intensity: crate::fixtures::VirtualIntensity,
     pub ui_state: UiState,
     pub patching_state: crate::ui::PatchingPanelState,
+    /// Serialised magic sheet layout (saved with the show file).
+    pub magic_sheet: crate::magic_sheet::MagicSheet,
+    /// Ephemeral magic sheet panel state (not saved).
+    pub magic_sheet_state: MagicSheetState,
     pub show_title: String,
     pub current_file_path: Option<std::path::PathBuf>,
     pub dock_state: DockState<TabKind>,
@@ -358,6 +386,8 @@ impl EasyCueApp {
             virtual_intensity: crate::fixtures::VirtualIntensity::new(),
             ui_state: UiState::default(),
             patching_state: crate::ui::PatchingPanelState::default(),
+            magic_sheet: crate::magic_sheet::MagicSheet::default(),
+            magic_sheet_state: MagicSheetState::default(),
             show_title: "Example Show".to_string(),
             current_file_path: None,
             dock_state,
@@ -446,6 +476,8 @@ impl EasyCueApp {
             }
         }
 
+        self.magic_sheet = show.magic_sheet;
+        self.magic_sheet_state = MagicSheetState::default();
         self.show_title = show.title.clone();
         self.current_file_path = Some(path.to_path_buf());
         self.ui_state.selected_cue_id = None;
@@ -463,6 +495,7 @@ impl EasyCueApp {
         show.next_cue_id = self.cue_list.next_id();
         show.cues = self.cue_list.cues().to_vec();
         show.patch = self.fixtures.patch_list().patches().to_vec();
+        show.magic_sheet = self.magic_sheet.clone();
 
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
