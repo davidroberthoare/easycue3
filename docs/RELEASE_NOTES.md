@@ -21,7 +21,7 @@ Use an annotated tag:
 git tag -a v0.2.0 -m "EasyCue3 v0.2.0 - Magic Sheet"
 
 Push branch and tag
-git push origin main
+git push origin master
 git push origin v0.2.0
 
 Let GitHub Actions build and publish
