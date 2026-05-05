@@ -7,6 +7,7 @@
 use anyhow::Result;
 use crate::cue::Cue;
 use crate::fixtures::Patch;
+use crate::magic_sheet::MagicSheet;
 use serde::{Deserialize, Serialize};
 
 /// Show file format — unified cue list (lighting + audio together)
@@ -27,6 +28,10 @@ pub struct ShowFile {
     /// Fixture patch
     #[serde(default)]
     pub patch: Vec<Patch>,
+
+    /// Magic sheet canvas layout
+    #[serde(default)]
+    pub magic_sheet: MagicSheet,
 
     /// Legacy audio cues field — only populated in old (pre-Phase B) show files.
     /// load() migrates these into `cues` and this field is always empty on save.
@@ -51,6 +56,7 @@ impl ShowFile {
             next_cue_id: 1,
             cues: Vec::new(),
             patch: Vec::new(),
+            magic_sheet: MagicSheet::default(),
             #[cfg(feature = "audio")]
             audio_cues: Vec::new(),
             #[cfg(not(feature = "audio"))]

@@ -4,6 +4,7 @@
 
 mod channels;
 mod cues;
+mod magic_sheet;
 mod properties;
 mod patching;
 
@@ -13,6 +14,7 @@ use egui_phosphor::regular as ph;
 
 pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
+pub use magic_sheet::render_magic_sheet_panel;
 pub use properties::{render_cue_properties_panel, render_instrument_properties_panel};
 pub use patching::{render_patching_panel, PatchingPanelState};
 
@@ -252,6 +254,7 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             }
             TabKind::Properties => render_cue_properties_panel(ui, self.app),
             TabKind::InstrumentProperties => render_instrument_properties_panel(ui, self.app),
+            TabKind::MagicSheet => render_magic_sheet_panel(ui, self.app),
             TabKind::Unknown => { ui.label("(unknown tab)"); }
         }
     }
@@ -393,6 +396,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 if ui.button("Instrument Properties").clicked() {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::InstrumentProperties);
+                    ui.close_menu();
+                }
+                if ui.button("Magic Sheet").clicked() {
+                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::MagicSheet);
                     ui.close_menu();
                 }
                 
