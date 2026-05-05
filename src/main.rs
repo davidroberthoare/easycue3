@@ -13,6 +13,7 @@ mod command;
 
 // Use library modules (dmx, cue, audio are defined in lib.rs)
 use easycue3::{dmx, cue, audio};
+pub use easycue3::paths;
 
 use app::EasyCueApp;
 

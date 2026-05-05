@@ -12,7 +12,7 @@ pub use intensity::VirtualIntensity;
 
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Fixture library managing profiles and patch
 pub struct FixtureLibrary {
@@ -50,12 +50,10 @@ impl FixtureLibrary {
 
     /// Load bundled fixture profiles from the app directory
     fn load_bundled_profiles(&mut self) -> Result<()> {
-        let bundled_dir = PathBuf::from("fixture_profiles");
-
-        if !bundled_dir.exists() {
-            log::warn!("Bundled fixture profiles directory not found: {:?}", bundled_dir);
+        let Some(bundled_dir) = crate::paths::find_resource_dir("fixture_profiles") else {
+            log::warn!("Bundled fixture profiles directory not found: \"fixture_profiles\"");
             return Ok(());
-        }
+        };
 
         self.load_profiles_from_dir(&bundled_dir, "bundled")
     }
