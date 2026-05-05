@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-05T03:11:35.145482129+00:00",
+  "created": "2026-05-05T17:27:28.902419+00:00",
   "cues": [
     {
       "autofollow": null,
@@ -22,7 +22,7 @@
       "id": 4,
       "kind": {
         "data": {
-          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample1.mp3",
+          "audio_path": "media/sample1.mp3",
           "fade_in": 0.0,
           "fade_out": 2.0,
           "length": null,
@@ -40,7 +40,7 @@
       "id": 5,
       "kind": {
         "data": {
-          "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample2.mp3",
+          "audio_path": "media/sample2.mp3",
           "fade_in": 2.0,
           "fade_out": 2.0,
           "length": 10.0,
@@ -173,7 +173,7 @@
       }
     ]
   },
-  "modified": "2026-05-05T03:11:35.145567669+00:00",
+  "modified": "2026-05-05T17:27:28.902635+00:00",
   "next_cue_id": 13,
   "patch": [
     {

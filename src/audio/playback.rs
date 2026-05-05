@@ -6,22 +6,10 @@
 
 use crate::audio::{AudioCueState, AudioPlayer};
 use crate::cue::Cue;
-use rodio::{Decoder, Source};
+use rodio::Decoder;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
 use std::time::Instant;
-
-fn resolve_audio_path(path: &Path) -> PathBuf {
-    if path.is_absolute() || path.exists() {
-        return path.to_path_buf();
-    }
-    let media_path = PathBuf::from("media").join(path);
-    if media_path.exists() {
-        return media_path;
-    }
-    path.to_path_buf()
-}
 
 /// In-progress per-stream volume ramp driven by an Adjust cue.
 struct VolumeAdjust {
@@ -63,7 +51,7 @@ impl AudioPlaybackEngine {
     pub fn start(&mut self, cue: &Cue, player: &AudioPlayer) -> bool {
         let Some(data) = cue.audio_data() else { return false };
 
-        let resolved = resolve_audio_path(&data.audio_path);
+        let resolved = crate::paths::resolve_media_path(&data.audio_path);
         let file = match File::open(&resolved) {
             Ok(f) => f,
             Err(e) => {

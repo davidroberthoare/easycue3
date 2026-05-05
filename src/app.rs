@@ -418,9 +418,8 @@ impl EasyCueApp {
                 Err(e) => log::warn!("Could not load last used show: {}", e),
             }
         } else {
-            let default_path = std::path::Path::new("shows/default_show.json");
-            if default_path.exists() {
-                match app.load_show(default_path) {
+            if let Some(default_path) = crate::paths::find_resource_file(std::path::Path::new("shows/default_show.json")) {
+                match app.load_show(&default_path) {
                     Ok(_) => log::info!("Loaded default show on startup"),
                     Err(e) => log::warn!("Could not load default show: {}", e),
                 }

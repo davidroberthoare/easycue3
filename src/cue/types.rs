@@ -96,14 +96,7 @@ impl AudioData {
 
     /// Resolve to the actual filesystem path, falling back to "media/" directory
     pub fn resolved_path(&self) -> PathBuf {
-        if self.audio_path.is_absolute() || self.audio_path.exists() {
-            return self.audio_path.clone();
-        }
-        let media_path = PathBuf::from("media").join(&self.audio_path);
-        if media_path.exists() {
-            return media_path;
-        }
-        self.audio_path.clone()
+        crate::paths::resolve_media_path(&self.audio_path)
     }
 
     /// Set path, stripping "media/" prefix so show files store just the filename
