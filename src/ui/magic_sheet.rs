@@ -54,6 +54,19 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
     ui.separator();
 
+    // ── Properties side panel (edit mode, shape selected) ────────────────────
+    if app.magic_sheet_state.edit_mode {
+        if let Some(sel_id) = app.magic_sheet_state.selected_shape_id {
+            egui::SidePanel::right("magic_sheet_props")
+                .resizable(true)
+                .min_width(180.0)
+                .default_width(200.0)
+                .show_inside(ui, |ui| {
+                    render_shape_properties(ui, app, sel_id);
+                });
+        }
+    }
+
     // ── Canvas area ──────────────────────────────────────────────────────────
     let available = ui.available_size();
     let (canvas_rect, canvas_response) =
@@ -216,6 +229,84 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             egui::FontId::proportional(14.0),
             Color32::from_gray(80),
         );
+    }
+}
+
+// ── Properties panel ─────────────────────────────────────────────────────────
+
+fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
+    ui.heading("Shape Properties");
+    ui.separator();
+
+    // Take a snapshot of values we need to show, then modify in-place.
+    let shape = match app.magic_sheet.shapes.iter().find(|s| s.id == shape_id) {
+        Some(s) => s,
+        None => {
+            ui.label("(shape not found)");
+            return;
+        }
+    };
+
+    let mut fixture_id = shape.fixture_id;
+    let mut scale = shape.scale;
+    let mut bg = Color32::from_rgba_unmultiplied(shape.bg_color[0], shape.bg_color[1], shape.bg_color[2], shape.bg_color[3]);
+    let mut outline = Color32::from_rgba_unmultiplied(shape.outline_color[0], shape.outline_color[1], shape.outline_color[2], shape.outline_color[3]);
+
+    egui::Grid::new("shape_props_grid")
+        .num_columns(2)
+        .spacing([8.0, 6.0])
+        .show(ui, |ui| {
+            // ── Fixture assignment ────────────────────────────────────────
+            ui.label("Fixture:");
+            let patches: Vec<_> = app.fixtures.patch_list().patches().to_vec();
+            let selected_label = fixture_id
+                .and_then(|fid| patches.iter().find(|p| p.id == fid))
+                .map(|p| format!("#{} {}", p.id, p.label))
+                .unwrap_or_else(|| "(none)".to_string());
+
+            egui::ComboBox::from_id_salt("shape_fixture_combo")
+                .selected_text(&selected_label)
+                .width(130.0)
+                .show_ui(ui, |ui| {
+                    if ui.selectable_value(&mut fixture_id, None, "(none)").clicked() {}
+                    for patch in &patches {
+                        let item_label = format!("#{} {}", patch.id, patch.label);
+                        ui.selectable_value(&mut fixture_id, Some(patch.id), item_label);
+                    }
+                });
+            ui.end_row();
+
+            // ── Scale ─────────────────────────────────────────────────────
+            ui.label("Scale:");
+            ui.add(egui::DragValue::new(&mut scale)
+                .range(0.25f32..=4.0)
+                .speed(0.01)
+                .fixed_decimals(2));
+            ui.end_row();
+
+            // ── Background colour ─────────────────────────────────────────
+            ui.label("Fill:");
+            egui::color_picker::color_edit_button_srgba(
+                ui, &mut bg, egui::color_picker::Alpha::Opaque,
+            );
+            ui.end_row();
+
+            // ── Outline colour ────────────────────────────────────────────
+            ui.label("Outline:");
+            egui::color_picker::color_edit_button_srgba(
+                ui, &mut outline, egui::color_picker::Alpha::Opaque,
+            );
+            ui.end_row();
+        });
+
+    // Write back any changes
+    if let Some(s) = app.magic_sheet.get_shape_mut(shape_id) {
+        s.fixture_id = fixture_id;
+        s.scale = scale;
+        let [r, g, b, a] = bg.to_srgba_unmultiplied();
+        s.bg_color = [r, g, b, a];
+        let [r, g, b, a] = outline.to_srgba_unmultiplied();
+        s.outline_color = [r, g, b, a];
     }
 }
 
