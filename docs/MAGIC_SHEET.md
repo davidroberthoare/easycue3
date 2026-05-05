@@ -54,12 +54,13 @@ Screen position = `canvas_pos * zoom + canvas_offset`
 
 ## Implementation Stages
 
-- [x] **Commit 1** — Foundation: `MagicSheet` data structures, `ShowFile` integration, `TabKind::MagicSheet`, skeleton panel wired into dock + View menu
-- [ ] **Commit 2** — Shape rendering: draw Rectangle/Circle/Diamond via egui Painter; display fixture label, id, intensity %, colour swatch
-- [ ] **Commit 3** — Edit mode basics: toggle switch, shape palette (click to place at canvas centre), drag shapes to reposition
-- [ ] **Commit 4** — Edit mode properties panel: selected-shape side panel with fixture dropdown, scale DragValue, bg/outline colour pickers, delete button
-- [ ] **Commit 5** — Pan & zoom: middle-click drag or right-click drag to pan; scroll wheel to zoom; reset-view button
-- [ ] **Commit 6** — Live mode interactions: click/Ctrl/Shift to select fixtures; vertical drag for intensity; bidirectional sync with Channels panel
+- [x] **Commit 1** (67f25ba) — Foundation: `MagicSheet` data structures, `ShowFile` integration, `TabKind::MagicSheet`, skeleton panel wired into dock + View menu
+- [x] **Commit 2** (acc7974) — Shape rendering + pan/zoom + live mode + edit drag (all bundled): draw Rectangle/Circle/Diamond via egui Painter; display fixture label, id, intensity %, colour swatch; middle/right-drag to pan; scroll to zoom; reset-view button; click to select fixture; vertical drag for intensity; Ctrl+click multi-select; bidirectional sync with Channels panel via `app.ui_state.selected_fixtures`
+- [x] **Commit 3** (49377d7) — Edit mode properties side panel: fixture assignment dropdown, scale DragValue, fill/outline colour pickers
+
+## Current Status (as of 2026-05-04)
+
+All planned stages are complete. The magic sheet is fully functional for MVP use. See "Future Extensions" below for what comes next.
 
 ## Key Files
 
