@@ -40,6 +40,7 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let has_channels = !app.ui_state.selected_channels.is_empty();
     let has_fixtures = !app.ui_state.selected_fixtures.is_empty();
 
+    egui::ScrollArea::vertical().show(ui, |ui| {
     if has_fixtures {
         if app.ui_state.selected_fixtures.len() == 1 {
             let fixture_id = *app.ui_state.selected_fixtures.iter().next().unwrap();
@@ -62,6 +63,7 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             ui.label("Select a channel or fixture to view properties");
         });
     }
+    }); // ScrollArea
 }
 
 // ── Cue properties ────────────────────────────────────────────────────────────
@@ -873,28 +875,318 @@ fn render_selected_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp, fixture
     render_fixture_properties(ui, app, &patch, &profile, patch.start_address);
 }
 
-/// Render properties for multiple selected fixtures
+/// Render shared properties for multiple selected fixtures (ETC-style multi-edit).
 fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
-    let fixture_count = app.ui_state.selected_fixtures.len();
-    
-    ui.label(egui::RichText::new(format!("{} Fixtures Selected", fixture_count)).strong());
-    
-    ui.add_space(10.0);
-    
-    // Show list of selected fixtures
-    ui.collapsing("Selected Fixtures", |ui| {
-        let mut sorted_fixtures: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
-        sorted_fixtures.sort();
-        
-        for fixture_id in sorted_fixtures {
-            if let Some(patch) = app.fixtures.patch_list().get_patch(fixture_id) {
-                if let Some(profile) = app.fixtures.get_profile(&patch.profile_id) {
-                    ui.label(format!("[#{}] {} ({})", fixture_id, patch.label, profile.name));
+    use crate::fixtures::profiles::FixtureParameter;
+
+    // ── Collect fixture metadata ──────────────────────────────────────────────
+    let mut sorted_ids: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
+    sorted_ids.sort();
+
+    struct FxInfo {
+        id: usize,
+        label: String,
+        profile_name: String,
+        patch: crate::fixtures::Patch,
+        profile: crate::fixtures::FixtureProfile,
+        has_intensity: bool,
+        intensity_ch: u16,
+        is_rgb_only: bool,
+        r_ch: Option<u16>,
+        g_ch: Option<u16>,
+        b_ch: Option<u16>,
+        amber_ch: Option<u16>,
+        white_ch: Option<u16>,
+        uv_ch: Option<u16>,
+    }
+
+    let fix_infos: Vec<FxInfo> = sorted_ids
+        .iter()
+        .filter_map(|&id| {
+            let patch = app.fixtures.patch_list().get_patch(id)?.clone();
+            let profile = app.fixtures.get_profile(&patch.profile_id)?.clone();
+            let addr = patch.start_address;
+            let has_intensity = profile.has_parameter(&FixtureParameter::Intensity);
+            let intensity_ch = profile
+                .get_parameter_offset(&FixtureParameter::Intensity)
+                .map(|off| addr + off)
+                .unwrap_or(0);
+            let r_ch = profile.get_parameter_offset(&FixtureParameter::Red).map(|off| addr + off);
+            let g_ch = profile.get_parameter_offset(&FixtureParameter::Green).map(|off| addr + off);
+            let b_ch = profile.get_parameter_offset(&FixtureParameter::Blue).map(|off| addr + off);
+            let amber_ch = profile.get_parameter_offset(&FixtureParameter::Amber).map(|off| addr + off);
+            let white_ch = profile.get_parameter_offset(&FixtureParameter::White).map(|off| addr + off);
+            let uv_ch = profile.get_parameter_offset(&FixtureParameter::Uv).map(|off| addr + off);
+            let is_rgb_only = profile.is_rgb() && !has_intensity;
+            Some(FxInfo {
+                id,
+                label: patch.label.clone(),
+                profile_name: profile.name.clone(),
+                patch,
+                profile,
+                has_intensity,
+                intensity_ch,
+                is_rgb_only,
+                r_ch,
+                g_ch,
+                b_ch,
+                amber_ch,
+                white_ch,
+                uv_ch,
+            })
+        })
+        .collect();
+
+    if fix_infos.is_empty() {
+        ui.label("No valid fixtures found");
+        return;
+    }
+
+    // ── Read current values from universe (immutable) ─────────────────────────
+    let intensities: Vec<u8>;
+    let rs: Vec<u8>;
+    let gs: Vec<u8>;
+    let bs: Vec<u8>;
+    let ambers: Vec<u8>;
+    let whites: Vec<u8>;
+    let uvs: Vec<u8>;
+    let all_rgb: bool;
+    let all_amber: bool;
+    let all_white: bool;
+    let all_uv: bool;
+
+    {
+        let universe = app.universes.first();
+        let get = |ch: u16| -> u8 {
+            universe.and_then(|u| u.get_channel(ch).ok()).unwrap_or(0)
+        };
+
+        intensities = fix_infos
+            .iter()
+            .map(|fi| {
+                if fi.has_intensity {
+                    get(fi.intensity_ch)
+                } else if fi.is_rgb_only {
+                    let vi = app.virtual_intensity.get_intensity(fi.id).unwrap_or_else(|| {
+                        match (fi.r_ch, fi.g_ch, fi.b_ch) {
+                            (Some(r), Some(g), Some(b)) => {
+                                (get(r).max(get(g)).max(get(b)) as f32) / 100.0
+                            }
+                            _ => 0.0,
+                        }
+                    });
+                    (vi * 100.0).round() as u8
+                } else {
+                    0
+                }
+            })
+            .collect();
+
+        all_rgb = fix_infos
+            .iter()
+            .all(|fi| fi.r_ch.is_some() && fi.g_ch.is_some() && fi.b_ch.is_some());
+        all_amber = all_rgb && fix_infos.iter().all(|fi| fi.amber_ch.is_some());
+        all_white = all_rgb && fix_infos.iter().all(|fi| fi.white_ch.is_some());
+        all_uv = all_rgb && fix_infos.iter().all(|fi| fi.uv_ch.is_some());
+
+        if all_rgb {
+            rs = fix_infos.iter().map(|fi| fi.r_ch.map(get).unwrap_or(0)).collect();
+            gs = fix_infos.iter().map(|fi| fi.g_ch.map(get).unwrap_or(0)).collect();
+            bs = fix_infos.iter().map(|fi| fi.b_ch.map(get).unwrap_or(0)).collect();
+            ambers = fix_infos.iter().map(|fi| fi.amber_ch.map(get).unwrap_or(0)).collect();
+            whites = fix_infos.iter().map(|fi| fi.white_ch.map(get).unwrap_or(0)).collect();
+            uvs = fix_infos.iter().map(|fi| fi.uv_ch.map(get).unwrap_or(0)).collect();
+        } else {
+            rs = vec![];
+            gs = vec![];
+            bs = vec![];
+            ambers = vec![];
+            whites = vec![];
+            uvs = vec![];
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    let is_uniform = |vals: &[u8]| vals.windows(2).all(|w| w[0] == w[1]);
+    let mixed_col = egui::Color32::from_rgb(220, 160, 40);
+
+    // Gray slider helper: dims inactive widget colours so "mixed" looks inactive.
+    // Used inside ui.scope() so the style change is scoped to the child Ui.
+    let gray_visuals = |ui: &mut egui::Ui| {
+        ui.visuals_mut().widgets.inactive.bg_fill = egui::Color32::from_gray(52);
+        ui.visuals_mut().widgets.inactive.fg_stroke.color = egui::Color32::from_gray(140);
+        ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::from_gray(68);
+    };
+
+    // ── Changes to apply after rendering ─────────────────────────────────────
+    let mut apply_intensity: Option<u8> = None;
+    let mut apply_color: Option<(u8, u8, u8)> = None;
+    let mut apply_r: Option<u8> = None;
+    let mut apply_g: Option<u8> = None;
+    let mut apply_b: Option<u8> = None;
+    let mut apply_amber: Option<u8> = None;
+    let mut apply_white: Option<u8> = None;
+    let mut apply_uv: Option<u8> = None;
+
+    // ── Render header ─────────────────────────────────────────────────────────
+    ui.label(egui::RichText::new(format!("{} Fixtures Selected", fix_infos.len())).strong());
+    ui.add_space(8.0);
+
+    // ── Intensity ─────────────────────────────────────────────────────────────
+    let int_label = if fix_infos.iter().any(|fi| fi.is_rgb_only) {
+        "Intensity (Virtual)"
+    } else {
+        "Intensity"
+    };
+    ui.label(egui::RichText::new(int_label).strong());
+
+    let int_uniform = is_uniform(&intensities);
+    let mut int_val = intensities[0];
+
+    let int_resp = ui.horizontal(|ui| {
+        let resp = if int_uniform {
+            ui.add(egui::Slider::new(&mut int_val, 0..=100))
+        } else {
+            let r = ui.scope(|ui| { gray_visuals(ui); ui.add(egui::Slider::new(&mut int_val, 0..=100)) }).inner;
+            ui.colored_label(mixed_col, "≠");
+            r
+        };
+        resp
+    }).inner;
+    if int_resp.changed() {
+        apply_intensity = Some(int_val);
+    }
+
+    // ── Color (only when all fixtures are RGB) ────────────────────────────────
+    if all_rgb {
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new("Color").strong());
+
+        let color_uniform = is_uniform(&rs) && is_uniform(&gs) && is_uniform(&bs);
+        let display_color = if color_uniform {
+            egui::Color32::from_rgb(
+                ((rs[0] as f32 / 100.0) * 255.0) as u8,
+                ((gs[0] as f32 / 100.0) * 255.0) as u8,
+                ((bs[0] as f32 / 100.0) * 255.0) as u8,
+            )
+        } else {
+            egui::Color32::from_gray(80)
+        };
+        let mut color = display_color;
+
+        ui.horizontal(|ui| {
+            if ui.color_edit_button_srgba(&mut color).changed() {
+                let nr = ((color.r() as f32 / 255.0) * 100.0) as u8;
+                let ng = ((color.g() as f32 / 255.0) * 100.0) as u8;
+                let nb = ((color.b() as f32 / 255.0) * 100.0) as u8;
+                apply_color = Some((nr, ng, nb));
+            }
+            if !color_uniform {
+                ui.colored_label(mixed_col, "≠ mixed colors");
+            }
+        });
+
+        ui.add_space(4.0);
+
+        // Individual colour channel sliders
+        egui::CollapsingHeader::new("Color Channels")
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new("multi_rgb_sliders")
+                    .num_columns(3)
+                    .spacing([6.0, 4.0])
+                    .show(ui, |ui| {
+                        macro_rules! ch_slider {
+                            ($label:expr, $vals:expr) => {{
+                                let uniform = is_uniform(&$vals);
+                                let mut val = $vals[0];
+                                ui.label($label);
+                                let resp = if uniform {
+                                    ui.add(egui::Slider::new(&mut val, 0..=100))
+                                } else {
+                                    let r = ui.scope(|ui| {
+                                        gray_visuals(ui);
+                                        ui.add(egui::Slider::new(&mut val, 0..=100))
+                                    }).inner;
+                                    ui.colored_label(mixed_col, "≠");
+                                    r
+                                };
+                                if uniform { ui.label(""); }
+                                ui.end_row();
+                                if resp.changed() { Some(val) } else { None }
+                            }};
+                        }
+
+                        apply_r = ch_slider!("Red:", rs);
+                        apply_g = ch_slider!("Green:", gs);
+                        apply_b = ch_slider!("Blue:", bs);
+                        if all_amber { apply_amber = ch_slider!("Amber:", ambers); }
+                        if all_white { apply_white = ch_slider!("White:", whites); }
+                        if all_uv    { apply_uv    = ch_slider!("UV:", uvs); }
+                    });
+            });
+    }
+
+    // ── Apply changes ─────────────────────────────────────────────────────────
+
+    // Intensity
+    if let Some(new_val) = apply_intensity {
+        for fi in &fix_infos {
+            if fi.has_intensity {
+                if let Some(u) = app.universes.first_mut() {
+                    let _ = u.set_channel(fi.intensity_ch, new_val);
+                }
+            } else if fi.is_rgb_only {
+                if let Some(u) = app.universes.first_mut() {
+                    let _ = app.virtual_intensity.set_intensity(
+                        fi.id, new_val as f32 / 100.0, u, &fi.patch, &fi.profile,
+                    );
                 }
             }
         }
-    });
-    
-    ui.add_space(10.0);
-    ui.label(egui::RichText::new("Tip: Select a single fixture to edit properties").small().italics());
+    }
+
+    // Full color pick (RGB together)
+    if let Some((nr, ng, nb)) = apply_color {
+        for fi in &fix_infos {
+            if let Some(u) = app.universes.first_mut() {
+                if let (Some(rc), Some(gc), Some(bc)) = (fi.r_ch, fi.g_ch, fi.b_ch) {
+                    let _ = u.set_channel(rc, nr);
+                    let _ = u.set_channel(gc, ng);
+                    let _ = u.set_channel(bc, nb);
+                }
+                if !fi.has_intensity {
+                    let mut cv = std::collections::HashMap::new();
+                    cv.insert(FixtureParameter::Red, nr);
+                    cv.insert(FixtureParameter::Green, ng);
+                    cv.insert(FixtureParameter::Blue, nb);
+                    if let Some(ac) = fi.amber_ch { cv.insert(FixtureParameter::Amber, u.get_channel(ac).unwrap_or(0)); }
+                    if let Some(wc) = fi.white_ch { cv.insert(FixtureParameter::White, u.get_channel(wc).unwrap_or(0)); }
+                    if let Some(uc) = fi.uv_ch   { cv.insert(FixtureParameter::Uv,    u.get_channel(uc).unwrap_or(0)); }
+                    app.virtual_intensity.set_color(fi.id, cv);
+                }
+            }
+        }
+    }
+
+    // Individual colour channel sliders
+    let has_ch_change = apply_r.is_some() || apply_g.is_some() || apply_b.is_some()
+        || apply_amber.is_some() || apply_white.is_some() || apply_uv.is_some();
+    if has_ch_change {
+        for fi in &fix_infos {
+            if let Some(u) = app.universes.first_mut() {
+                if let Some(v) = apply_r     { if let Some(ch) = fi.r_ch     { let _ = u.set_channel(ch, v); } }
+                if let Some(v) = apply_g     { if let Some(ch) = fi.g_ch     { let _ = u.set_channel(ch, v); } }
+                if let Some(v) = apply_b     { if let Some(ch) = fi.b_ch     { let _ = u.set_channel(ch, v); } }
+                if let Some(v) = apply_amber { if let Some(ch) = fi.amber_ch { let _ = u.set_channel(ch, v); } }
+                if let Some(v) = apply_white { if let Some(ch) = fi.white_ch { let _ = u.set_channel(ch, v); } }
+                if let Some(v) = apply_uv   { if let Some(ch) = fi.uv_ch    { let _ = u.set_channel(ch, v); } }
+                if !fi.has_intensity {
+                    let p = fi.patch.clone();
+                    let pr = fi.profile.clone();
+                    app.virtual_intensity.update_from_universe(fi.id, u, &p, &pr);
+                }
+            }
+        }
+    }
 }
