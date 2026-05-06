@@ -322,24 +322,6 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     String::new()
                 };
 
-                // Trigger indicator — look up the target cue number from its stable ID
-                let trigger_label = if is_lighting {
-                    cue.lighting_data()
-                        .and_then(|d| d.triggers_audio_cue)
-                        .and_then(|id| app.cue_list.find_by_id(id))
-                        .map(|t| format!("{}{}{:.1}", ph::ARROW_RIGHT, ph::SPEAKER_HIGH, t.number))
-                } else {
-                    #[cfg(feature = "audio")]
-                    {
-                        cue.audio_data()
-                            .and_then(|d| d.triggers_lighting_cue)
-                            .and_then(|id| app.cue_list.find_by_id(id))
-                            .map(|t| format!("{}{}{:.1}", ph::ARROW_RIGHT, ph::LIGHTBULB, t.number))
-                    }
-                    #[cfg(not(feature = "audio"))]
-                    None
-                };
-
                 // Row state flags
                 let is_lx_active   = lx_active_id == Some(cue_id) && is_lighting;
                 let is_lx_fading   = is_lx_active && lx_fade.is_some();
@@ -469,17 +451,12 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Col 4: info
                 row.col(|ui| {
                     paint_bg(ui);
-                    let text = if let Some(t) = &trigger_label {
-                        format!("{} {}", info_text, t)
-                    } else {
-                        info_text
-                    };
                     let rect = ui.max_rect();
                     let resp = ui.interact(rect, ui.id().with(("cue-info", cue_id)), egui::Sense::click());
                     ui.painter().text(
                         rect.left_center() + egui::vec2(4.0, 0.0),
                         egui::Align2::LEFT_CENTER,
-                        text,
+                        info_text,
                         egui::FontId::proportional(11.0),
                         egui::Color32::from_rgb(160, 160, 160),
                     );

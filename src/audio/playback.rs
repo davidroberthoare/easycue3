@@ -38,13 +38,11 @@ struct ActiveAudioStream {
 /// Multi-track audio playback engine. Maintains a list of concurrently running streams.
 pub struct AudioPlaybackEngine {
     streams: Vec<ActiveAudioStream>,
-    /// Cross-triggers queued at start() time, drained each frame by app.rs.
-    pending_lighting_triggers: Vec<u32>,
 }
 
 impl AudioPlaybackEngine {
     pub fn new() -> Self {
-        Self { streams: Vec::new(), pending_lighting_triggers: Vec::new() }
+        Self { streams: Vec::new() }
     }
 
     /// Start a new audio stream for this cue. Does NOT stop any currently playing streams.
@@ -82,10 +80,6 @@ impl AudioPlaybackEngine {
 
         sink.set_volume(initial_volume);
         sink.append(source);
-
-        if let Some(trigger) = data.triggers_lighting_cue {
-            self.pending_lighting_triggers.push(trigger);
-        }
 
         self.streams.push(ActiveAudioStream {
             cue_id: cue.id,
@@ -133,7 +127,6 @@ impl AudioPlaybackEngine {
         for s in self.streams.drain(..) {
             s.sink.stop();
         }
-        self.pending_lighting_triggers.clear();
         log::debug!("Audio: all streams stopped");
     }
 
@@ -263,10 +256,6 @@ impl AudioPlaybackEngine {
             })
     }
 
-    /// Drain audio→lighting cross-triggers queued since last call.
-    pub fn take_pending_lighting_triggers(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.pending_lighting_triggers)
-    }
 }
 
 impl Default for AudioPlaybackEngine {

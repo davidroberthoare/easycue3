@@ -559,26 +559,6 @@ impl EasyCueApp {
         Ok(())
     }
 
-    /// Check if adding a lighting→audio trigger (by stable IDs) would create a circular dependency
-    #[cfg(feature = "audio")]
-    pub fn would_create_circular_light_to_audio(&self, lighting_cue_id: u32, audio_cue_id: u32) -> bool {
-        self.cue_list.find_by_id(audio_cue_id)
-            .and_then(|c| c.audio_data())
-            .and_then(|d| d.triggers_lighting_cue)
-            .map(|back_id| back_id == lighting_cue_id)
-            .unwrap_or(false)
-    }
-
-    /// Check if adding an audio→lighting trigger (by stable IDs) would create a circular dependency
-    #[cfg(feature = "audio")]
-    pub fn would_create_circular_audio_to_light(&self, audio_cue_id: u32, lighting_cue_id: u32) -> bool {
-        self.cue_list.find_by_id(lighting_cue_id)
-            .and_then(|c| c.lighting_data())
-            .and_then(|d| d.triggers_audio_cue)
-            .map(|back_id| back_id == audio_cue_id)
-            .unwrap_or(false)
-    }
-
     // --- Navigation helpers (all UI panels call these instead of engines directly) ---
 
     /// Advance to the next cue of any kind (unified GO). Returns true if a cue fired.
@@ -606,17 +586,12 @@ impl EasyCueApp {
         };
         if fired {
             self.ui_state.selected_cue_id = None;
+            self.ui_state.go_cue_input.clear();
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("GO → cue {:.1} '{}'", cue.number, cue.label);
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
                 self.autofollow_timer = Some((std::time::Instant::now(), delay));
                 log::info!("  autofollow armed: {:.1}s", delay);
-            }
-            #[cfg(feature = "audio")]
-            if cue.is_lighting() {
-                self.fire_audio_cross_trigger(cue.id);
-            } else {
-                self.fire_lighting_cross_trigger(cue.id);
             }
         }
         fired
@@ -662,8 +637,6 @@ impl EasyCueApp {
         }
         self.cue_list.set_current_index(Some(next_idx));
         log::info!("Lighting GO → cue {:.1} '{}'", cue.number, cue.label);
-        #[cfg(feature = "audio")]
-        self.fire_audio_cross_trigger(cue.id);
         true
     }
 
@@ -690,7 +663,6 @@ impl EasyCueApp {
         if fired {
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("Audio GO → cue {:.1} '{}'", cue.number, cue.label);
-            self.fire_lighting_cross_trigger(cue.id);
         }
         fired
     }
@@ -709,8 +681,8 @@ impl EasyCueApp {
         fired
     }
 
-    /// Jump to and fire the cue at `abs_idx` (regardless of kind). Updates the play head,
-    /// arms autofollow, and fires any cross-triggers — identical behaviour to go_next().
+    /// Jump to and fire the cue at `abs_idx` (regardless of kind). Updates the play head
+    /// and arms autofollow — identical behaviour to go_next().
     pub fn go_to_cue(&mut self, abs_idx: usize) -> bool {
         self.autofollow_timer = None;
         let cue = self.cue_list.get_cue(abs_idx).cloned();
@@ -739,12 +711,6 @@ impl EasyCueApp {
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
                 self.autofollow_timer = Some((std::time::Instant::now(), delay));
                 log::info!("  autofollow armed: {:.1}s", delay);
-            }
-            #[cfg(feature = "audio")]
-            if cue.is_lighting() {
-                self.fire_audio_cross_trigger(cue.id);
-            } else {
-                self.fire_lighting_cross_trigger(cue.id);
             }
         }
         fired
@@ -785,45 +751,6 @@ impl EasyCueApp {
                 });
                 log::info!("Adjust: fade master to {:.0}% over {:.1}s{}", data.volume * 100.0,
                     data.fade_time, if data.stop_when_complete { " then stop all" } else { "" });
-            }
-        }
-    }
-
-    /// Fire the audio cross-trigger linked to the given lighting cue, if any.
-    #[cfg(feature = "audio")]
-    fn fire_audio_cross_trigger(&mut self, lighting_cue_id: u32) {
-        let trigger_id = self.cue_list.find_by_id(lighting_cue_id)
-            .and_then(|c| c.lighting_data())
-            .and_then(|d| d.triggers_audio_cue);
-        if let Some(audio_id) = trigger_id {
-            let audio_idx = self.cue_list.cues().iter().position(|c| c.id == audio_id);
-            if let Some(idx) = audio_idx {
-                let cue = self.cue_list.get_cue(idx).cloned();
-                if let Some(cue) = cue {
-                    if self.audio_playback.start(&cue, &self.audio_player) {
-                        log::info!("Cross-trigger: lighting → audio cue {}", audio_id);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Fire the lighting cross-trigger linked to the given audio cue, if any.
-    #[cfg(feature = "audio")]
-    fn fire_lighting_cross_trigger(&mut self, audio_cue_id: u32) {
-        let trigger_id = self.cue_list.find_by_id(audio_cue_id)
-            .and_then(|c| c.audio_data())
-            .and_then(|d| d.triggers_lighting_cue);
-        if let Some(light_id) = trigger_id {
-            let light_idx = self.cue_list.cues().iter().position(|c| c.id == light_id);
-            if let Some(idx) = light_idx {
-                let cue = self.cue_list.get_cue(idx).cloned();
-                if let Some(cue) = cue {
-                    if let Some(universe) = self.universes.first() {
-                        self.playback.start(&cue, universe);
-                        log::info!("Cross-trigger: audio → lighting cue {}", light_id);
-                    }
-                }
             }
         }
     }
@@ -962,23 +889,7 @@ impl eframe::App for EasyCueApp {
         }
 
         #[cfg(feature = "audio")]
-        {
-            self.audio_playback.update(self.ui_state.sound_master);
-
-            // Cross-triggers from audio→lighting queued at cue-start time
-            for light_id in self.audio_playback.take_pending_lighting_triggers() {
-                let light_idx = self.cue_list.cues().iter().position(|c| c.id == light_id);
-                if let Some(idx) = light_idx {
-                    let cue = self.cue_list.get_cue(idx).cloned();
-                    if let Some(cue) = cue {
-                        if let Some(universe) = self.universes.first() {
-                            self.playback.start(&cue, universe);
-                            log::info!("Audio cross-trigger: lighting cue {}", light_id);
-                        }
-                    }
-                }
-            }
-        }
+        self.audio_playback.update(self.ui_state.sound_master);
 
         let dmx_send_start = std::time::Instant::now();
         if let Some(universe) = self.universes.first() {
