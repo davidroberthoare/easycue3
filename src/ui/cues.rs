@@ -234,8 +234,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let mut clicked_id:     Option<u32>   = None;
     let mut go_to_abs_idx:  Option<usize> = None;
 
-    const COL_PLAY: f32      = 24.0;
-    const COL_ICON: f32      = 22.0;
+    const COL_PLAY: f32      = 34.0;
+    const COL_ICON: f32      = 30.0;
     const COL_NUM: f32       = 55.0;
     const COL_NUM_MIN: f32   = 42.0;
     const COL_LABEL_MIN: f32 = 80.0;
@@ -412,16 +412,26 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 row.col(|ui| {
                     paint_bg(ui);
                     let btn_text = if is_next { ph::CARET_RIGHT } else { ph::PLAY };
-                    if ui.small_button(btn_text).on_hover_text("Fire this cue").clicked() {
-                        go_to_abs_idx = Some(abs_idx);
-                    }
+                    ui.with_layout(
+                        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                        |ui| {
+                            if ui.small_button(btn_text).on_hover_text("Fire this cue").clicked() {
+                                go_to_abs_idx = Some(abs_idx);
+                            }
+                        },
+                    );
                 });
 
                 // Col 1: type icon
                 row.col(|ui| {
                     paint_bg(ui);
                     let icon = if is_lighting { ph::LIGHTBULB } else if is_adjust { ph::SLIDERS } else { ph::SPEAKER_HIGH };
-                    ui.label(egui::RichText::new(icon).size(13.0));
+                    ui.with_layout(
+                        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                        |ui| {
+                            ui.label(egui::RichText::new(icon).size(13.0));
+                        },
+                    );
                 });
 
                 // Col 2: cue number
@@ -430,8 +440,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     let rect = ui.max_rect();
                     let resp = ui.interact(rect, ui.id().with(("cue-number", cue_id)), egui::Sense::click());
                     ui.painter().text(
-                        rect.left_center() + egui::vec2(4.0, 0.0),
-                        egui::Align2::LEFT_CENTER,
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
                         format!("{:.1}", cue_number),
                         egui::FontId::default(),
                         ui.style().visuals.text_color(),
