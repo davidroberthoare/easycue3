@@ -6,7 +6,7 @@ use crate::dmx::{Universe, backends::{DmxBackend, VirtualBackend}};
 use crate::dmx::backends::EnttecUsbProBackend;
 use crate::media::MediaManager;
 use crate::fixtures::FixtureLibrary;
-use crate::show::ShowFile;
+use crate::show::{ShowFile, CueColorSettings, RgbaColor};
 use crate::command::CommandContext;
 use egui_dock::DockState;
 use std::collections::{HashSet, HashMap};
@@ -111,6 +111,7 @@ pub struct UiState {
     // Dialog states
     pub show_quit_confirmation: bool,
     pub show_device_selector: bool,
+    pub show_colour_settings: bool,
     pub selected_usb_port: String,
 
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
@@ -147,6 +148,7 @@ impl Default for UiState {
             theme_initialized: false,
             show_quit_confirmation: false,
             show_device_selector: false,
+            show_colour_settings: false,
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
             #[cfg(feature = "audio")]
@@ -186,6 +188,7 @@ pub struct EasyCueApp {
     pub show_title: String,
     pub current_file_path: Option<std::path::PathBuf>,
     pub dock_state: DockState<TabKind>,
+    pub cue_colors: CueColorSettings,
 
     #[cfg(feature = "audio")]
     pub audio_player: AudioPlayer,
@@ -217,6 +220,19 @@ pub struct SoundFadeState {
 }
 
 impl EasyCueApp {
+    pub fn color32_from_rgba(color: RgbaColor) -> egui::Color32 {
+        egui::Color32::from_rgba_premultiplied(color.r, color.g, color.b, color.a)
+    }
+
+    pub fn rgba_from_color32(color: egui::Color32) -> RgbaColor {
+        let [r, g, b, a] = color.to_array();
+        RgbaColor { r, g, b, a }
+    }
+
+    pub fn reset_cue_colors_to_defaults(&mut self) {
+        self.cue_colors = CueColorSettings::default();
+    }
+
     fn configure_cobalt_theme(ctx: &egui::Context) {
         let mut style = egui::Style {
             visuals: egui::Visuals::dark(),
@@ -391,6 +407,7 @@ impl EasyCueApp {
             show_title: "Example Show".to_string(),
             current_file_path: None,
             dock_state,
+            cue_colors: CueColorSettings::default(),
             #[cfg(feature = "audio")]
             audio_player: AudioPlayer::new().unwrap_or_else(|e| {
                 log::error!("Failed to initialize audio player: {}", e);
@@ -476,6 +493,7 @@ impl EasyCueApp {
         }
 
         self.magic_sheet = show.magic_sheet;
+        self.cue_colors = show.cue_colors;
         self.magic_sheet_state = MagicSheetState::default();
         self.show_title = show.title.clone();
         self.current_file_path = Some(path.to_path_buf());
@@ -495,6 +513,7 @@ impl EasyCueApp {
         show.cues = self.cue_list.cues().to_vec();
         show.patch = self.fixtures.patch_list().patches().to_vec();
         show.magic_sheet = self.magic_sheet.clone();
+        show.cue_colors = self.cue_colors.clone();
 
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {

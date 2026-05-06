@@ -10,6 +10,52 @@ use crate::fixtures::Patch;
 use crate::magic_sheet::MagicSheet;
 use serde::{Deserialize, Serialize};
 
+/// RGBA color for show-file persisted UI settings.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RgbaColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl RgbaColor {
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b, a: 255 }
+    }
+}
+
+/// User-configurable cue colors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CueColorSettings {
+    /// Bright color used while a cue is actively fading/changing.
+    pub status_fading: RgbaColor,
+    /// Active color for light/sound cues that are currently playing.
+    pub status_active: RgbaColor,
+    /// On-deck color for the cue that GO/Space will fire next.
+    pub status_on_deck: RgbaColor,
+    /// Idle/base color for lighting cues.
+    pub base_lighting: RgbaColor,
+    /// Idle/base color for audio cues.
+    pub base_audio: RgbaColor,
+    /// Idle/base color for adjust cues.
+    pub base_adjust: RgbaColor,
+}
+
+impl Default for CueColorSettings {
+    fn default() -> Self {
+        Self {
+            // Hardcoded fallbacks for missing/older show files.
+            status_fading:  RgbaColor::rgb(200, 160, 30),
+            status_active:  RgbaColor::rgb(175, 45, 45),
+            status_on_deck: RgbaColor::rgb(45, 135, 45),
+            base_lighting:  RgbaColor::rgb(150, 85, 170),
+            base_audio:     RgbaColor::rgb(65, 95, 190),
+            base_adjust:    RgbaColor::rgb(100, 100, 110),
+        }
+    }
+}
+
 /// Show file format — unified cue list (lighting + audio together)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShowFile {
@@ -32,6 +78,10 @@ pub struct ShowFile {
     /// Magic sheet canvas layout
     #[serde(default)]
     pub magic_sheet: MagicSheet,
+
+    /// UI color settings for cue status/base colors.
+    #[serde(default)]
+    pub cue_colors: CueColorSettings,
 
     /// Legacy audio cues field — only populated in old (pre-Phase B) show files.
     /// load() migrates these into `cues` and this field is always empty on save.
@@ -57,6 +107,7 @@ impl ShowFile {
             cues: Vec::new(),
             patch: Vec::new(),
             magic_sheet: MagicSheet::default(),
+            cue_colors: CueColorSettings::default(),
             #[cfg(feature = "audio")]
             audio_cues: Vec::new(),
             #[cfg(not(feature = "audio"))]

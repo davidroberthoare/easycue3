@@ -321,7 +321,7 @@ fn render_fixture_tile(
 fn intensity_color(intensity: f32) -> Color32 {
     let p = (intensity * 100.0).round() as u8;
     if p == 0 { Color32::from_gray(80) }
-    else if p >= 100 { Color32::from_rgb(255, 90, 90) }
+    else if p >= 100 { Color32::WHITE }
     else if p >= 75  { Color32::from_rgb(255, 220, 80) }
     else if p >= 50  { Color32::from_rgb(120, 220, 120) }
     else             { Color32::from_rgb(100, 170, 255) }
