@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-06T14:32:20.642755+00:00",
+  "created": "2026-05-06T17:25:18.893196+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -49,8 +49,7 @@
             "3": 75
           },
           "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
+          "fade_up": 3.0
         },
         "type": "Lighting"
       },
@@ -58,14 +57,13 @@
       "number": 1.0
     },
     {
-      "autofollow": null,
+      "autofollow": 2.0,
       "id": 14,
       "kind": {
         "data": {
           "channel_values": {},
           "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": 4
+          "fade_up": 3.0
         },
         "type": "Lighting"
       },
@@ -82,7 +80,6 @@
           "fade_out": 2.0,
           "length": null,
           "notes": "",
-          "triggers_lighting_cue": null,
           "volume": 0.800000011920929
         },
         "type": "Audio"
@@ -139,8 +136,7 @@
             "53": 100
           },
           "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
+          "fade_up": 3.0
         },
         "type": "Lighting"
       },
@@ -172,7 +168,6 @@
           "fade_out": 2.0,
           "length": 5.0,
           "notes": "",
-          "triggers_lighting_cue": 11,
           "volume": 0.800000011920929
         },
         "type": "Audio"
@@ -224,8 +219,7 @@
             "53": 100
           },
           "fade_down": 1.0,
-          "fade_up": 1.0,
-          "triggers_audio_cue": null
+          "fade_up": 1.0
         },
         "type": "Lighting"
       },
@@ -263,8 +257,7 @@
             "53": 100
           },
           "fade_down": 3.0,
-          "fade_up": 3.0,
-          "triggers_audio_cue": null
+          "fade_up": 3.0
         },
         "type": "Lighting"
       },
@@ -300,7 +293,7 @@
       }
     ]
   },
-  "modified": "2026-05-06T14:32:20.643561+00:00",
+  "modified": "2026-05-06T17:25:18.893304+00:00",
   "next_cue_id": 18,
   "patch": [
     {
