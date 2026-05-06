@@ -559,60 +559,64 @@ fn render_fixture_properties(
     // Color picker for RGB fixtures
     if profile.is_rgb() {
         ui.label(egui::RichText::new("Color").strong());
-        
-        // Get current RGB values
+
         let r_offset = profile.get_parameter_offset(&FixtureParameter::Red).unwrap();
         let g_offset = profile.get_parameter_offset(&FixtureParameter::Green).unwrap();
         let b_offset = profile.get_parameter_offset(&FixtureParameter::Blue).unwrap();
-        
+
         let r_ch = patch.start_address + r_offset;
         let g_ch = patch.start_address + g_offset;
         let b_ch = patch.start_address + b_offset;
-        
+
         let r = universe.get_channel(r_ch).unwrap_or(0);
         let g = universe.get_channel(g_ch).unwrap_or(0);
         let b = universe.get_channel(b_ch).unwrap_or(0);
-        
-        // Convert to egui Color32 (0-100 -> 0-255 range)
-        let mut color = egui::Color32::from_rgb(
-            ((r as f32 / 100.0) * 255.0) as u8,
-            ((g as f32 / 100.0) * 255.0) as u8,
-            ((b as f32 / 100.0) * 255.0) as u8,
-        );
-        
-        if ui.color_edit_button_srgba(&mut color).changed() {
-            // Convert back to 0-100 range
-            let new_r = ((color.r() as f32 / 255.0) * 100.0) as u8;
-            let new_g = ((color.g() as f32 / 255.0) * 100.0) as u8;
-            let new_b = ((color.b() as f32 / 255.0) * 100.0) as u8;
-            
-            // Update RGB channels in universe
+
+        // Sync the wheel when the selected fixture changes.
+        if app.ui_state.last_wheel_fixture_id != Some(patch.id) {
+            app.ui_state.color_wheel.set_from_srgb_100(r, g, b);
+            app.ui_state.last_wheel_fixture_id = Some(patch.id);
+        }
+
+        let size = ui.available_width().min(220.0);
+        if app.ui_state.color_wheel.show(ui, size) {
+            let (fr, fg, fb) = app.ui_state.color_wheel.selected_color();
+
+            // Preserve current brightness: scale by intensity so only hue changes.
+            let intensity = if profile.has_intensity() {
+                // Dedicated intensity channel drives brightness; apply full colour.
+                1.0_f32
+            } else {
+                app.virtual_intensity.get_intensity(patch.id).unwrap_or(1.0)
+            };
+
+            let new_r = (fr * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+            let new_g = (fg * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+            let new_b = (fb * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+
             let _ = universe.set_channel(r_ch, new_r);
             let _ = universe.set_channel(g_ch, new_g);
             let _ = universe.set_channel(b_ch, new_b);
-            
-            // For fixtures without dedicated intensity, update ALL color ratios
-            // (not just RGB) to preserve other color channels like Amber, White, UV
+
             if !profile.has_intensity() {
                 let mut color_values = std::collections::HashMap::new();
                 color_values.insert(FixtureParameter::Red, new_r);
                 color_values.insert(FixtureParameter::Green, new_g);
                 color_values.insert(FixtureParameter::Blue, new_b);
-                
-                // Read other color channels from universe to preserve them
                 for param_mapping in profile.color_parameters() {
-                    if !matches!(param_mapping.parameter, FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue) {
+                    if !matches!(param_mapping.parameter,
+                        FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue)
+                    {
                         let ch = patch.start_address + param_mapping.channel_offset;
                         if let Ok(value) = universe.get_channel(ch) {
                             color_values.insert(param_mapping.parameter.clone(), value);
                         }
                     }
                 }
-                
                 app.virtual_intensity.set_color(patch.id, color_values);
             }
         }
-        
+
         ui.add_space(8.0);
         
         // Individual color sliders
@@ -1020,7 +1024,7 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
 
     // ── Changes to apply after rendering ─────────────────────────────────────
     let mut apply_intensity: Option<u8> = None;
-    let mut apply_color: Option<(u8, u8, u8)> = None;
+    let mut apply_wheel_color: bool = false;
     let mut apply_r: Option<u8> = None;
     let mut apply_g: Option<u8> = None;
     let mut apply_b: Option<u8> = None;
@@ -1063,28 +1067,25 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         ui.label(egui::RichText::new("Color").strong());
 
         let color_uniform = is_uniform(&rs) && is_uniform(&gs) && is_uniform(&bs);
-        let display_color = if color_uniform {
-            egui::Color32::from_rgb(
-                ((rs[0] as f32 / 100.0) * 255.0) as u8,
-                ((gs[0] as f32 / 100.0) * 255.0) as u8,
-                ((bs[0] as f32 / 100.0) * 255.0) as u8,
-            )
-        } else {
-            egui::Color32::from_gray(80)
-        };
-        let mut color = display_color;
 
-        ui.horizontal(|ui| {
-            if ui.color_edit_button_srgba(&mut color).changed() {
-                let nr = ((color.r() as f32 / 255.0) * 100.0) as u8;
-                let ng = ((color.g() as f32 / 255.0) * 100.0) as u8;
-                let nb = ((color.b() as f32 / 255.0) * 100.0) as u8;
-                apply_color = Some((nr, ng, nb));
-            }
-            if !color_uniform {
-                ui.colored_label(mixed_col, "≠ mixed colors");
-            }
-        });
+        // Multi-select: clear the last-synced fixture ID so switching back to a
+        // single fixture always re-syncs the wheel from that fixture's values.
+        app.ui_state.last_wheel_fixture_id = None;
+
+        // Sync wheel from first fixture when colours are uniform; leave it
+        // wherever it is when they're mixed (any drag still applies to all).
+        if color_uniform {
+            app.ui_state.color_wheel.set_from_srgb_100(rs[0], gs[0], bs[0]);
+        }
+
+        if !color_uniform {
+            ui.colored_label(mixed_col, "≠ mixed colors");
+        }
+
+        let size = ui.available_width().min(220.0);
+        if app.ui_state.color_wheel.show(ui, size) {
+            apply_wheel_color = true;
+        }
 
         ui.add_space(4.0);
 
@@ -1146,9 +1147,21 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         }
     }
 
-    // Full color pick (RGB together)
-    if let Some((nr, ng, nb)) = apply_color {
-        for fi in &fix_infos {
+    // Wheel colour pick — applies to all fixtures, preserving each one's intensity.
+    if apply_wheel_color {
+        let (fr, fg, fb) = app.ui_state.color_wheel.selected_color();
+        // Collect per-fixture intensities before mutably borrowing universes.
+        let intensities: Vec<f32> = fix_infos.iter().map(|fi| {
+            if fi.has_intensity {
+                1.0_f32
+            } else {
+                app.virtual_intensity.get_intensity(fi.id).unwrap_or(1.0)
+            }
+        }).collect();
+        for (fi, intensity) in fix_infos.iter().zip(intensities.iter()) {
+            let nr = (fr * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+            let ng = (fg * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+            let nb = (fb * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
             if let Some(u) = app.universes.first_mut() {
                 if let (Some(rc), Some(gc), Some(bc)) = (fi.r_ch, fi.g_ch, fi.b_ch) {
                     let _ = u.set_channel(rc, nr);
