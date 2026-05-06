@@ -38,6 +38,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     // Modal dialogs (always on top)
     render_quit_confirmation(ctx, app);
     render_device_selector(ctx, app);
+    render_colour_settings(ctx, app);
 }
 
 /// Handle global keyboard shortcuts
@@ -280,6 +281,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.playback.stop();
                     app.show_title = "New Show".to_string();
                     app.current_file_path = None;
+                    app.reset_cue_colors_to_defaults();
                     app.ui_state.selected_cue_id = None;
                     app.ui_state.selected_lighting_cue_id = None;
                     app.ui_state.selected_audio_cue_id = None;
@@ -423,6 +425,12 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             ui.menu_button("Settings", |ui| {
                 if ui.button("DMX Device...").clicked() {
                     app.ui_state.show_device_selector = true;
+                    ui.close_menu();
+                }
+
+                ui.separator();
+                if ui.button("Colours...").clicked() {
+                    app.ui_state.show_colour_settings = true;
                     ui.close_menu();
                 }
             });
@@ -604,6 +612,98 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                 ui.add_space(5.0);
             });
         });
+}
+
+/// Render the cue colour settings popup
+fn render_colour_settings(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_colour_settings {
+        return;
+    }
+
+    let mut close_requested = false;
+    egui::Window::new("Cue Colours")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .min_width(280.0)
+        .show(ctx, |ui| {
+            egui::Grid::new("colour_settings_grid")
+                .num_columns(2)
+                .spacing([16.0, 8.0])
+                .show(ui, |ui| {
+                    ui.strong("Status colours");
+                    ui.end_row();
+
+                    ui.label("Fading / changing");
+                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_fading);
+                    if ui.color_edit_button_srgba(&mut c).changed() {
+                        app.cue_colors.status_fading = crate::app::EasyCueApp::rgba_from_color32(c);
+                    }
+                    ui.end_row();
+
+                    ui.label("Active / playing");
+                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_active);
+                    if ui.color_edit_button_srgba(&mut c).changed() {
+                        app.cue_colors.status_active = crate::app::EasyCueApp::rgba_from_color32(c);
+                    }
+                    ui.end_row();
+
+                    ui.label("On-deck (next GO)");
+                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
+                    if ui.color_edit_button_srgba(&mut c).changed() {
+                        app.cue_colors.status_on_deck = crate::app::EasyCueApp::rgba_from_color32(c);
+                    }
+                    ui.end_row();
+
+                    ui.separator();
+                    ui.separator();
+                    ui.end_row();
+
+                    ui.strong("Base colours");
+                    ui.end_row();
+
+                    ui.label("Lighting (idle)");
+                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_lighting);
+                    if ui.color_edit_button_srgba(&mut c).changed() {
+                        app.cue_colors.base_lighting = crate::app::EasyCueApp::rgba_from_color32(c);
+                    }
+                    ui.end_row();
+
+                    ui.label("Sound (idle)");
+                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_audio);
+                    if ui.color_edit_button_srgba(&mut c).changed() {
+                        app.cue_colors.base_audio = crate::app::EasyCueApp::rgba_from_color32(c);
+                    }
+                    ui.end_row();
+
+                    ui.label("Adjust (idle)");
+                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_adjust);
+                    if ui.color_edit_button_srgba(&mut c).changed() {
+                        app.cue_colors.base_adjust = crate::app::EasyCueApp::rgba_from_color32(c);
+                    }
+                    ui.end_row();
+                });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Reset to Defaults").clicked() {
+                    app.reset_cue_colors_to_defaults();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("  Close  ").clicked() {
+                        close_requested = true;
+                    }
+                });
+            });
+
+            ui.add_space(4.0);
+        });
+    if close_requested {
+        app.ui_state.show_colour_settings = false;
+    }
 }
 
 /// Render the bottom status bar

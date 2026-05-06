@@ -5,14 +5,6 @@ use egui_extras::{TableBuilder, Column};
 use crate::app::EasyCueApp;
 use egui_phosphor::regular as ph;
 
-const COLOR_ACTIVE:          egui::Color32 = egui::Color32::from_rgb(40, 110, 40);
-const COLOR_FADING:          egui::Color32 = egui::Color32::from_rgb(120, 90, 20);
-const COLOR_SELECTED:        egui::Color32 = egui::Color32::from_rgb(60, 60, 120);
-const COLOR_ACTIVE_SELECTED: egui::Color32 = egui::Color32::from_rgb(60, 110, 130);
-const COLOR_NEXT:            egui::Color32 = egui::Color32::from_rgb(140, 100, 20);
-// Idle row tints by cue type (subtle — state colours override these)
-const COLOR_ROW_LX:          egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 60, 90, 30);
-const COLOR_ROW_AUDIO:       egui::Color32 = egui::Color32::from_rgba_premultiplied(20, 80, 40, 30);
 
 pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Toolbar ──────────────────────────────────────────────────────────────
@@ -59,7 +51,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         .and_then(|i| app.cue_list.get_cue(i))
                         .map(|c| format!("Q{:.1} {}", c.number, c.label))
                         .unwrap_or_default();
-                    app.ui_state.status_message = format!("GO → {}", label);
+                    app.ui_state.status_message = format!("GO {} {}", ph::CARET_RIGHT, label);
                 }
             } else if let Some(abs_idx) = go_target_idx {
                 let label_str = app.cue_list.get_cue(abs_idx)
@@ -67,7 +59,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     .unwrap_or_default();
                 if app.go_to_cue(abs_idx) {
                     app.ui_state.go_cue_input.clear();
-                    app.ui_state.status_message = format!("GO → {}", label_str);
+                    app.ui_state.status_message = format!("GO {} {}", ph::CARET_RIGHT, label_str);
                 }
             }
         }
@@ -89,27 +81,15 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         ui.separator();
 
         // Edit actions
-        if ui.button(format!("{} Record LX", ph::RECORD)).clicked() {
+        if ui.button(format!("{} Lighting", ph::PLUS)).on_hover_text("Record a lighting cue from the current live output").clicked() {
             let id = app.record_cue();
             app.ui_state.selected_cue_id = Some(id);
             app.ui_state.selected_lighting_cue_id = Some(id);
         }
 
-        #[cfg(feature = "audio")]
-        if ui.button(format!("{} Adjust", ph::PLUS)).on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
-            let next_number = app.cue_list.cues().iter()
-                .last()
-                .map(|c| c.number.floor() + 1.0)
-                .unwrap_or(1.0);
-            let cue = crate::cue::Cue::new_adjust(next_number);
-            let id = app.cue_list.next_id();
-            app.cue_list.add_cue(cue);
-            app.ui_state.selected_cue_id = Some(id);
-            app.ui_state.status_message = format!("Added adjust cue {:.0}", next_number);
-        }
 
         #[cfg(feature = "audio")]
-        if ui.button(format!("{} Audio", ph::PLUS)).clicked() {
+        if ui.button(format!("{} Sound", ph::PLUS)).on_hover_text("Add an audio file cue").clicked() {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Audio Files", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
                 .set_title("Select Audio File")
@@ -131,6 +111,19 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 app.ui_state.status_message = format!("Added audio cue {:.0}", next_number);
                 app.ui_state.audio_file_cache.clear();
             }
+        }
+
+        #[cfg(feature = "audio")]
+        if ui.button(format!("{} Adjust", ph::PLUS)).on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
+            let next_number = app.cue_list.cues().iter()
+                .last()
+                .map(|c| c.number.floor() + 1.0)
+                .unwrap_or(1.0);
+            let cue = crate::cue::Cue::new_adjust(next_number);
+            let id = app.cue_list.next_id();
+            app.cue_list.add_cue(cue);
+            app.ui_state.selected_cue_id = Some(id);
+            app.ui_state.status_message = format!("Added adjust cue {:.0}", next_number);
         }
 
         if ui.button(format!("{} Delete", ph::TRASH)).clicked() {
@@ -306,9 +299,9 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                                     .map(|n| format!("Q{:.1} ", n))
                                     .unwrap_or_else(|| "master ".to_string());
                                 if d.fade_time > 0.0 {
-                                    format!("{}→{:.0}% {:.1}s{}", target, d.volume * 100.0, d.fade_time, stop)
+                                    format!("{}{}{:.0}% {:.1}s{}", target, ph::CARET_RIGHT, d.volume * 100.0, d.fade_time, stop)
                                 } else {
-                                    format!("{}→{:.0}% snap{}", target, d.volume * 100.0, stop)
+                                    format!("{}{}{:.0}% snap{}", target, ph::CARET_RIGHT, d.volume * 100.0, stop)
                                 }
                             })
                             .unwrap_or_default()
@@ -334,14 +327,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     cue.lighting_data()
                         .and_then(|d| d.triggers_audio_cue)
                         .and_then(|id| app.cue_list.find_by_id(id))
-                        .map(|t| format!("→{}{:.1}", ph::SPEAKER_HIGH, t.number))
+                        .map(|t| format!("{}{}{:.1}", ph::CARET_RIGHT, ph::SPEAKER_HIGH, t.number))
                 } else {
                     #[cfg(feature = "audio")]
                     {
                         cue.audio_data()
                             .and_then(|d| d.triggers_lighting_cue)
                             .and_then(|id| app.cue_list.find_by_id(id))
-                            .map(|t| format!("→{}{:.1}", ph::LIGHTBULB, t.number))
+                            .map(|t| format!("{}{}{:.1}", ph::CARET_RIGHT, ph::LIGHTBULB, t.number))
                     }
                     #[cfg(not(feature = "audio"))]
                     None
@@ -395,20 +388,18 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
                 if is_selected { row.set_selected(true); }
 
-                let bg_color = if is_active && is_selected {
-                    COLOR_ACTIVE_SELECTED
-                } else if is_fading {
-                    COLOR_FADING
+                let bg_color = if is_fading {
+                    EasyCueApp::color32_from_rgba(app.cue_colors.status_fading)
                 } else if is_active {
-                    COLOR_ACTIVE
-                } else if is_selected {
-                    COLOR_SELECTED
+                    EasyCueApp::color32_from_rgba(app.cue_colors.status_active)
                 } else if is_next {
-                    COLOR_NEXT
+                    EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck)
                 } else if is_lighting {
-                    COLOR_ROW_LX
+                    EasyCueApp::color32_from_rgba(app.cue_colors.base_lighting)
+                } else if is_adjust {
+                    EasyCueApp::color32_from_rgba(app.cue_colors.base_adjust)
                 } else {
-                    COLOR_ROW_AUDIO
+                    EasyCueApp::color32_from_rgba(app.cue_colors.base_audio)
                 };
 
                 let paint_bg = |ui: &mut egui::Ui| {
@@ -531,7 +522,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     row_responses.push(resp);
                 });
 
-                // Row click → selection
+                // Row click -> selection
                 if row_responses.iter().any(|r| r.clicked()) {
                     clicked_id = Some(cue_id);
                 }
@@ -584,7 +575,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     if let Some(abs_idx) = go_to_abs_idx {
         let num = app.cue_list.get_cue(abs_idx).map(|c| c.number).unwrap_or(0.0);
         app.go_to_cue(abs_idx);
-        app.ui_state.status_message = format!("→ Q{:.1}", num);
+        app.ui_state.status_message = format!("{} Q{:.1}", ph::CARET_RIGHT, num);
     }
 
     render_footer(ui, app);
@@ -654,7 +645,7 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                             let resp = ui.add(
                                 egui::TextEdit::singleline(&mut app.ui_state.command_input)
                                     .desired_width(ui.available_width() - 80.0)
-                                    .hint_text("Click channels...")
+                                    .hint_text("Enter command...")
                                     .font(egui::TextStyle::Monospace)
                             );
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
