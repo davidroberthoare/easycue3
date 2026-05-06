@@ -4,6 +4,8 @@ A simple theatrical lighting console I've been building for myself. After years 
 
 It's a hobby project. The scope is deliberately narrow: small venues, simple shows, a cue list that just works.
 
+![EasyCue3 screenshot](docs/screenshot.png)
+
 ---
 
 ## What it does
