@@ -40,7 +40,6 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let has_channels = !app.ui_state.selected_channels.is_empty();
     let has_fixtures = !app.ui_state.selected_fixtures.is_empty();
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
     if has_fixtures {
         if app.ui_state.selected_fixtures.len() == 1 {
             let fixture_id = *app.ui_state.selected_fixtures.iter().next().unwrap();
@@ -49,12 +48,14 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             render_multi_fixture_properties(ui, app);
         }
     } else if has_channels {
-        if app.ui_state.selected_channels.len() == 1 {
-            let channel = *app.ui_state.selected_channels.iter().next().unwrap();
-            render_single_channel_properties(ui, app, channel);
-        } else {
-            render_multi_channel_properties(ui, app);
-        }
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if app.ui_state.selected_channels.len() == 1 {
+                let channel = *app.ui_state.selected_channels.iter().next().unwrap();
+                render_single_channel_properties(ui, app, channel);
+            } else {
+                render_multi_channel_properties(ui, app);
+            }
+        });
     } else {
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
@@ -63,7 +64,6 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             ui.label("Select a channel or fixture to view properties");
         });
     }
-    }); // ScrollArea
 }
 
 // ── Cue properties ────────────────────────────────────────────────────────────
@@ -494,7 +494,10 @@ fn render_single_channel_properties(ui: &mut Ui, app: &mut EasyCueApp, channel: 
     }
 }
 
-/// Render fixture properties with parameter controls
+/// Render fixture properties with parameter controls.
+///
+/// Layout: header label, then a horizontally-scrolling row of vertical sliders —
+/// intensity first, colour wheel second, individual colour channels after.
 fn render_fixture_properties(
     ui: &mut Ui,
     app: &mut EasyCueApp,
@@ -503,223 +506,204 @@ fn render_fixture_properties(
     _selected_channel: u16,
 ) {
     use crate::fixtures::profiles::FixtureParameter;
-    
+
+    // Single header line — no instrument-type subtitle.
     ui.label(egui::RichText::new(&patch.label).strong());
-    ui.label(egui::RichText::new(&profile.name).small().italics());
-    
-    ui.add_space(10.0);
-    
-    let Some(universe) = app.universes.first_mut() else {
-        return;
-    };
-    
-    // Intensity parameter (if present)
-    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Intensity) {
-        let ch = patch.start_address + offset;
-        let mut value = universe.get_channel(ch).unwrap_or(0);
-        
-        ui.label(egui::RichText::new("Intensity").strong());
-        if ui.add(egui::Slider::new(&mut value, 0..=100)).changed() {
-            let _ = universe.set_channel(ch, value);
-        }
-        ui.add_space(8.0);
-    } else if profile.is_rgb() {
-        // RGB fixture without dedicated intensity channel - use virtual intensity
-        ui.label(egui::RichText::new("Virtual Intensity").strong());
-        
-        // Get current virtual intensity
-        let current_intensity = app.virtual_intensity.get_intensity(patch.id)
-            .unwrap_or_else(|| {
-                app.virtual_intensity.calculate_intensity(patch.id, universe, &patch, &profile)
-            });
-        
-        let mut intensity = current_intensity;
-        if ui.add(egui::Slider::new(&mut intensity, 0.0..=1.0)
-            .text("%")
-            .custom_formatter(|val, _| format!("{:.0}%", val * 100.0))
-        ).changed() {
-            // Apply virtual intensity
-            let patch_clone = patch.clone();
-            let profile_clone = profile.clone();
-            if let Err(e) = app.virtual_intensity.set_intensity(
-                patch.id,
-                intensity,
-                universe,
-                &patch_clone,
-                &profile_clone,
-            ) {
-                log::error!("Failed to set virtual intensity: {}", e);
-            }
-        }
-        
-        ui.label(egui::RichText::new("Color-preserving intensity control").small().italics());
-        ui.add_space(8.0);
+
+    let Some(universe) = app.universes.first_mut() else { return };
+
+    // ── Collect channel addresses + current values (immutable reads) ──────────
+    let has_int    = profile.get_parameter_offset(&FixtureParameter::Intensity).is_some();
+    let int_ch     = profile.get_parameter_offset(&FixtureParameter::Intensity)
+                        .map(|off| patch.start_address + off);
+    let int_raw    = int_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let vi_val     = if !has_int && profile.is_rgb() {
+        app.virtual_intensity.get_intensity(patch.id)
+            .unwrap_or_else(|| app.virtual_intensity.calculate_intensity(patch.id, universe, patch, profile))
+    } else { 1.0 };
+
+    let is_rgb    = profile.is_rgb();
+    let r_ch      = profile.get_parameter_offset(&FixtureParameter::Red  ).map(|o| patch.start_address + o);
+    let g_ch      = profile.get_parameter_offset(&FixtureParameter::Green).map(|o| patch.start_address + o);
+    let b_ch      = profile.get_parameter_offset(&FixtureParameter::Blue ).map(|o| patch.start_address + o);
+    let amber_ch  = profile.get_parameter_offset(&FixtureParameter::Amber).map(|o| patch.start_address + o);
+    let white_ch  = profile.get_parameter_offset(&FixtureParameter::White).map(|o| patch.start_address + o);
+    let uv_ch     = profile.get_parameter_offset(&FixtureParameter::Uv   ).map(|o| patch.start_address + o);
+
+    let r     = r_ch    .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let g     = g_ch    .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let b     = b_ch    .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let amber = amber_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let white = white_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let uv    = uv_ch   .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+
+    // Extra channels: any parameter not already handled above.
+    // Intensity is always shown; colour parameters are shown in the colour section
+    // when is_rgb — otherwise they fall through here so nothing is silently dropped.
+    let extra_channels: Vec<(String, u16, u8)> = profile.parameters.iter()
+        .filter(|pm| {
+            if matches!(pm.parameter, FixtureParameter::Intensity) { return false; }
+            if is_rgb && pm.parameter.is_color()                   { return false; }
+            true
+        })
+        .map(|pm| {
+            let ch  = patch.start_address + pm.channel_offset;
+            let val = universe.get_channel(ch).unwrap_or(0);
+            (pm.parameter.short_label().to_string(), ch, val)
+        })
+        .collect();
+
+    // Sync wheel from current RGB every frame so slider/cue changes are reflected.
+    // last_wheel_fixture_id is still written so the multi-fixture path can detect
+    // when to reset the wheel on selection changes.
+    if is_rgb {
+        app.ui_state.color_wheel.set_from_srgb_100(r, g, b);
+        app.ui_state.last_wheel_fixture_id = Some(patch.id);
     }
-    
-    // Color picker for RGB fixtures
-    if profile.is_rgb() {
-        ui.label(egui::RichText::new("Color").strong());
 
-        let r_offset = profile.get_parameter_offset(&FixtureParameter::Red).unwrap();
-        let g_offset = profile.get_parameter_offset(&FixtureParameter::Green).unwrap();
-        let b_offset = profile.get_parameter_offset(&FixtureParameter::Blue).unwrap();
+    // ── Pending changes collected during rendering, applied after ─────────────
+    let mut apply_int_raw : Option<u8>  = None;
+    let mut apply_int_vi  : Option<f32> = None;
+    let mut apply_wheel   : bool        = false;
+    let mut apply_channels: Vec<(u16, u8)> = Vec::new();
 
-        let r_ch = patch.start_address + r_offset;
-        let g_ch = patch.start_address + g_offset;
-        let b_ch = patch.start_address + b_offset;
+    // ── Horizontal scroll area ────────────────────────────────────────────────
+    egui::ScrollArea::horizontal()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            let avail_h  = ui.available_height().max(60.0);
+            let slider_h = (avail_h - 24.0).max(40.0);
+            let wheel_size = slider_h.min(220.0);
 
-        let r = universe.get_channel(r_ch).unwrap_or(0);
-        let g = universe.get_channel(g_ch).unwrap_or(0);
-        let b = universe.get_channel(b_ch).unwrap_or(0);
-
-        // Sync the wheel when the selected fixture changes.
-        if app.ui_state.last_wheel_fixture_id != Some(patch.id) {
-            app.ui_state.color_wheel.set_from_srgb_100(r, g, b);
-            app.ui_state.last_wheel_fixture_id = Some(patch.id);
-        }
-
-        let size = ui.available_width().min(220.0);
-        if app.ui_state.color_wheel.show(ui, size) {
-            let (fr, fg, fb) = app.ui_state.color_wheel.selected_color();
-
-            // Preserve current brightness: scale by intensity so only hue changes.
-            let intensity = if profile.has_intensity() {
-                // Dedicated intensity channel drives brightness; apply full colour.
-                1.0_f32
-            } else {
-                app.virtual_intensity.get_intensity(patch.id).unwrap_or(1.0)
-            };
-
-            let new_r = (fr * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
-            let new_g = (fg * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
-            let new_b = (fb * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
-
-            let _ = universe.set_channel(r_ch, new_r);
-            let _ = universe.set_channel(g_ch, new_g);
-            let _ = universe.set_channel(b_ch, new_b);
-
-            if !profile.has_intensity() {
-                let mut color_values = std::collections::HashMap::new();
-                color_values.insert(FixtureParameter::Red, new_r);
-                color_values.insert(FixtureParameter::Green, new_g);
-                color_values.insert(FixtureParameter::Blue, new_b);
-                for param_mapping in profile.color_parameters() {
-                    if !matches!(param_mapping.parameter,
-                        FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue)
-                    {
-                        let ch = patch.start_address + param_mapping.channel_offset;
-                        if let Ok(value) = universe.get_channel(ch) {
-                            color_values.insert(param_mapping.parameter.clone(), value);
+            ui.horizontal(|ui| {
+                // Intensity
+                ui.vertical(|ui| {
+                    ui.label("Int");
+                    if has_int {
+                        let mut v = int_raw;
+                        if ui.add_sized([30.0, slider_h], egui::Slider::new(&mut v, 0..=100).vertical()).changed() {
+                            apply_int_raw = Some(v);
                         }
-                    }
-                }
-                app.virtual_intensity.set_color(patch.id, color_values);
-            }
-        }
-
-        ui.add_space(8.0);
-        
-        // Individual color sliders
-        egui::CollapsingHeader::new("Color Channels").default_open(true).show(ui, |ui| {
-            egui::Grid::new("rgb_sliders")
-                .num_columns(2)
-                .spacing([10.0, 6.0])
-                .show(ui, |ui| {
-                    let mut r_val = r;
-                    ui.label("Red:");
-                    if ui.add(egui::Slider::new(&mut r_val, 0..=100)).changed() {
-                        let _ = universe.set_channel(r_ch, r_val);
-                        // Update virtual intensity state if applicable
-                        if !profile.has_intensity() {
-                            let patch_clone = patch.clone();
-                            let profile_clone = profile.clone();
-                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
+                    } else if is_rgb {
+                        let mut v = vi_val;
+                        if ui.add_sized(
+                            [30.0, slider_h],
+                            egui::Slider::new(&mut v, 0.0..=1.0)
+                                .vertical()
+                                .custom_formatter(|val, _| format!("{:.0}", val * 100.0)),
+                        ).changed() {
+                            apply_int_vi = Some(v);
                         }
-                    }
-                    ui.end_row();
-                    
-                    let mut g_val = g;
-                    ui.label("Green:");
-                    if ui.add(egui::Slider::new(&mut g_val, 0..=100)).changed() {
-                        let _ = universe.set_channel(g_ch, g_val);
-                        // Update virtual intensity state if applicable
-                        if !profile.has_intensity() {
-                            let patch_clone = patch.clone();
-                            let profile_clone = profile.clone();
-                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
-                        }
-                    }
-                    ui.end_row();
-                    
-                    let mut b_val = b;
-                    ui.label("Blue:");
-                    if ui.add(egui::Slider::new(&mut b_val, 0..=100)).changed() {
-                        let _ = universe.set_channel(b_ch, b_val);
-                        // Update virtual intensity state if applicable
-                        if !profile.has_intensity() {
-                            let patch_clone = patch.clone();
-                            let profile_clone = profile.clone();
-                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
-                        }
-                    }
-                    ui.end_row();
-                    
-                    // Additional color channels (if present)
-                    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Amber) {
-                        let ch = patch.start_address + offset;
-                        let mut val = universe.get_channel(ch).unwrap_or(0);
-                        ui.label("Amber:");
-                        if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
-                            let _ = universe.set_channel(ch, val);
-                            // Update virtual intensity state
-                            let patch_clone = patch.clone();
-                            let profile_clone = profile.clone();
-                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
-                        }
-                        ui.end_row();
-                    }
-                    
-                    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::White) {
-                        let ch = patch.start_address + offset;
-                        let mut val = universe.get_channel(ch).unwrap_or(0);
-                        ui.label("White:");
-                        if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
-                            let _ = universe.set_channel(ch, val);
-                            // Update virtual intensity state
-                            let patch_clone = patch.clone();
-                            let profile_clone = profile.clone();
-                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
-                        }
-                        ui.end_row();
-                    }
-                    
-                    if let Some(offset) = profile.get_parameter_offset(&FixtureParameter::Uv) {
-                        let ch = patch.start_address + offset;
-                        let mut val = universe.get_channel(ch).unwrap_or(0);
-                        ui.label("UV:");
-                        if ui.add(egui::Slider::new(&mut val, 0..=100)).changed() {
-                            let _ = universe.set_channel(ch, val);
-                            // Update virtual intensity state
-                            let patch_clone = patch.clone();
-                            let profile_clone = profile.clone();
-                            app.virtual_intensity.update_from_universe(patch.id, universe, &patch_clone, &profile_clone);
-                        }
-                        ui.end_row();
                     }
                 });
+
+                // Colour wheel + per-channel sliders (RGB fixtures only)
+                if is_rgb {
+                    ui.separator();
+
+                    ui.vertical(|ui| {
+                        ui.label("Color");
+                        if app.ui_state.color_wheel.show(ui, wheel_size) {
+                            apply_wheel = true;
+                        }
+                    });
+
+                    ui.separator();
+
+                    // One vertical slider per colour channel
+                    let needs_vi = !has_int;
+                    macro_rules! col_slider {
+                        ($label:expr, $ch_opt:expr, $init:expr) => {
+                            if let Some(ch) = $ch_opt {
+                                ui.vertical(|ui| {
+                                    ui.label($label);
+                                    let mut v = $init;
+                                    if ui.add_sized(
+                                        [30.0, slider_h],
+                                        egui::Slider::new(&mut v, 0..=100).vertical(),
+                                    ).changed() {
+                                        apply_channels.push((ch, v));
+                                        let _ = needs_vi;
+                                    }
+                                });
+                            }
+                        };
+                    }
+                    col_slider!("R",  r_ch,     r    );
+                    col_slider!("G",  g_ch,     g    );
+                    col_slider!("B",  b_ch,     b    );
+                    col_slider!("A",  amber_ch, amber);
+                    col_slider!("W",  white_ch, white);
+                    col_slider!("UV", uv_ch,    uv   );
+                }
+
+                // Extra channels — Strobe, Pan, Tilt, Focus, Zoom, Gobo, Custom, etc.
+                // Rendered for every parameter not already covered above.
+                if !extra_channels.is_empty() {
+                    ui.separator();
+                    for (label, ch, init_val) in &extra_channels {
+                        ui.vertical(|ui| {
+                            ui.label(label.as_str());
+                            let mut v = *init_val;
+                            if ui.add_sized(
+                                [30.0, slider_h],
+                                egui::Slider::new(&mut v, 0..=100).vertical(),
+                            ).changed() {
+                                apply_channels.push((*ch, v));
+                            }
+                        });
+                    }
+                }
+            });
         });
+
+    // ── Apply changes (universe now exclusively available) ────────────────────
+    if let Some(v) = apply_int_raw {
+        if let Some(ch) = int_ch { let _ = universe.set_channel(ch, v); }
     }
-    
-    ui.add_space(10.0);
-    ui.label(
-        egui::RichText::new(format!(
-            "Channels {}-{}",
-            patch.start_address,
-            patch.start_address + profile.channel_count - 1
-        ))
-        .small()
-        .italics(),
-    );
+    if let Some(v) = apply_int_vi {
+        let p = patch.clone(); let pr = profile.clone();
+        if let Err(e) = app.virtual_intensity.set_intensity(patch.id, v, universe, &p, &pr) {
+            log::error!("Failed to set virtual intensity: {}", e);
+        }
+    }
+    if apply_wheel {
+        let (fr, fg, fb) = app.ui_state.color_wheel.selected_color();
+        let intensity = if has_int { 1.0_f32 } else {
+            app.virtual_intensity.get_intensity(patch.id).unwrap_or(1.0)
+        };
+        let new_r = (fr * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+        let new_g = (fg * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+        let new_b = (fb * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
+        if let (Some(rc), Some(gc), Some(bc)) = (r_ch, g_ch, b_ch) {
+            let _ = universe.set_channel(rc, new_r);
+            let _ = universe.set_channel(gc, new_g);
+            let _ = universe.set_channel(bc, new_b);
+        }
+        if !has_int {
+            let mut cv = std::collections::HashMap::new();
+            cv.insert(FixtureParameter::Red,   new_r);
+            cv.insert(FixtureParameter::Green, new_g);
+            cv.insert(FixtureParameter::Blue,  new_b);
+            for pm in profile.color_parameters() {
+                if !matches!(pm.parameter, FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue) {
+                    let ch = patch.start_address + pm.channel_offset;
+                    if let Ok(val) = universe.get_channel(ch) { cv.insert(pm.parameter.clone(), val); }
+                }
+            }
+            app.virtual_intensity.set_color(patch.id, cv);
+        }
+    }
+    if !apply_channels.is_empty() {
+        let needs_vi = !has_int;
+        for (ch, v) in apply_channels {
+            let _ = universe.set_channel(ch, v);
+        }
+        if needs_vi {
+            let p = patch.clone(); let pr = profile.clone();
+            app.virtual_intensity.update_from_universe(patch.id, universe, &p, &pr);
+        }
+    }
 }
 
 /// Render properties for multiple selected channels
@@ -946,6 +930,32 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         return;
     }
 
+    // Parameters present in every selected fixture that aren't Intensity or standard
+    // colour channels (those are handled above).  Vec of (label, per-fixture channel).
+    let extra_common: Vec<(String, Vec<u16>)> = fix_infos[0].profile.parameters.iter()
+        .filter(|pm| {
+            !matches!(
+                pm.parameter,
+                FixtureParameter::Intensity
+                    | FixtureParameter::Red
+                    | FixtureParameter::Green
+                    | FixtureParameter::Blue
+                    | FixtureParameter::Amber
+                    | FixtureParameter::White
+                    | FixtureParameter::Uv
+            ) && fix_infos[1..].iter().all(|fi| fi.profile.has_parameter(&pm.parameter))
+        })
+        .map(|pm| {
+            let channels: Vec<u16> = fix_infos.iter()
+                .map(|fi| {
+                    fi.patch.start_address
+                        + fi.profile.get_parameter_offset(&pm.parameter).unwrap_or(0)
+                })
+                .collect();
+            (pm.parameter.short_label().to_string(), channels)
+        })
+        .collect();
+
     // ── Read current values from universe (immutable) ─────────────────────────
     let intensities: Vec<u8>;
     let rs: Vec<u8>;
@@ -958,6 +968,7 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     let all_amber: bool;
     let all_white: bool;
     let all_uv: bool;
+    let extra_vals: Vec<Vec<u8>>;
 
     {
         let universe = app.universes.first();
@@ -1008,6 +1019,14 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
             whites = vec![];
             uvs = vec![];
         }
+
+        extra_vals = extra_common.iter()
+            .map(|(_, channels)| {
+                channels.iter()
+                    .map(|&ch| universe.and_then(|u| u.get_channel(ch).ok()).unwrap_or(0))
+                    .collect()
+            })
+            .collect();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1031,102 +1050,114 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     let mut apply_amber: Option<u8> = None;
     let mut apply_white: Option<u8> = None;
     let mut apply_uv: Option<u8> = None;
+    let mut apply_extra: Vec<Option<u8>> = vec![None; extra_common.len()];
 
     // ── Render header ─────────────────────────────────────────────────────────
     ui.label(egui::RichText::new(format!("{} Fixtures Selected", fix_infos.len())).strong());
-    ui.add_space(8.0);
 
-    // ── Intensity ─────────────────────────────────────────────────────────────
-    let int_label = if fix_infos.iter().any(|fi| fi.is_rgb_only) {
-        "Intensity (Virtual)"
-    } else {
-        "Intensity"
-    };
-    ui.label(egui::RichText::new(int_label).strong());
+    // Multi-select: clear last-synced ID so switching back to single re-syncs.
+    app.ui_state.last_wheel_fixture_id = None;
 
-    let int_uniform = is_uniform(&intensities);
-    let mut int_val = intensities[0];
-
-    let int_resp = ui.horizontal(|ui| {
-        let resp = if int_uniform {
-            ui.add(egui::Slider::new(&mut int_val, 0..=100))
-        } else {
-            let r = ui.scope(|ui| { gray_visuals(ui); ui.add(egui::Slider::new(&mut int_val, 0..=100)) }).inner;
-            ui.colored_label(mixed_col, "≠");
-            r
-        };
-        resp
-    }).inner;
-    if int_resp.changed() {
-        apply_intensity = Some(int_val);
-    }
-
-    // ── Color (only when all fixtures are RGB) ────────────────────────────────
     if all_rgb {
-        ui.add_space(8.0);
-        ui.label(egui::RichText::new("Color").strong());
-
         let color_uniform = is_uniform(&rs) && is_uniform(&gs) && is_uniform(&bs);
-
-        // Multi-select: clear the last-synced fixture ID so switching back to a
-        // single fixture always re-syncs the wheel from that fixture's values.
-        app.ui_state.last_wheel_fixture_id = None;
-
-        // Sync wheel from first fixture when colours are uniform; leave it
-        // wherever it is when they're mixed (any drag still applies to all).
         if color_uniform {
             app.ui_state.color_wheel.set_from_srgb_100(rs[0], gs[0], bs[0]);
         }
+    }
 
-        if !color_uniform {
-            ui.colored_label(mixed_col, "≠ mixed colors");
-        }
+    // ── Horizontal scroll area ────────────────────────────────────────────────
+    egui::ScrollArea::horizontal()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            let avail_h  = ui.available_height().max(60.0);
+            let slider_h = (avail_h - 24.0).max(40.0);
+            let wheel_size = slider_h.min(220.0);
 
-        let size = ui.available_width().min(220.0);
-        if app.ui_state.color_wheel.show(ui, size) {
-            apply_wheel_color = true;
-        }
+            ui.horizontal(|ui| {
+                // ── Intensity column ──────────────────────────────────────────
+                let int_uniform = is_uniform(&intensities);
+                let mut int_val = intensities[0];
+                ui.vertical(|ui| {
+                    ui.label("Int");
+                    let resp = if int_uniform {
+                        ui.add_sized([30.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical())
+                    } else {
+                        ui.scope(|ui| {
+                            gray_visuals(ui);
+                            ui.add_sized([30.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical())
+                        }).inner
+                    };
+                    if resp.changed() { apply_intensity = Some(int_val); }
+                    if !int_uniform { ui.colored_label(mixed_col, "≠"); }
+                });
 
-        ui.add_space(4.0);
+                // ── Colour wheel + channel sliders (all-RGB only) ─────────────
+                if all_rgb {
+                    ui.separator();
 
-        // Individual colour channel sliders
-        egui::CollapsingHeader::new("Color Channels")
-            .default_open(true)
-            .show(ui, |ui| {
-                egui::Grid::new("multi_rgb_sliders")
-                    .num_columns(3)
-                    .spacing([6.0, 4.0])
-                    .show(ui, |ui| {
-                        macro_rules! ch_slider {
-                            ($label:expr, $vals:expr) => {{
-                                let uniform = is_uniform(&$vals);
-                                let mut val = $vals[0];
+                    let color_uniform = is_uniform(&rs) && is_uniform(&gs) && is_uniform(&bs);
+                    ui.vertical(|ui| {
+                        ui.label("Color");
+                        if app.ui_state.color_wheel.show(ui, wheel_size) {
+                            apply_wheel_color = true;
+                        }
+                        if !color_uniform { ui.colored_label(mixed_col, "≠"); }
+                    });
+
+                    ui.separator();
+
+                    macro_rules! ch_slider {
+                        ($label:expr, $vals:expr, $apply:expr) => {{
+                            let uniform = is_uniform(&$vals);
+                            let mut val = $vals[0];
+                            ui.vertical(|ui| {
                                 ui.label($label);
                                 let resp = if uniform {
-                                    ui.add(egui::Slider::new(&mut val, 0..=100))
+                                    ui.add_sized([30.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
                                 } else {
-                                    let r = ui.scope(|ui| {
+                                    ui.scope(|ui| {
                                         gray_visuals(ui);
-                                        ui.add(egui::Slider::new(&mut val, 0..=100))
-                                    }).inner;
-                                    ui.colored_label(mixed_col, "≠");
-                                    r
+                                        ui.add_sized([30.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                                    }).inner
                                 };
-                                if uniform { ui.label(""); }
-                                ui.end_row();
-                                if resp.changed() { Some(val) } else { None }
-                            }};
-                        }
+                                if resp.changed() { $apply = Some(val); }
+                                if !uniform { ui.colored_label(mixed_col, "≠"); }
+                            });
+                        }};
+                    }
 
-                        apply_r = ch_slider!("Red:", rs);
-                        apply_g = ch_slider!("Green:", gs);
-                        apply_b = ch_slider!("Blue:", bs);
-                        if all_amber { apply_amber = ch_slider!("Amber:", ambers); }
-                        if all_white { apply_white = ch_slider!("White:", whites); }
-                        if all_uv    { apply_uv    = ch_slider!("UV:", uvs); }
-                    });
+                    ch_slider!("R",  rs,     apply_r    );
+                    ch_slider!("G",  gs,     apply_g    );
+                    ch_slider!("B",  bs,     apply_b    );
+                    if all_amber { ch_slider!("A",  ambers, apply_amber); }
+                    if all_white { ch_slider!("W",  whites, apply_white); }
+                    if all_uv    { ch_slider!("UV", uvs,    apply_uv   ); }
+                }
+
+                // Extra channels shared by all fixtures (Strobe, Pan, Tilt, Gobo, etc.)
+                if !extra_common.is_empty() {
+                    ui.separator();
+                    for (i, (label, _)) in extra_common.iter().enumerate() {
+                        let vals = &extra_vals[i];
+                        let uniform = is_uniform(vals);
+                        let mut val = vals[0];
+                        ui.vertical(|ui| {
+                            ui.label(label.as_str());
+                            let resp = if uniform {
+                                ui.add_sized([30.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                            } else {
+                                ui.scope(|ui| {
+                                    gray_visuals(ui);
+                                    ui.add_sized([30.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                                }).inner
+                            };
+                            if resp.changed() { apply_extra[i] = Some(val); }
+                            if !uniform { ui.colored_label(mixed_col, "≠"); }
+                        });
+                    }
+                }
             });
-    }
+        });
 
     // ── Apply changes ─────────────────────────────────────────────────────────
 
@@ -1198,6 +1229,17 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     let p = fi.patch.clone();
                     let pr = fi.profile.clone();
                     app.virtual_intensity.update_from_universe(fi.id, u, &p, &pr);
+                }
+            }
+        }
+    }
+
+    // Extra channels (Strobe, Pan, Tilt, etc.) — applied to each fixture's channel
+    for (i, (_, channels)) in extra_common.iter().enumerate() {
+        if let Some(v) = apply_extra[i] {
+            if let Some(u) = app.universes.first_mut() {
+                for &ch in channels {
+                    let _ = u.set_channel(ch, v);
                 }
             }
         }

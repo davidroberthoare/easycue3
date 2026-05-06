@@ -85,6 +85,31 @@ impl FixtureParameter {
                 | FixtureParameter::TiltFine
         )
     }
+
+    /// Short display label for use in UI sliders (≤5 chars).
+    pub fn short_label(&self) -> &str {
+        match self {
+            FixtureParameter::Intensity => "Int",
+            FixtureParameter::Red       => "R",
+            FixtureParameter::Green     => "G",
+            FixtureParameter::Blue      => "B",
+            FixtureParameter::Amber     => "A",
+            FixtureParameter::White     => "W",
+            FixtureParameter::Uv        => "UV",
+            FixtureParameter::Strobe    => "Strb",
+            FixtureParameter::Iris      => "Iris",
+            FixtureParameter::Gobo      => "Gobo",
+            FixtureParameter::Pan       => "Pan",
+            FixtureParameter::PanFine   => "PanF",
+            FixtureParameter::Tilt      => "Tilt",
+            FixtureParameter::TiltFine  => "TltF",
+            FixtureParameter::Focus     => "Foc",
+            FixtureParameter::Zoom      => "Zoom",
+            FixtureParameter::Prism     => "Prsm",
+            FixtureParameter::Frost     => "Frst",
+            FixtureParameter::Custom(s) => s.as_str(),
+        }
+    }
 }
 
 /// Maps a fixture parameter to a DMX channel offset

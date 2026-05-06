@@ -1,0 +1,50 @@
+{
+  "id": "irgbawuvs",
+  "name": "iRGBAWUVS",
+  "manufacturer": null,
+  "channel_count": 8,
+  "parameters": [
+    {
+      "parameter": "intensity",
+      "channel_offset": 0,
+      "default_value": 0,
+      "description": "Master intensity/dimmer"
+    },
+    {
+      "parameter": "red",
+      "channel_offset": 1,
+      "default_value": 0
+    },
+    {
+      "parameter": "green",
+      "channel_offset": 2,
+      "default_value": 0
+    },
+    {
+      "parameter": "blue",
+      "channel_offset": 3,
+      "default_value": 0
+    },
+    {
+      "parameter": "amber",
+      "channel_offset": 4,
+      "default_value": 0
+    },
+    {
+      "parameter": "white",
+      "channel_offset": 5,
+      "default_value": 0
+    },
+    {
+      "parameter": "uv",
+      "channel_offset": 6,
+      "default_value": 0
+    },
+    {
+      "parameter": "strobe",
+      "channel_offset": 7,
+      "default_value": 0
+    }
+  ],
+  "notes": "8-channel RGBAWUVS fixture with separate intensity channel"
+}
