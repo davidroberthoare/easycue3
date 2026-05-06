@@ -115,7 +115,8 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
                 .map(|d| (d.fade_up, d.fade_down))
                 .unwrap_or((0.0, 0.0));
 
-            ui.label("Fade ↑:");
+            // ui.label("Fade ↑:");
+            ui.label(format!("Fade {}:", ph::ARROW_UP));
             let mut fu = fade_up;
             if ui.add(egui::DragValue::new(&mut fu).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
@@ -124,7 +125,7 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             }
             ui.end_row();
 
-            ui.label("Fade ↓:");
+            ui.label(format!("Fade {}:", ph::ARROW_DOWN));
             let mut fd = fade_down;
             if ui.add(egui::DragValue::new(&mut fd).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {

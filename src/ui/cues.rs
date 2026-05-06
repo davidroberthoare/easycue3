@@ -327,14 +327,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     cue.lighting_data()
                         .and_then(|d| d.triggers_audio_cue)
                         .and_then(|id| app.cue_list.find_by_id(id))
-                        .map(|t| format!("{}{}{:.1}", ph::CARET_RIGHT, ph::SPEAKER_HIGH, t.number))
+                        .map(|t| format!("{}{}{:.1}", ph::ARROW_RIGHT, ph::SPEAKER_HIGH, t.number))
                 } else {
                     #[cfg(feature = "audio")]
                     {
                         cue.audio_data()
                             .and_then(|d| d.triggers_lighting_cue)
                             .and_then(|id| app.cue_list.find_by_id(id))
-                            .map(|t| format!("{}{}{:.1}", ph::CARET_RIGHT, ph::LIGHTBULB, t.number))
+                            .map(|t| format!("{}{}{:.1}", ph::ARROW_RIGHT, ph::LIGHTBULB, t.number))
                     }
                     #[cfg(not(feature = "audio"))]
                     None
