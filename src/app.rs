@@ -120,6 +120,11 @@ pub struct UiState {
     /// Edit buffer for the Adjust cue "Target Cue" text field (persists across frames while typing).
     #[cfg(feature = "audio")]
     pub adjust_target_edit: String,
+
+    /// HSV colour wheel widget state (shared across single- and multi-fixture panels).
+    pub color_wheel: crate::ui::ColorWheel,
+    /// Which single fixture the wheel was last synced from; None when multi-select was active.
+    pub last_wheel_fixture_id: Option<usize>,
 }
 
 impl Default for UiState {
@@ -156,6 +161,8 @@ impl Default for UiState {
             #[cfg(feature = "audio")]
             audio_file_cache: HashMap::new(),
             show_debug_ui: false,
+            color_wheel: crate::ui::ColorWheel::new(),
+            last_wheel_fixture_id: None,
         }
     }
 }

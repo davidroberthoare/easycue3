@@ -3,6 +3,7 @@
 //! egui-based UI panels and widgets.
 
 mod channels;
+mod color_wheel;
 mod cues;
 mod magic_sheet;
 mod properties;
@@ -12,6 +13,7 @@ use egui::Context;
 use crate::app::{EasyCueApp, TabKind};
 use egui_phosphor::regular as ph;
 
+pub use color_wheel::ColorWheel;
 pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
 pub use magic_sheet::render_magic_sheet_panel;
