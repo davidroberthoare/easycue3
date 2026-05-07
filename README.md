@@ -172,7 +172,7 @@ Core cue engine, fixture patching, audio playback, and USB DMX have all been tes
 
 ## Disclaimer
 
-This is a hobby project I've built and tested on real shows. I've put genuine care into making it reliable, but I can't guarantee it'll work flawlessly in production. If you do use it, I'd really appreciate hearing about any issues you run into — bugs and feedback help me make it better. But please test thoroughly before relying on it for a show.
+This is a hobby project I've built and tested at my local theatre group and school. I've put genuine care into making it reliable, but I can't guarantee it'll work flawlessly in production. If you do use it, I'd really appreciate hearing about any issues you run into — bugs and feedback help me make it better. But please test thoroughly before relying on it for a show.
 
 ---
 
