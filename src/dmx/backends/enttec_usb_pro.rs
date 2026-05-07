@@ -12,6 +12,7 @@
 use anyhow::{Result, Context};
 use crate::dmx::{Universe, backends::{DmxBackend, universe_to_dmx}};
 use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use std::time::Duration;
 
@@ -28,6 +29,8 @@ pub struct EnttecUsbProBackend {
     port_name: String,
     /// Handle to background thread (for cleanup)
     _thread_handle: Option<thread::JoinHandle<()>>,
+    /// Set to false by the background thread when the device is lost.
+    connected: Arc<AtomicBool>,
 }
 
 impl EnttecUsbProBackend {
@@ -56,21 +59,25 @@ impl EnttecUsbProBackend {
         
         // Create channel for sending universe data to background thread
         let (tx, rx): (Sender<[u8; 512]>, Receiver<[u8; 512]>) = mpsc::channel();
-        
-        // Store port name for logging
-        let port_name = port_path.to_string();
-        let thread_port_name = port_name.clone();
-        
+
+        // Store port name for logging and display
+        let thread_port_name = port_path.to_string();
+        let port_name = format!("Enttec DMXUSB Pro ({})", port_path);
+
+        let connected = Arc::new(AtomicBool::new(true));
+        let thread_connected = Arc::clone(&connected);
+
         // Spawn background thread for DMX sending at 40 Hz
         let thread_handle = thread::spawn(move || {
             log::info!("DMX output thread started for {}", thread_port_name);
-            
+
             let mut last_dmx = [0u8; 512];
             let dmx_interval = Duration::from_millis(25); // 40 Hz = 25ms per frame
-            
+            let mut consecutive_errors: u32 = 0;
+
             loop {
                 let loop_start = std::time::Instant::now();
-                
+
                 // Drain the entire queue, keeping only the latest frame.
                 // The UI sends at 60 Hz but this thread runs at 40 Hz, so without
                 // draining, stale frames accumulate and create multi-second lag.
@@ -86,27 +93,36 @@ impl EnttecUsbProBackend {
                     log::info!("DMX output thread stopping (channel disconnected)");
                     break;
                 }
-                
-                // Send DMX packet
-                if let Err(e) = Self::send_dmx_packet_static(&mut port, &last_dmx) {
-                    log::error!("DMX send error on {}: {}", thread_port_name, e);
-                    // Continue trying - don't crash on transient errors
+
+                // Send DMX packet; mark device lost after 5 consecutive failures
+                match Self::send_dmx_packet_static(&mut port, &last_dmx) {
+                    Ok(()) => { consecutive_errors = 0; }
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        log::error!("DMX send error on {} ({}): {}", thread_port_name, consecutive_errors, e);
+                        if consecutive_errors >= 5 {
+                            log::warn!("Device lost on {} — marking disconnected", thread_port_name);
+                            thread_connected.store(false, Ordering::Relaxed);
+                            break;
+                        }
+                    }
                 }
-                
+
                 // Sleep to maintain 40 Hz rate
                 let elapsed = loop_start.elapsed();
                 if elapsed < dmx_interval {
                     thread::sleep(dmx_interval - elapsed);
                 }
             }
-            
+
             log::info!("DMX output thread stopped for {}", thread_port_name);
         });
-        
+
         Ok(Self {
             tx,
             port_name,
             _thread_handle: Some(thread_handle),
+            connected,
         })
     }
     
@@ -115,6 +131,7 @@ impl EnttecUsbProBackend {
     pub fn new(_port_path: &str) -> Result<Self> {
         anyhow::bail!("USB support not enabled. Rebuild with --features usb")
     }
+
     
     /// List available serial ports
     #[cfg(feature = "usb")]
@@ -265,9 +282,13 @@ impl DmxBackend for EnttecUsbProBackend {
     }
     
     fn name(&self) -> &str {
-        "Enttec DMXUSB Pro"
+        &self.port_name
     }
-    
+
+    fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
+    }
+
     fn close(&mut self) -> Result<()> {
         log::info!("Closing Enttec DMXUSB Pro on {}", self.port_name);
         // Drop the sender, which will cause the receiver to disconnect

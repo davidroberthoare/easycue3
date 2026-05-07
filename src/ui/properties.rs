@@ -166,36 +166,22 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
         });
 
     ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        if ui.button("Load to Stage").on_hover_text("Push cue values to live output").clicked() {
-            let values: Vec<(u16, u8)> = cue.lighting_data()
-                .map(|d| d.channel_values.iter().map(|(&k, &v)| (k, v)).collect())
-                .unwrap_or_default();
-            if let Some(universe) = app.universes.first_mut() {
-                for (ch, val) in values {
-                    let _ = universe.set_channel(ch, val);
+    if ui.button("Capture Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
+        let channel_values: Vec<(u16, u8)> = if let Some(universe) = app.universes.first() {
+            (1u16..=512)
+                .filter_map(|ch| universe.get_channel(ch).ok().filter(|&v| v > 0).map(|v| (ch, v)))
+                .collect()
+        } else { vec![] };
+        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+            if let Some(d) = c.lighting_data_mut() {
+                d.channel_values.clear();
+                for (ch, val) in channel_values {
+                    d.set_channel(ch, val);
                 }
             }
-            app.ui_state.status_message = format!("Loaded cue {:.1} to stage", cue.number);
         }
-
-        if ui.button("Update From Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
-            let channel_values: Vec<(u16, u8)> = if let Some(universe) = app.universes.first() {
-                (1u16..=512)
-                    .filter_map(|ch| universe.get_channel(ch).ok().filter(|&v| v > 0).map(|v| (ch, v)))
-                    .collect()
-            } else { vec![] };
-            if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                if let Some(d) = c.lighting_data_mut() {
-                    d.channel_values.clear();
-                    for (ch, val) in channel_values {
-                        d.set_channel(ch, val);
-                    }
-                }
-            }
-            app.ui_state.status_message = format!("Captured stage to cue {:.1}", cue.number);
-        }
-    });
+        app.ui_state.status_message = format!("Captured stage to cue {:.1}", cue.number);
+    }
 
     // Non-zero channel values (compact list)
     if let Some(data) = cue.lighting_data() {

@@ -32,10 +32,13 @@ pub fn universe_to_dmx(universe: &Universe) -> [u8; 512] {
 pub trait DmxBackend: Send + Sync {
     /// Send a universe to the output
     fn send_universe(&mut self, universe: &Universe) -> Result<()>;
-    
+
     /// Get backend name/description
     fn name(&self) -> &str;
-    
+
+    /// Whether the backend is still connected and healthy. Default: always true.
+    fn is_connected(&self) -> bool { true }
+
     /// Close/cleanup the backend
     fn close(&mut self) -> Result<()> {
         Ok(())

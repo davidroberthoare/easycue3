@@ -456,8 +456,8 @@ impl EasyCueApp {
     fn create_default_dock_layout() -> DockState<TabKind> {
         let mut dock_state = DockState::new(vec![TabKind::Channels]);
         let tree = dock_state.main_surface_mut();
-        // Match first-load layout: Channels (TL), Instrument Properties/Patching (TR),
-        // Cues/Patching (BL), Cue Properties (BR).
+        // Channels (TL) | Instrument Properties + Patching (TR)
+        // Cues      (BL) | Cue Properties + Magic Sheet    (BR)
         let [_channels, right] = tree.split_right(
             egui_dock::NodeIndex::root(),
             0.62,
@@ -465,10 +465,10 @@ impl EasyCueApp {
         );
         let [_, _] = tree.split_below(
             egui_dock::NodeIndex::root(),
-            0.52,
-            vec![TabKind::Cues, TabKind::Patching],
+            0.55,
+            vec![TabKind::Cues],
         );
-        let [_, _] = tree.split_below(right, 0.52, vec![TabKind::Properties]);
+        let [_, _] = tree.split_below(right, 0.55, vec![TabKind::Properties, TabKind::MagicSheet]);
         dock_state
     }
 
@@ -897,6 +897,16 @@ impl eframe::App for EasyCueApp {
 
         #[cfg(feature = "audio")]
         self.audio_playback.update(self.ui_state.sound_master);
+
+        // Auto-fallback: if the hardware backend lost the device, switch to Virtual.
+        if !self.dmx_backend.is_connected() {
+            log::warn!("DMX device lost — falling back to Virtual DMX");
+            self.ui_state.status_message = format!(
+                "DMX device lost — switched to Virtual (was: {})",
+                self.dmx_backend.name()
+            );
+            self.switch_to_virtual();
+        }
 
         let dmx_send_start = std::time::Instant::now();
         if let Some(universe) = self.universes.first() {
