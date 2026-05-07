@@ -18,12 +18,11 @@ pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         
         if !show_unpatched {
             if ui.button("Select All").clicked() {
-                // Select all patched fixtures
                 for patch in app.fixtures.patch_list().patches() {
                     app.ui_state.selected_fixtures.insert(patch.id);
                 }
+                update_command_from_fixture_selection(app);
             }
-            
         }
     });
     
@@ -116,6 +115,18 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
     } else {
         ui.label(egui::RichText::new("Click to select · Shift-click range · Ctrl-click toggle · Drag to adjust").small());
     }
+}
+
+/// Update command_input to reflect the current fixture selection (for @ level entry).
+/// Called whenever the selection changes so the user sees e.g. "1 2 3" and can type "@ 50".
+pub fn update_command_from_fixture_selection(app: &mut EasyCueApp) {
+    if app.ui_state.selected_fixtures.is_empty() {
+        app.ui_state.command_input.clear();
+        return;
+    }
+    let mut ids: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
+    ids.sort_unstable();
+    app.ui_state.command_input = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" ");
 }
 
 /// Set intensity for all selected fixtures
@@ -226,6 +237,7 @@ fn render_fixture_tile(
             app.ui_state.selected_fixtures.insert(fixture_id);
             app.ui_state.last_selected_fixture = Some(fixture_id);
         }
+        update_command_from_fixture_selection(app);
     }
 
     // Drag to adjust intensity (vertical only for compact tile)

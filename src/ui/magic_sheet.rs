@@ -8,6 +8,7 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use crate::app::EasyCueApp;
 use crate::magic_sheet::ShapeKind;
 use crate::fixtures::profiles::FixtureParameter;
+use crate::ui::channels::update_command_from_fixture_selection;
 
 /// Base shape dimensions in canvas-space logical pixels (before scale).
 const BASE_W: f32 = 80.0;
@@ -158,6 +159,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         app.ui_state.selected_fixtures.insert(*fid);
                     }
                     app.ui_state.last_selected_fixture = *fixture_id;
+                    update_command_from_fixture_selection(app);
                 }
             }
 
