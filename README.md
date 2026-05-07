@@ -33,7 +33,11 @@ Supports up to 2 universes (1024 channels). That's plenty for a 200-seat black b
 - Anything resembling a moving light programmer
 
 ---
+## Download
 
+- Just visit the [releases page](https://github.com/davidroberthoare/easycue3/releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
+
+---
 ## Building
 
 You'll need Rust. The default build has no media dependencies:
