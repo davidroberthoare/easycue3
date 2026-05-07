@@ -180,10 +180,14 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let bg = Color32::from_rgba_unmultiplied(s.bg_color[0], s.bg_color[1], s.bg_color[2], s.bg_color[3]);
         let outline = Color32::from_rgba_unmultiplied(s.outline_color[0], s.outline_color[1], s.outline_color[2], s.outline_color[3]);
         let id = s.id;
-        (id, kind, pos, scale, bg, outline, fixture_id)
+        let link_color = s.link_color;
+        let link_intensity = s.link_intensity;
+        (id, kind, pos, scale, bg, outline, fixture_id, link_color, link_intensity)
     }).collect();
 
-    for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id) in &shapes_snapshot {
+    for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id, link_color, link_intensity)
+        in &shapes_snapshot
+    {
         let shape_id = *shape_id;
         let scale = *scale;
 
@@ -192,6 +196,30 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
 
         let (label, fix_num, intensity, rgb) = fixture_info(app, *fixture_id);
+
+        // ── Live linking: compute effective fill from fixture state ───────────
+        let effective_bg = if !edit_mode && fixture_id.is_some() && (*link_color || *link_intensity) {
+            let base = if *link_color {
+                // Use the fixture's RGB as fill
+                rgb.unwrap_or(*bg_color)
+            } else {
+                *bg_color
+            };
+            if *link_intensity {
+                // Modulate brightness by intensity
+                let [r, g, b, a] = base.to_srgba_unmultiplied();
+                Color32::from_rgba_unmultiplied(
+                    (r as f32 * intensity).round() as u8,
+                    (g as f32 * intensity).round() as u8,
+                    (b as f32 * intensity).round() as u8,
+                    a,
+                )
+            } else {
+                base
+            }
+        } else {
+            *bg_color
+        };
 
         let is_selected_shape = edit_mode
             && app.magic_sheet_state.selected_shape_ids.contains(&shape_id);
@@ -283,7 +311,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             screen_center,
             w,
             h,
-            *bg_color,
+            effective_bg,
             Stroke::new(border_width, border_color),
         );
 
