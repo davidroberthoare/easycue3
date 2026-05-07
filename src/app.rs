@@ -45,21 +45,38 @@ impl std::fmt::Display for TabKind {
 /// Ephemeral per-session state for the magic sheet panel (not saved to disk).
 pub struct MagicSheetState {
     pub edit_mode: bool,
-    /// ID of the shape currently selected in edit mode.
-    pub selected_shape_id: Option<u32>,
+    /// Currently selected shape IDs in edit mode (multi-select).
+    pub selected_shape_ids: std::collections::HashSet<u32>,
     /// Canvas pan offset in screen pixels.
     pub canvas_offset: egui::Vec2,
     /// Zoom level: 1.0 = 100%.
     pub canvas_zoom: f32,
+    /// Clipboard for copy/paste (snapshot of shape data).
+    pub clipboard: Vec<crate::magic_sheet::MagicSheetShape>,
+    /// Whether a drag-select rubber-band is in progress.
+    pub drag_select_start: Option<egui::Pos2>,
+}
+
+impl MagicSheetState {
+    /// Return the single selected ID if exactly one shape is selected, else None.
+    pub fn single_selected(&self) -> Option<u32> {
+        if self.selected_shape_ids.len() == 1 {
+            self.selected_shape_ids.iter().copied().next()
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for MagicSheetState {
     fn default() -> Self {
         Self {
             edit_mode: false,
-            selected_shape_id: None,
+            selected_shape_ids: std::collections::HashSet::new(),
             canvas_offset: egui::Vec2::ZERO,
             canvas_zoom: 1.0,
+            clipboard: Vec::new(),
+            drag_select_start: None,
         }
     }
 }

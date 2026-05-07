@@ -19,8 +19,8 @@ impl std::fmt::Display for ShapeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ShapeKind::Rectangle => write!(f, "Rect"),
-            ShapeKind::Circle => write!(f, "Circle"),
-            ShapeKind::Diamond => write!(f, "Diamond"),
+            ShapeKind::Circle    => write!(f, "Circle"),
+            ShapeKind::Diamond   => write!(f, "Diamond"),
         }
     }
 }
@@ -48,6 +48,12 @@ pub struct MagicSheetShape {
     pub outline_color: [u8; 4],
     /// Linked fixture (matches `Patch::id`). `None` = unassigned.
     pub fixture_id: Option<usize>,
+    /// In live mode, mirror the linked fixture's RGB colour into the fill.
+    #[serde(default)]
+    pub link_color: bool,
+    /// In live mode, modulate fill brightness by the linked fixture's intensity.
+    #[serde(default)]
+    pub link_intensity: bool,
 }
 
 impl MagicSheetShape {
@@ -60,7 +66,21 @@ impl MagicSheetShape {
             bg_color: [30, 50, 75, 255],
             outline_color: [100, 150, 200, 255],
             fixture_id: None,
+            link_color: false,
+            link_intensity: false,
         }
+    }
+
+    pub fn new_full(
+        id: u32,
+        kind: ShapeKind,
+        pos: [f32; 2],
+        scale: f32,
+        bg_color: [u8; 4],
+        outline_color: [u8; 4],
+        fixture_id: Option<usize>,
+    ) -> Self {
+        Self { id, kind, pos, scale, bg_color, outline_color, fixture_id, link_color: false, link_intensity: false }
     }
 }
 
@@ -77,11 +97,27 @@ pub struct MagicSheet {
 fn default_next_id() -> u32 { 1 }
 
 impl MagicSheet {
-    /// Add a shape and return its new ID.
+    /// Add a default shape and return its new ID.
     pub fn add_shape(&mut self, kind: ShapeKind, pos: [f32; 2]) -> u32 {
         let id = self.next_shape_id.max(1);
         self.next_shape_id = id + 1;
         self.shapes.push(MagicSheetShape::new(id, kind, pos));
+        id
+    }
+
+    /// Add a shape with full attribute set (used for paste with offset).
+    pub fn add_shape_at(
+        &mut self,
+        kind: ShapeKind,
+        pos: [f32; 2],
+        scale: f32,
+        bg_color: [u8; 4],
+        outline_color: [u8; 4],
+        fixture_id: Option<usize>,
+    ) -> u32 {
+        let id = self.next_shape_id.max(1);
+        self.next_shape_id = id + 1;
+        self.shapes.push(MagicSheetShape::new_full(id, kind, pos, scale, bg_color, outline_color, fixture_id));
         id
     }
 
