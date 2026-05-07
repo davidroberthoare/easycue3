@@ -179,7 +179,7 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             app.ui_state.status_message = format!("Loaded cue {:.1} to stage", cue.number);
         }
 
-        if ui.button("Capture Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
+        if ui.button("Update From Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
             let channel_values: Vec<(u16, u8)> = if let Some(universe) = app.universes.first() {
                 (1u16..=512)
                     .filter_map(|ch| universe.get_channel(ch).ok().filter(|&v| v > 0).map(|v| (ch, v)))

@@ -533,45 +533,41 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                     });
                     
                     ui.indent("enttec_ports", |ui| {
-                        match EnttecUsbProBackend::list_ports() {
+                        match EnttecUsbProBackend::list_recommended_ports() {
                             Ok(ports) if !ports.is_empty() => {
-                                // Filter to likely USB ports (ttyUSB* and ttyACM*)
-                                let usb_ports: Vec<String> = ports.into_iter()
-                                    .filter(|p| p.contains("ttyUSB") || p.contains("ttyACM"))
-                                    .collect();
-                                
-                                if usb_ports.is_empty() {
-                                    ui.label(egui::RichText::new("No USB DMX devices found").italics().color(egui::Color32::GRAY));
-                                } else {
-                                    // Initialize selected port if empty
-                                    if app.ui_state.selected_usb_port.is_empty() && !usb_ports.is_empty() {
-                                        app.ui_state.selected_usb_port = usb_ports[0].clone();
-                                    }
-                                    
-                                    // Dropdown to select port
-                                    egui::ComboBox::from_id_salt("usb_port_selector")
-                                        .selected_text(&app.ui_state.selected_usb_port)
-                                        .show_ui(ui, |ui| {
-                                            for port in &usb_ports {
-                                                ui.selectable_value(&mut app.ui_state.selected_usb_port, port.clone(), port);
-                                            }
-                                        });
-                                    
-                                    ui.add_space(5.0);
-                                    
-                                    // Connect button
-                                    if ui.button("Connect").clicked() {
-                                        let port = app.ui_state.selected_usb_port.clone();
-                                        match app.switch_to_enttec(&port) {
-                                            Ok(_) => {
-                                                app.ui_state.status_message = format!("✓ Connected to Enttec at {}", port);
-                                                log::info!("✓ Switched to Enttec DMXUSB Pro at {}", port);
-                                                app.ui_state.show_device_selector = false;
-                                            }
-                                            Err(e) => {
-                                                app.ui_state.status_message = format!("✗ Error: {}", e);
-                                                log::error!("Failed to switch to Enttec: {}", e);
-                                            }
+                                // Initialize selected port if empty
+                                if app.ui_state.selected_usb_port.is_empty() {
+                                    app.ui_state.selected_usb_port = ports[0].clone();
+                                }
+
+                                // Keep selection valid if device list changed
+                                if !ports.contains(&app.ui_state.selected_usb_port) {
+                                    app.ui_state.selected_usb_port = ports[0].clone();
+                                }
+
+                                // Dropdown to select port
+                                egui::ComboBox::from_id_salt("usb_port_selector")
+                                    .selected_text(&app.ui_state.selected_usb_port)
+                                    .show_ui(ui, |ui| {
+                                        for port in &ports {
+                                            ui.selectable_value(&mut app.ui_state.selected_usb_port, port.clone(), port);
+                                        }
+                                    });
+
+                                ui.add_space(5.0);
+
+                                // Connect button
+                                if ui.button("Connect").clicked() {
+                                    let port = app.ui_state.selected_usb_port.clone();
+                                    match app.switch_to_enttec(&port) {
+                                        Ok(_) => {
+                                            app.ui_state.status_message = format!("✓ Connected to Enttec at {}", port);
+                                            log::info!("✓ Switched to Enttec DMXUSB Pro at {}", port);
+                                            app.ui_state.show_device_selector = false;
+                                        }
+                                        Err(e) => {
+                                            app.ui_state.status_message = format!("✗ Error: {}", e);
+                                            log::error!("Failed to switch to Enttec: {}", e);
                                         }
                                     }
                                 }

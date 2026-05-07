@@ -17,6 +17,8 @@ use std::time::Duration;
 
 #[cfg(feature = "usb")]
 use serialport::SerialPort;
+#[cfg(feature = "usb")]
+use serialport::{SerialPortInfo, SerialPortType};
 
 /// Enttec DMXUSB Pro backend with threaded sending
 pub struct EnttecUsbProBackend {
@@ -29,6 +31,11 @@ pub struct EnttecUsbProBackend {
 }
 
 impl EnttecUsbProBackend {
+    #[cfg(feature = "usb")]
+    const ENTTEC_USB_VID: u16 = 0x0403;
+    #[cfg(feature = "usb")]
+    const ENTTEC_USB_PID: u16 = 0x6001;
+
     /// Create a new Enttec USB Pro backend with threaded sending
     /// 
     /// Spawns a background thread that sends DMX at 40 Hz (every 25ms).
@@ -40,12 +47,12 @@ impl EnttecUsbProBackend {
     #[cfg(feature = "usb")]
     pub fn new(port_path: &str) -> Result<Self> {
         // Open serial port
-        let mut port = serialport::new(port_path, 57600)
+        let mut port = serialport::new(port_path, 250_000)
             .timeout(std::time::Duration::from_millis(100))
             .open()
             .context(format!("Failed to open serial port {}", port_path))?;
-        
-        log::info!("Enttec DMXUSB Pro initialized on {} at 57600 baud", port_path);
+
+        log::info!("Enttec DMXUSB Pro initialized on {} at 250000 baud", port_path);
         
         // Create channel for sending universe data to background thread
         let (tx, rx): (Sender<[u8; 512]>, Receiver<[u8; 512]>) = mpsc::channel();
@@ -64,18 +71,20 @@ impl EnttecUsbProBackend {
             loop {
                 let loop_start = std::time::Instant::now();
                 
-                // Check for new universe data (non-blocking)
-                match rx.try_recv() {
-                    Ok(new_dmx) => {
-                        last_dmx = new_dmx;
+                // Drain the entire queue, keeping only the latest frame.
+                // The UI sends at 60 Hz but this thread runs at 40 Hz, so without
+                // draining, stale frames accumulate and create multi-second lag.
+                let mut disconnected = false;
+                loop {
+                    match rx.try_recv() {
+                        Ok(new_dmx) => { last_dmx = new_dmx; }
+                        Err(mpsc::TryRecvError::Disconnected) => { disconnected = true; break; }
+                        Err(mpsc::TryRecvError::Empty) => break,
                     }
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        log::info!("DMX output thread stopping (channel disconnected)");
-                        break;
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {
-                        // No new data, send last known state
-                    }
+                }
+                if disconnected {
+                    log::info!("DMX output thread stopping (channel disconnected)");
+                    break;
                 }
                 
                 // Send DMX packet
@@ -114,6 +123,87 @@ impl EnttecUsbProBackend {
             .context("Failed to enumerate serial ports")?;
         
         Ok(ports.into_iter().map(|p| p.port_name).collect())
+    }
+
+    /// List ports ordered by how likely they are to be Enttec/compatible DMX interfaces.
+    ///
+    /// This is cross-platform and uses USB VID/PID and product/manufacturer metadata
+    /// when available. It falls back to mild name heuristics for systems where USB
+    /// metadata is incomplete.
+    ///
+    /// On macOS, `/dev/tty.*` ports are filtered out when the corresponding `/dev/cu.*`
+    /// exists — `tty.*` blocks on open waiting for carrier-detect that USB adapters never
+    /// assert; `cu.*` is always the correct choice for outgoing serial communication.
+    #[cfg(feature = "usb")]
+    pub fn list_recommended_ports() -> Result<Vec<String>> {
+        let all_ports = serialport::available_ports()
+            .context("Failed to enumerate serial ports")?;
+
+        // On macOS, drop /dev/tty.* entries that have a /dev/cu.* twin.
+        let cu_names: std::collections::HashSet<String> = all_ports
+            .iter()
+            .filter_map(|p| p.port_name.strip_prefix("/dev/cu.").map(|s| s.to_string()))
+            .collect();
+
+        let mut scored_ports: Vec<(i32, String)> = all_ports
+            .into_iter()
+            .filter(|p| {
+                if let Some(suffix) = p.port_name.strip_prefix("/dev/tty.") {
+                    !cu_names.contains(suffix)
+                } else {
+                    true
+                }
+            })
+            .map(|port| (Self::score_port(&port), port.port_name))
+            .collect();
+
+        scored_ports.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        Ok(scored_ports.into_iter().map(|(_, name)| name).collect())
+    }
+
+    #[cfg(feature = "usb")]
+    fn score_port(port: &SerialPortInfo) -> i32 {
+        let mut score = 0;
+        let lower_name = port.port_name.to_lowercase();
+
+        // Prefer /dev/cu.* over /dev/tty.* on macOS — tty.* blocks on carrier-detect
+        if lower_name.starts_with("/dev/cu.") {
+            score += 15;
+        } else if lower_name.starts_with("/dev/tty.") {
+            score -= 20;
+        }
+
+        if lower_name.contains("usbserial") || lower_name.contains("ttyusb") || lower_name.contains("ttyacm") {
+            score += 10;
+        }
+
+        if lower_name.starts_with("com") {
+            score += 5;
+        }
+
+        if let SerialPortType::UsbPort(info) = &port.port_type {
+            if info.vid == Self::ENTTEC_USB_VID && info.pid == Self::ENTTEC_USB_PID {
+                score += 100;
+            }
+
+            if let Some(manufacturer) = &info.manufacturer {
+                let manufacturer = manufacturer.to_lowercase();
+                if manufacturer.contains("enttec") {
+                    score += 60;
+                } else if manufacturer.contains("ftdi") {
+                    score += 25;
+                }
+            }
+
+            if let Some(product) = &info.product {
+                let product = product.to_lowercase();
+                if product.contains("dmx") || product.contains("enttec") || product.contains("usb pro") {
+                    score += 60;
+                }
+            }
+        }
+
+        score
     }
     
     /// Send DMX data using Enttec Pro protocol (static version for background thread)

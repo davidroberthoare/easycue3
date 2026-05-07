@@ -364,7 +364,7 @@ impl EasyCueApp {
         let dmx_backend: Box<dyn DmxBackend> = {
             #[cfg(feature = "usb")]
             {
-                match EnttecUsbProBackend::list_ports() {
+                match EnttecUsbProBackend::list_recommended_ports() {
                     Ok(ports) if !ports.is_empty() => {
                         match EnttecUsbProBackend::new(&ports[0]) {
                             Ok(backend) => {

@@ -8,7 +8,7 @@ use crate::fixtures::profiles::FixtureParameter;
 pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // View mode controls
     ui.horizontal(|ui| {
-        ui.label("View:");
+        // ui.label("View:");
         
         // Toggle between fixture list and channel grid
         let mut show_unpatched = app.ui_state.show_unpatched_channels;
