@@ -849,6 +849,13 @@ impl EasyCueApp {
 }
 
 impl eframe::App for EasyCueApp {
+    /// Force-terminate the process on window close so that any background threads
+    /// stuck in blocking OS calls (e.g. IOKit serial-port enumeration on macOS)
+    /// don't keep the process alive after the user has quit.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        std::process::exit(0);
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if !self.ui_state.theme_initialized {
             Self::configure_cobalt_theme(ctx);
