@@ -75,11 +75,11 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 if ui.small_button("⬇").on_hover_text("Align bottom edges").clicked() {
                     align_shapes(app, Alignment::Bottom);
                 }
-                if ui.small_button("↔").on_hover_text("Centre horizontally").clicked() {
-                    align_shapes(app, Alignment::CentreH);
+                if ui.small_button("↔").on_hover_text("Distribute horizontally").clicked() {
+                    align_shapes(app, Alignment::DistributeH);
                 }
-                if ui.small_button("↕").on_hover_text("Centre vertically").clicked() {
-                    align_shapes(app, Alignment::CentreV);
+                if ui.small_button("↕").on_hover_text("Distribute vertically").clicked() {
+                    align_shapes(app, Alignment::DistributeV);
                 }
                 ui.separator();
             }
@@ -138,19 +138,17 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
     if canvas_response.dragged_by(egui::PointerButton::Middle)
         || canvas_response.dragged_by(egui::PointerButton::Secondary)
-        || (canvas_response.dragged_by(egui::PointerButton::Primary) && shift_held && !edit_mode)
+        || (canvas_response.dragged_by(egui::PointerButton::Primary) && shift_held)
     {
         app.magic_sheet_state.canvas_offset += canvas_response.drag_delta();
     }
 
-    // ── Zoom: scroll wheel; shift+2-finger pan ────────────────────────────────
-    let (scroll_x, scroll_y, zoom_delta) = ui.input(|i| {
-        let modifiers = i.modifiers;
-        if modifiers.shift {
-            // Shift+scroll → pan
-            (i.smooth_scroll_delta.x + i.smooth_scroll_delta.y, 0.0, 0.0)
+    // ── Zoom: scroll wheel when not shift-held; shift+scroll = pan both axes ──
+    let (pan_delta, zoom_delta) = ui.input(|i| {
+        if i.modifiers.shift {
+            (i.smooth_scroll_delta, 0.0f32)
         } else {
-            (0.0, 0.0, i.smooth_scroll_delta.y)
+            (Vec2::ZERO, i.smooth_scroll_delta.y)
         }
     });
 
@@ -160,9 +158,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             app.magic_sheet_state.canvas_zoom =
                 (app.magic_sheet_state.canvas_zoom * zoom_factor).clamp(0.1, 5.0);
         }
-        if scroll_x != 0.0 || scroll_y != 0.0 {
-            // Shift+scroll → pan (horizontal scroll pans H, vertical pans V)
-            app.magic_sheet_state.canvas_offset += Vec2::new(scroll_x, scroll_y);
+        if pan_delta != Vec2::ZERO {
+            app.magic_sheet_state.canvas_offset += pan_delta;
         }
     }
 
@@ -185,6 +182,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         (id, kind, pos, scale, bg, outline, fixture_id, link_color, link_intensity)
     }).collect();
 
+    let mut drag_started_on_shape = false;
+
     for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id, link_color, link_intensity)
         in &shapes_snapshot
     {
@@ -199,14 +198,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
         // ── Live linking: compute effective fill from fixture state ───────────
         let effective_bg = if !edit_mode && fixture_id.is_some() && (*link_color || *link_intensity) {
-            let base = if *link_color {
-                // Use the fixture's RGB as fill
-                rgb.unwrap_or(*bg_color)
-            } else {
-                *bg_color
-            };
+            let base = if *link_color { rgb.unwrap_or(*bg_color) } else { *bg_color };
             if *link_intensity {
-                // Modulate brightness by intensity
                 let [r, g, b, a] = base.to_srgba_unmultiplied();
                 Color32::from_rgba_unmultiplied(
                     (r as f32 * intensity).round() as u8,
@@ -228,12 +221,13 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             .unwrap_or(false);
 
         let shape_rect = Rect::from_center_size(screen_center, egui::vec2(w, h));
-
-        // Skip interaction allocation if outside canvas to avoid infinite rect
         let resp = ui.allocate_rect(shape_rect, Sense::click_and_drag());
 
-        // ── Edit mode: click to select (shift = add to selection), drag to move ──
-        if edit_mode && !shift_held {
+        // ── Edit mode: click to select, drag to move ──────────────────────────
+        if edit_mode && !shift_held && app.magic_sheet_state.drag_select_start.is_none() {
+            if resp.drag_started() {
+                drag_started_on_shape = true;
+            }
             if resp.clicked() {
                 let modifiers = ui.input(|i| i.modifiers);
                 if modifiers.command || modifiers.ctrl {
@@ -248,8 +242,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 }
             }
             if resp.dragged() && is_selected_shape {
+                drag_started_on_shape = true;
                 let delta = resp.drag_delta() / app.magic_sheet_state.canvas_zoom;
-                // Move all selected shapes together
                 let selected: Vec<u32> = app.magic_sheet_state.selected_shape_ids.iter().copied().collect();
                 for sid in selected {
                     if let Some(s) = app.magic_sheet.get_shape_mut(sid) {
@@ -278,7 +272,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 }
             }
 
-            // ── Live mode: vertical drag adjusts intensity ────────────────────
+            // ── Live mode: drag adjusts intensity on all selected fixtures ────
             if resp.dragged() {
                 if let Some(fid) = fixture_id {
                     let dy = resp.drag_delta().y;
@@ -289,8 +283,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             app.ui_state.last_selected_fixture = *fixture_id;
                         }
                         let delta = (-dy / h).clamp(-1.0, 1.0);
-                        let new_intensity = (intensity + delta).clamp(0.0, 1.0);
-                        set_fixture_intensity(app, *fid, new_intensity);
+                        adjust_selected_fixtures_intensity(app, delta);
                     }
                 }
             }
@@ -298,34 +291,60 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
         // ── Draw shape ───────────────────────────────────────────────────────
         let highlight = is_selected_shape || is_selected_fixture;
-        let border_color = if highlight {
-            Color32::from_rgb(100, 180, 255)
-        } else {
-            *outline_color
-        };
+        let border_color = if highlight { Color32::from_rgb(100, 180, 255) } else { *outline_color };
         let border_width = if highlight { 2.5 } else { 1.5 };
 
-        draw_shape(
-            &painter,
-            kind,
-            screen_center,
-            w,
-            h,
-            effective_bg,
-            Stroke::new(border_width, border_color),
-        );
-
+        draw_shape(&painter, kind, screen_center, w, h, effective_bg, Stroke::new(border_width, border_color));
         draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb);
     }
 
-    // Click on empty canvas in edit mode (no shift): deselect all
-    if edit_mode
-        && !shift_held
-        && canvas_response.clicked()
-        && !canvas_response.drag_started()
-    {
-        app.magic_sheet_state.selected_shape_ids.clear();
+    // ── Rubber-band selection (edit mode, no shift, drag on empty canvas) ────
+    if edit_mode && !shift_held {
+        // Start rubber band when drag begins on empty canvas
+        if canvas_response.drag_started() && !drag_started_on_shape {
+            app.magic_sheet_state.drag_select_start =
+                ui.input(|i| i.pointer.press_origin());
+        }
+
+        if let Some(start) = app.magic_sheet_state.drag_select_start {
+            let current = ui.input(|i| i.pointer.interact_pos().unwrap_or(start));
+            let sel_rect = Rect::from_two_pos(start, current);
+
+            // Draw the rubber band rect
+            painter.rect_filled(sel_rect, 0.0, Color32::from_rgba_unmultiplied(50, 120, 220, 25));
+            painter.rect_stroke(sel_rect, 0.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 180, 255, 200)), egui::epaint::StrokeKind::Outside);
+
+            // On drag release: commit selection
+            if canvas_response.drag_stopped() {
+                let modifiers = ui.input(|i| i.modifiers);
+                if !modifiers.command && !modifiers.ctrl {
+                    app.magic_sheet_state.selected_shape_ids.clear();
+                }
+                for (shape_id, _kind, pos, scale, ..) in &shapes_snapshot {
+                    let sc = canvas_to_screen(canvas_rect, app.magic_sheet_state.canvas_offset, app.magic_sheet_state.canvas_zoom, *pos);
+                    let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
+                    let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
+                    let shape_rect = Rect::from_center_size(sc, egui::vec2(w, h));
+                    if sel_rect.intersects(shape_rect) {
+                        app.magic_sheet_state.selected_shape_ids.insert(*shape_id);
+                    }
+                }
+                app.magic_sheet_state.drag_select_start = None;
+            }
+        }
+
+        // Click on empty canvas (no shift, no rubber-band release): deselect all
+        if canvas_response.clicked() && app.magic_sheet_state.drag_select_start.is_none() {
+            app.magic_sheet_state.selected_shape_ids.clear();
+        }
     }
+
+    // ── Sync canvas state back to show file (for persistence) ────────────────
+    app.magic_sheet.canvas_offset = [
+        app.magic_sheet_state.canvas_offset.x,
+        app.magic_sheet_state.canvas_offset.y,
+    ];
+    app.magic_sheet.canvas_zoom = app.magic_sheet_state.canvas_zoom;
 
     // ── Empty-state hint ─────────────────────────────────────────────────────
     if app.magic_sheet.shapes.is_empty() {
@@ -502,15 +521,14 @@ fn render_multi_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_ids: &
 
 // ── Alignment helper ──────────────────────────────────────────────────────────
 
-enum Alignment { Left, Right, Top, Bottom, CentreH, CentreV }
+enum Alignment { Left, Right, Top, Bottom, DistributeH, DistributeV }
 
 fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
     let ids: Vec<u32> = app.magic_sheet_state.selected_shape_ids.iter().copied().collect();
     if ids.len() < 2 { return; }
 
-    // Collect (id, pos, scale) snapshots so borrow checker is happy
     struct Info { id: u32, cx: f32, cy: f32, hw: f32, hh: f32 }
-    let infos: Vec<Info> = ids.iter().filter_map(|&id| {
+    let mut infos: Vec<Info> = ids.iter().filter_map(|&id| {
         app.magic_sheet.shapes.iter().find(|s| s.id == id).map(|s| Info {
             id,
             cx: s.pos[0],
@@ -520,29 +538,53 @@ fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
         })
     }).collect();
 
-    // Bounding box of all shape edges
     let min_left   = infos.iter().map(|i| i.cx - i.hw).fold(f32::MAX, f32::min);
     let max_right  = infos.iter().map(|i| i.cx + i.hw).fold(f32::MIN, f32::max);
     let min_top    = infos.iter().map(|i| i.cy - i.hh).fold(f32::MAX, f32::min);
     let max_bottom = infos.iter().map(|i| i.cy + i.hh).fold(f32::MIN, f32::max);
-    let centre_x   = (min_left + max_right)  / 2.0;
-    let centre_y   = (min_top  + max_bottom) / 2.0;
 
-    for info in &infos {
-        if let Some(s) = app.magic_sheet.get_shape_mut(info.id) {
-            match alignment {
-                // Align left edges to leftmost left edge
-                Alignment::Left    => s.pos[0] = min_left + info.hw,
-                // Align right edges to rightmost right edge
-                Alignment::Right   => s.pos[0] = max_right - info.hw,
-                // Align top edges to topmost top edge
-                Alignment::Top     => s.pos[1] = min_top + info.hh,
-                // Align bottom edges to bottommost bottom edge
-                Alignment::Bottom  => s.pos[1] = max_bottom - info.hh,
-                // Centre all horizontally on the bounding-box midpoint
-                Alignment::CentreH => s.pos[0] = centre_x,
-                // Centre all vertically on the bounding-box midpoint
-                Alignment::CentreV => s.pos[1] = centre_y,
+    match alignment {
+        Alignment::DistributeH => {
+            infos.sort_by(|a, b| a.cx.partial_cmp(&b.cx).unwrap());
+            let n = infos.len();
+            let span = max_right - min_left;
+            let total_shape_w: f32 = infos.iter().map(|i| i.hw * 2.0).sum();
+            let gap = if n > 1 { (span - total_shape_w) / (n as f32 - 1.0) } else { 0.0 };
+            let mut x = min_left;
+            for info in &infos {
+                x += info.hw;
+                if let Some(s) = app.magic_sheet.get_shape_mut(info.id) {
+                    s.pos[0] = x;
+                }
+                x += info.hw + gap;
+            }
+        }
+        Alignment::DistributeV => {
+            infos.sort_by(|a, b| a.cy.partial_cmp(&b.cy).unwrap());
+            let n = infos.len();
+            let span = max_bottom - min_top;
+            let total_shape_h: f32 = infos.iter().map(|i| i.hh * 2.0).sum();
+            let gap = if n > 1 { (span - total_shape_h) / (n as f32 - 1.0) } else { 0.0 };
+            let mut y = min_top;
+            for info in &infos {
+                y += info.hh;
+                if let Some(s) = app.magic_sheet.get_shape_mut(info.id) {
+                    s.pos[1] = y;
+                }
+                y += info.hh + gap;
+            }
+        }
+        _ => {
+            for info in &infos {
+                if let Some(s) = app.magic_sheet.get_shape_mut(info.id) {
+                    match alignment {
+                        Alignment::Left   => s.pos[0] = min_left + info.hw,
+                        Alignment::Right  => s.pos[0] = max_right - info.hw,
+                        Alignment::Top    => s.pos[1] = min_top + info.hh,
+                        Alignment::Bottom => s.pos[1] = max_bottom - info.hh,
+                        _ => {}
+                    }
+                }
             }
         }
     }
@@ -727,6 +769,46 @@ fn fixture_info(
     };
 
     (patch.label.clone(), Some(fid), intensity, rgb)
+}
+
+/// Apply an additive intensity delta to every currently selected fixture.
+fn adjust_selected_fixtures_intensity(app: &mut EasyCueApp, delta: f32) {
+    let selected: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
+    for fid in selected {
+        let patch = match app.fixtures.patch_list().get_patch(fid) {
+            Some(p) => p.clone(),
+            None => continue,
+        };
+        let profile = match app.fixtures.get_profile(&patch.profile_id).cloned() {
+            Some(p) => p,
+            None => continue,
+        };
+        let current = if let Some(universe) = app.universes.first() {
+            if profile.has_intensity() {
+                profile.get_parameter_offset(&crate::fixtures::profiles::FixtureParameter::Intensity)
+                    .map(|off| universe.get_channel(patch.start_address + off).unwrap_or(0) as f32 / 100.0)
+                    .unwrap_or(0.0)
+            } else if profile.is_rgb() {
+                app.virtual_intensity.get_intensity(fid).unwrap_or_else(|| {
+                    app.virtual_intensity.calculate_intensity(fid, universe, &patch, &profile)
+                })
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        let new_intensity = (current + delta).clamp(0.0, 1.0);
+        if let Some(universe) = app.universes.first_mut() {
+            if profile.has_intensity() {
+                if let Some(offset) = profile.get_parameter_offset(&crate::fixtures::profiles::FixtureParameter::Intensity) {
+                    let _ = universe.set_channel(patch.start_address + offset, (new_intensity * 100.0).round() as u8);
+                }
+            } else if profile.is_rgb() {
+                let _ = app.virtual_intensity.set_intensity(fid, new_intensity, universe, &patch, &profile);
+            }
+        }
+    }
 }
 
 fn set_fixture_intensity(app: &mut EasyCueApp, fixture_id: usize, intensity: f32) {

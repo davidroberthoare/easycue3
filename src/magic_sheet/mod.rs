@@ -92,7 +92,15 @@ pub struct MagicSheet {
     /// Monotonically increasing; never reused.
     #[serde(default = "default_next_id")]
     pub next_shape_id: u32,
+    /// Canvas pan offset [x, y] in logical pixels (persisted with show file).
+    #[serde(default)]
+    pub canvas_offset: [f32; 2],
+    /// Canvas zoom level, 1.0 = 100% (persisted with show file).
+    #[serde(default = "default_zoom")]
+    pub canvas_zoom: f32,
 }
+
+fn default_zoom() -> f32 { 1.0 }
 
 fn default_next_id() -> u32 { 1 }
 

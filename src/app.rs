@@ -518,7 +518,14 @@ impl EasyCueApp {
 
         self.magic_sheet = show.magic_sheet;
         self.cue_colors = show.cue_colors;
-        self.magic_sheet_state = MagicSheetState::default();
+        self.magic_sheet_state = MagicSheetState {
+            canvas_offset: egui::Vec2::new(
+                self.magic_sheet.canvas_offset[0],
+                self.magic_sheet.canvas_offset[1],
+            ),
+            canvas_zoom: self.magic_sheet.canvas_zoom,
+            ..MagicSheetState::default()
+        };
         self.show_title = show.title.clone();
         self.current_file_path = Some(path.to_path_buf());
         self.ui_state.selected_cue_id = None;
