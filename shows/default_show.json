@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-07T22:58:51.942914+00:00",
+  "created": "2026-05-08T00:16:11.325796+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -233,6 +233,11 @@
   ],
   "description": "",
   "magic_sheet": {
+    "canvas_offset": [
+      53.92577362060547,
+      69.84765625
+    ],
+    "canvas_zoom": 0.8060267567634583,
     "next_shape_id": 15,
     "shapes": [
       {
@@ -245,6 +250,8 @@
         "fixture_id": 1,
         "id": 2,
         "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -267,6 +274,8 @@
         "fixture_id": 2,
         "id": 3,
         "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -289,6 +298,8 @@
         "fixture_id": 4,
         "id": 4,
         "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -311,6 +322,8 @@
         "fixture_id": 5,
         "id": 5,
         "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -333,6 +346,8 @@
         "fixture_id": 6,
         "id": 6,
         "kind": "Circle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -355,6 +370,8 @@
         "fixture_id": 7,
         "id": 7,
         "kind": "Circle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -377,6 +394,8 @@
         "fixture_id": 8,
         "id": 8,
         "kind": "Circle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -399,6 +418,8 @@
         "fixture_id": 9,
         "id": 9,
         "kind": "Circle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -421,6 +442,8 @@
         "fixture_id": 10,
         "id": 10,
         "kind": "Circle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -443,6 +466,8 @@
         "fixture_id": 11,
         "id": 11,
         "kind": "Diamond",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -465,6 +490,8 @@
         "fixture_id": 12,
         "id": 12,
         "kind": "Diamond",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -487,6 +514,8 @@
         "fixture_id": 13,
         "id": 13,
         "kind": "Diamond",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -509,6 +538,8 @@
         "fixture_id": 3,
         "id": 14,
         "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
         "outline_color": [
           100,
           150,
@@ -523,7 +554,7 @@
       }
     ]
   },
-  "modified": "2026-05-07T22:58:51.942949+00:00",
+  "modified": "2026-05-08T00:16:11.325830+00:00",
   "next_cue_id": 18,
   "patch": [
     {
