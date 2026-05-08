@@ -373,14 +373,24 @@ impl EasyCueApp {
     }
 
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        Self::configure_cobalt_theme(&cc.egui_ctx);
+        let app_init_start = std::time::Instant::now();
+        log::info!("[startup] EasyCueApp::new begin");
 
+        let theme_start = std::time::Instant::now();
+        Self::configure_cobalt_theme(&cc.egui_ctx);
+        log::info!("[startup] Theme configured in {:.2}ms", theme_start.elapsed().as_secs_f64() * 1000.0);
+
+        let font_start = std::time::Instant::now();
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
+        log::info!("[startup] Fonts configured in {:.2}ms", font_start.elapsed().as_secs_f64() * 1000.0);
 
+        let universe_start = std::time::Instant::now();
         let universes = vec![Universe::new(0), Universe::new(1)];
+        log::info!("[startup] Universes created in {:.2}ms", universe_start.elapsed().as_secs_f64() * 1000.0);
 
+        let dmx_init_start = std::time::Instant::now();
         let dmx_backend: Box<dyn DmxBackend> = {
             #[cfg(feature = "usb")]
             {
@@ -391,28 +401,81 @@ impl EasyCueApp {
                 // main thread and preventing the window from ever appearing.
                 let (tx, rx) = std::sync::mpsc::channel::<Option<EnttecUsbProBackend>>();
                 std::thread::spawn(move || {
-                    let result = EnttecUsbProBackend::list_recommended_ports()
-                        .ok()
-                        .and_then(|ports| ports.into_iter().next())
-                        .and_then(|port| {
-                            EnttecUsbProBackend::new(&port)
-                                .map_err(|e| { log::warn!("Failed to connect to Enttec device: {}", e); e })
-                                .ok()
-                        });
+                    let scan_thread_start = std::time::Instant::now();
+                    log::info!("[startup][dmx] USB scan thread started");
+
+                    let result = match EnttecUsbProBackend::list_recommended_ports() {
+                        Ok(ports) => {
+                            log::info!(
+                                "[startup][dmx] USB port enumeration completed in {:.2}ms ({} ports)",
+                                scan_thread_start.elapsed().as_secs_f64() * 1000.0,
+                                ports.len()
+                            );
+                            if let Some(port) = ports.into_iter().next() {
+                                let connect_start = std::time::Instant::now();
+                                log::info!("[startup][dmx] Attempting Enttec open on {}", port);
+                                match EnttecUsbProBackend::new(&port) {
+                                    Ok(backend) => {
+                                        log::info!(
+                                            "[startup][dmx] Enttec open succeeded in {:.2}ms",
+                                            connect_start.elapsed().as_secs_f64() * 1000.0
+                                        );
+                                        Some(backend)
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "[startup][dmx] Enttec open failed in {:.2}ms: {}",
+                                            connect_start.elapsed().as_secs_f64() * 1000.0,
+                                            e
+                                        );
+                                        None
+                                    }
+                                }
+                            } else {
+                                log::info!("[startup][dmx] No USB serial devices detected; skipping Enttec probe and using Virtual DMX");
+                                None
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[startup][dmx] USB port enumeration failed in {:.2}ms: {}",
+                                scan_thread_start.elapsed().as_secs_f64() * 1000.0,
+                                e
+                            );
+                            None
+                        }
+                    };
+
+                    log::info!(
+                        "[startup][dmx] USB scan thread finished in {:.2}ms",
+                        scan_thread_start.elapsed().as_secs_f64() * 1000.0
+                    );
                     let _ = tx.send(result);
                 });
 
+                let wait_start = std::time::Instant::now();
+                log::info!("[startup][dmx] Waiting up to 3s for USB scan thread");
                 match rx.recv_timeout(std::time::Duration::from_secs(3)) {
                     Ok(Some(backend)) => {
-                        log::info!("✓ Connected to Enttec DMXUSB Pro: {}", backend.name());
+                        log::info!(
+                            "[startup][dmx] Connected to Enttec DMXUSB Pro after {:.2}ms: {}",
+                            wait_start.elapsed().as_secs_f64() * 1000.0,
+                            backend.name()
+                        );
                         Box::new(backend) as Box<dyn DmxBackend>
                     }
                     Ok(None) => {
-                        log::info!("No Enttec USB device found, using Virtual DMX");
+                        log::info!(
+                            "[startup][dmx] No Enttec USB device found after {:.2}ms, using Virtual DMX",
+                            wait_start.elapsed().as_secs_f64() * 1000.0
+                        );
                         Box::new(VirtualBackend::new(true))
                     }
                     Err(_) => {
-                        log::warn!("USB port enumeration timed out (Bluetooth port stall?) — using Virtual DMX");
+                        log::warn!(
+                            "[startup][dmx] USB scan wait timed out at {:.2}ms (Bluetooth stall suspected) — using Virtual DMX",
+                            wait_start.elapsed().as_secs_f64() * 1000.0
+                        );
                         Box::new(VirtualBackend::new(true))
                     }
                 }
@@ -423,14 +486,45 @@ impl EasyCueApp {
                 Box::new(VirtualBackend::new(true))
             }
         };
+        log::info!("[startup] DMX backend selected in {:.2}ms", dmx_init_start.elapsed().as_secs_f64() * 1000.0);
 
         log::info!("EasyCue3 application initialized");
         log::info!("DMX Backend: {}", dmx_backend.name());
 
+        let dock_load_start = std::time::Instant::now();
         let dock_state = if let Some(storage) = cc.storage {
             eframe::get_value(storage, "dock_state").unwrap_or_else(|| Self::create_default_dock_layout())
         } else {
             Self::create_default_dock_layout()
+        };
+        log::info!("[startup] Dock layout restored in {:.2}ms", dock_load_start.elapsed().as_secs_f64() * 1000.0);
+
+        #[cfg(feature = "audio")]
+        let (audio_player, audio_playback) = {
+            let audio_init_start = std::time::Instant::now();
+            log::info!("[startup][audio] Initializing audio subsystem");
+            let player = AudioPlayer::new().unwrap_or_else(|e| {
+                log::error!("Failed to initialize audio player: {}", e);
+                AudioPlayer::new().unwrap()
+            });
+            let playback = AudioPlaybackEngine::new();
+            log::info!(
+                "[startup][audio] Audio subsystem initialized in {:.2}ms",
+                audio_init_start.elapsed().as_secs_f64() * 1000.0
+            );
+            (player, playback)
+        };
+
+        #[cfg(not(feature = "audio"))]
+        let (audio_player, audio_playback) = {
+            let audio_init_start = std::time::Instant::now();
+            let player = crate::audio::AudioPlayer::new().unwrap();
+            let playback = crate::audio::AudioPlaybackEngine::new();
+            log::info!(
+                "[startup][audio] Audio stubs initialized in {:.2}ms",
+                audio_init_start.elapsed().as_secs_f64() * 1000.0
+            );
+            (player, playback)
         };
 
         let mut app = Self {
@@ -450,22 +544,14 @@ impl EasyCueApp {
             current_file_path: None,
             dock_state,
             cue_colors: CueColorSettings::default(),
-            #[cfg(feature = "audio")]
-            audio_player: AudioPlayer::new().unwrap_or_else(|e| {
-                log::error!("Failed to initialize audio player: {}", e);
-                AudioPlayer::new().unwrap()
-            }),
-            #[cfg(feature = "audio")]
-            audio_playback: AudioPlaybackEngine::new(),
-            #[cfg(not(feature = "audio"))]
-            audio_player: crate::audio::AudioPlayer::new().unwrap(),
-            #[cfg(not(feature = "audio"))]
-            audio_playback: crate::audio::AudioPlaybackEngine::new(),
+            audio_player,
+            audio_playback,
             autofollow_timer: None,
             #[cfg(feature = "audio")]
             sound_fade: None,
         };
 
+        let startup_show_load_start = std::time::Instant::now();
         let last_file = cc.storage
             .and_then(|s| s.get_string("last_file"))
             .map(std::path::PathBuf::from)
@@ -484,6 +570,15 @@ impl EasyCueApp {
                 }
             }
         }
+
+        log::info!(
+            "[startup] Startup show load phase completed in {:.2}ms",
+            startup_show_load_start.elapsed().as_secs_f64() * 1000.0
+        );
+        log::info!(
+            "[startup] EasyCueApp::new finished in {:.2}ms",
+            app_init_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         app
     }
@@ -522,6 +617,9 @@ impl EasyCueApp {
 
     /// Load a show file and populate the cue list
     pub fn load_show(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
+        let load_start = std::time::Instant::now();
+        log::info!("[show][load] Begin loading {}", path.display());
+
         let show = ShowFile::load(path)?;
         self.cue_list.clear();
         for cue in show.cues {
@@ -558,8 +656,13 @@ impl EasyCueApp {
         self.ui_state.selected_lighting_cue_id = None;
         self.ui_state.selected_audio_cue_id = None;
         self.ui_state.status_message = format!("Loaded show from {:?}", path);
-        log::info!("Loaded show: {} ({} cues, {} fixtures)",
-            self.show_title, self.cue_list.len(), self.fixtures.patch_list().len());
+        log::info!(
+            "[show][load] Loaded show: {} ({} cues, {} fixtures) in {:.2}ms",
+            self.show_title,
+            self.cue_list.len(),
+            self.fixtures.patch_list().len(),
+            load_start.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -853,6 +956,41 @@ impl eframe::App for EasyCueApp {
     /// stuck in blocking OS calls (e.g. IOKit serial-port enumeration on macOS)
     /// don't keep the process alive after the user has quit.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        let shutdown_start = std::time::Instant::now();
+        log::warn!("[shutdown] on_exit invoked; beginning shutdown sequence");
+
+        #[cfg(feature = "audio")]
+        {
+            let audio_stop_start = std::time::Instant::now();
+            self.audio_playback.stop_all();
+            log::info!(
+                "[shutdown] audio_playback.stop_all completed in {:.2}ms",
+                audio_stop_start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+
+        let dmx_close_start = std::time::Instant::now();
+        match self.dmx_backend.close() {
+            Ok(()) => {
+                log::info!(
+                    "[shutdown] dmx_backend.close completed in {:.2}ms",
+                    dmx_close_start.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "[shutdown] dmx_backend.close failed after {:.2}ms: {}",
+                    dmx_close_start.elapsed().as_secs_f64() * 1000.0,
+                    e
+                );
+            }
+        }
+
+        log::warn!(
+            "[shutdown] Forcing process exit after {:.2}ms total shutdown work",
+            shutdown_start.elapsed().as_secs_f64() * 1000.0
+        );
+        log::logger().flush();
         std::process::exit(0);
     }
 

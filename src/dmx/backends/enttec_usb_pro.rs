@@ -171,6 +171,21 @@ impl EnttecUsbProBackend {
                     true
                 }
             })
+            .filter(|p| {
+                // Only real USB serial devices are eligible for Enttec probing.
+                // This avoids opening pseudo-ports (debug-console, bluetooth, etc.)
+                // when no DMX hardware is connected.
+                matches!(p.port_type, SerialPortType::UsbPort(_))
+            })
+            .filter(|p| {
+                let lower_name = p.port_name.to_lowercase();
+                // macOS exposes a Bluetooth pseudo-port that often blocks for seconds
+                // when opened and is never a DMX interface.
+                !lower_name.contains("bluetooth-incoming-port")
+                    && !lower_name.contains("bluetooth")
+                    // VS Code / LLDB debug console pseudo-port is not DMX hardware.
+                    && !lower_name.contains("debug-console")
+            })
             .map(|port| (Self::score_port(&port), port.port_name))
             .collect();
 
@@ -188,6 +203,11 @@ impl EnttecUsbProBackend {
             score += 15;
         } else if lower_name.starts_with("/dev/tty.") {
             score -= 20;
+        }
+
+        // Strongly de-prioritize Bluetooth pseudo-serial ports on macOS.
+        if lower_name.contains("bluetooth") {
+            score -= 200;
         }
 
         if lower_name.contains("usbserial") || lower_name.contains("ttyusb") || lower_name.contains("ttyacm") {
@@ -290,7 +310,11 @@ impl DmxBackend for EnttecUsbProBackend {
     }
 
     fn close(&mut self) -> Result<()> {
-        log::info!("Closing Enttec DMXUSB Pro on {}", self.port_name);
+        log::info!(
+            "Closing Enttec DMXUSB Pro on {} (connected={})",
+            self.port_name,
+            self.connected.load(Ordering::Relaxed)
+        );
         // Drop the sender, which will cause the receiver to disconnect
         // and the background thread to exit gracefully
         Ok(())

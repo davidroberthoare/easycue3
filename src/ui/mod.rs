@@ -375,6 +375,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 ui.separator();
                 if ui.button("Exit (Ctrl+Q)").clicked() {
+                    log::info!("Quit requested from File menu (Ctrl+Q)");
                     app.ui_state.show_quit_confirmation = true;
                     ui.close_menu();
                 }
@@ -488,6 +489,7 @@ fn render_quit_confirmation(ctx: &Context, app: &mut EasyCueApp) {
                 
                 ui.horizontal(|ui| {
                     if ui.button("  Cancel  ").clicked() {
+                        log::info!("Quit cancelled by user");
                         app.ui_state.show_quit_confirmation = false;
                     }
                     

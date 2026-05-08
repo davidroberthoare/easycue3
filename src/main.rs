@@ -18,16 +18,21 @@ pub use easycue3::paths;
 use app::EasyCueApp;
 
 fn main() -> eframe::Result<()> {
+    let process_start = std::time::Instant::now();
+
     // Initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .init();
 
-    log::info!("Starting EasyCue3...");
+    log::info!("Starting EasyCue3... pid={}", std::process::id());
 
     // Load embedded application icon
+    let icon_start = std::time::Instant::now();
     let icon = load_icon();
+    log::info!("[startup] Icon load phase completed in {:.2}ms", icon_start.elapsed().as_secs_f64() * 1000.0);
 
     // Configure the native window
+    let window_setup_start = std::time::Instant::now();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("EasyCue3 - Theatrical Lighting Console")
         .with_inner_size([1280.0, 720.0])
@@ -43,13 +48,33 @@ fn main() -> eframe::Result<()> {
         persist_window: true,  // Save window position
         ..Default::default()
     };
+    log::info!("[startup] Native window configured in {:.2}ms", window_setup_start.elapsed().as_secs_f64() * 1000.0);
 
     // Run the application with persistence enabled
-    eframe::run_native(
+    log::info!("[startup] Entering eframe::run_native at {:.2}ms", process_start.elapsed().as_secs_f64() * 1000.0);
+    let run_result = eframe::run_native(
         "EasyCue3",  // App ID used for storing persistent data
         native_options,
         Box::new(|cc| Ok(Box::new(EasyCueApp::new(cc)))),
-    )
+    );
+
+    match &run_result {
+        Ok(()) => {
+            log::info!(
+                "[shutdown] eframe::run_native returned Ok after {:.2}ms",
+                process_start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        Err(e) => {
+            log::error!(
+                "[shutdown] eframe::run_native returned error after {:.2}ms: {}",
+                process_start.elapsed().as_secs_f64() * 1000.0,
+                e
+            );
+        }
+    }
+
+    run_result
 }
 
 /// Load the application icon (embedded at compile time)
