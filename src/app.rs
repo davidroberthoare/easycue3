@@ -475,17 +475,25 @@ impl EasyCueApp {
         let tree = dock_state.main_surface_mut();
         // Channels (TL) | Instrument Properties + Patching (TR)
         // Cues      (BL) | Cue Properties + Magic Sheet    (BR)
-        let [_channels, right] = tree.split_right(
+        // Ratios tuned to mirror the persisted app.ron layout baseline.
+        let [top, bottom] = tree.split_below(
             egui_dock::NodeIndex::root(),
-            0.62,
-            vec![TabKind::InstrumentProperties, TabKind::Patching],
-        );
-        let [_, _] = tree.split_below(
-            egui_dock::NodeIndex::root(),
-            0.55,
+            0.462_599_84,
             vec![TabKind::Cues],
         );
-        let [_, _] = tree.split_below(right, 0.55, vec![TabKind::Properties, TabKind::MagicSheet]);
+
+        let [_, _] = tree.split_right(
+            top,
+            0.588_360_5,
+            vec![TabKind::InstrumentProperties, TabKind::Patching],
+        );
+
+        let [_, _] = tree.split_right(
+            bottom,
+            0.607_848_4,
+            vec![TabKind::Properties, TabKind::MagicSheet],
+        );
+
         dock_state
     }
 
