@@ -54,6 +54,7 @@ impl Patch {
 
     /// Get the channel offset for a fixture parameter
     /// Returns the absolute DMX channel number (1-indexed)
+    #[allow(dead_code)]
     pub fn get_channel_for_offset(&self, offset: u16) -> u16 {
         self.start_address + offset
     }
@@ -266,6 +267,7 @@ impl PatchList {
     }
 
     /// Check if patch list is empty
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.patches.is_empty()
     }

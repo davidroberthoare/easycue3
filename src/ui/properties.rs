@@ -892,7 +892,9 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
 
     struct FxInfo {
         id: usize,
+        #[allow(dead_code)]
         label: String,
+        #[allow(dead_code)]
         profile_name: String,
         patch: crate::fixtures::Patch,
         profile: crate::fixtures::FixtureProfile,

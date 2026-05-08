@@ -861,6 +861,7 @@ fn adjust_selected_fixtures_intensity(app: &mut EasyCueApp, delta: f32) {
     }
 }
 
+#[allow(dead_code)]
 fn set_fixture_intensity(app: &mut EasyCueApp, fixture_id: usize, intensity: f32) {
     let patch = match app.fixtures.patch_list().get_patch(fixture_id) {
         Some(p) => p.clone(),

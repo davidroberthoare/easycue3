@@ -59,6 +59,7 @@ pub struct MagicSheetState {
 
 impl MagicSheetState {
     /// Return the single selected ID if exactly one shape is selected, else None.
+    #[allow(dead_code)]
     pub fn single_selected(&self) -> Option<u32> {
         if self.selected_shape_ids.len() == 1 {
             self.selected_shape_ids.iter().copied().next()
@@ -202,6 +203,7 @@ pub struct EasyCueApp {
     /// Unified cue list — contains both lighting and audio cues
     pub cue_list: CueList,
     pub playback: PlaybackEngine,
+    #[allow(dead_code)]
     pub media: MediaManager,
     pub fixtures: FixtureLibrary,
     pub virtual_intensity: crate::fixtures::VirtualIntensity,
@@ -788,6 +790,7 @@ impl EasyCueApp {
     }
 
     /// Advance to the next lighting cue and start its fade. Returns true if a cue fired.
+    #[allow(dead_code)]
     pub fn go_lighting(&mut self) -> bool {
         let Some(next_idx) = self.cue_list.next_lighting_index() else { return false };
         let cue = self.cue_list.get_cue(next_idx).cloned();
@@ -801,6 +804,7 @@ impl EasyCueApp {
     }
 
     /// Return to the previous lighting cue. Returns true if a cue fired.
+    #[allow(dead_code)]
     pub fn go_back_lighting(&mut self) -> bool {
         let Some(prev_idx) = self.cue_list.previous_lighting_index() else { return false };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
@@ -815,6 +819,7 @@ impl EasyCueApp {
 
     /// Advance to the next audio cue and start playback. Returns true if a cue fired.
     #[cfg(feature = "audio")]
+    #[allow(dead_code)]
     pub fn go_audio(&mut self) -> bool {
         let Some(next_idx) = self.cue_list.next_audio_index() else { return false };
         let cue = self.cue_list.get_cue(next_idx).cloned();
@@ -829,6 +834,7 @@ impl EasyCueApp {
 
     /// Return to the previous audio cue. Returns true if a cue fired.
     #[cfg(feature = "audio")]
+    #[allow(dead_code)]
     pub fn go_back_audio(&mut self) -> bool {
         let Some(prev_idx) = self.cue_list.previous_audio_index() else { return false };
         let cue = self.cue_list.get_cue(prev_idx).cloned();

@@ -175,6 +175,7 @@ impl VirtualIntensity {
     }
     
     /// Apply stored ratios + intensity to DMX universe
+    #[allow(dead_code)]
     pub fn apply_to_universe(
         &self,
         fixture_id: usize,

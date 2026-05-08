@@ -151,6 +151,7 @@ impl FixtureLibrary {
     }
 
     /// Whether a given profile ID is user-created (not bundled).
+    #[allow(dead_code)]
     pub fn is_user_profile(&self, id: &str) -> bool {
         self.user_profile_ids.contains(id)
     }
@@ -208,6 +209,7 @@ impl FixtureLibrary {
     }
 
     /// Get all loaded profiles
+    #[allow(dead_code)]
     pub fn profiles(&self) -> &HashMap<String, FixtureProfile> {
         &self.profiles
     }
@@ -306,6 +308,7 @@ impl FixtureLibrary {
     }
 
     /// Find which fixture (if any) is patched to a specific DMX channel
+    #[allow(dead_code)]
     pub fn find_patch_at_channel(&self, channel: u16) -> Option<&Patch> {
         let channel_counts = self.get_channel_counts();
         self.patch_list.find_patch_at_channel(channel, &channel_counts)

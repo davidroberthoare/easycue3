@@ -65,6 +65,7 @@ impl FixtureParameter {
     }
 
     /// Returns true if this is a beam control parameter
+    #[allow(dead_code)]
     pub fn is_beam(&self) -> bool {
         matches!(
             self,
@@ -76,6 +77,7 @@ impl FixtureParameter {
     }
 
     /// Returns true if this is a position parameter
+    #[allow(dead_code)]
     pub fn is_position(&self) -> bool {
         matches!(
             self,

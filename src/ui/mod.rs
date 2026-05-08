@@ -15,7 +15,7 @@ use crate::app::{EasyCueApp, TabKind};
 use egui_phosphor::regular as ph;
 
 pub use color_wheel::ColorWheel;
-pub use channels::{render_channels_panel, update_command_from_fixture_selection};
+pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
 pub use magic_sheet::render_magic_sheet_panel;

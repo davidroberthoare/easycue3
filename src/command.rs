@@ -16,6 +16,7 @@ pub enum CommandContext {
     #[default]
     General,
     Lighting,
+    #[allow(dead_code)]
     Sound,
 }
 
@@ -35,6 +36,7 @@ pub enum Command {
     /// Clear command line
     Clear,
     /// Invalid/unparseable command
+    #[allow(dead_code)]
     Invalid(String),
 }
 
@@ -51,6 +53,7 @@ pub enum Command {
 /// - "a50" -> Set selected channels/fixtures to 50%
 /// - "4" -> Select channel 4 OR fixture 4
 /// - "1thru10" -> Select channels 1-10 OR fixtures 1-10
+#[allow(dead_code)]
 pub fn parse_lighting_command(input: &str) -> Result<Command> {
     parse_lighting_command_with_context(input, CommandContext::General)
 }
@@ -331,7 +334,6 @@ fn parse_fixture_selection(input: &str) -> Result<Vec<usize>> {
 pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
     match cmd {
         Command::SetFixtureIntensity { fixtures, intensity } => {
-            let mut success_count = 0;
             let mut error_count = 0;
             
             for &fixture_id in &fixtures {
@@ -352,8 +354,6 @@ pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
                                     if let Err(e) = universe.set_channel(channel, dmx_value) {
                                         log::error!("Failed to set fixture {} intensity channel {}: {}", fixture_id, channel, e);
                                         error_count += 1;
-                                    } else {
-                                        success_count += 1;
                                     }
                                 }
                             } else if profile.is_rgb() {
@@ -367,8 +367,6 @@ pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
                                 ) {
                                     log::error!("Failed to set fixture {} virtual intensity: {}", fixture_id, e);
                                     error_count += 1;
-                                } else {
-                                    success_count += 1;
                                 }
                             }
                         }
