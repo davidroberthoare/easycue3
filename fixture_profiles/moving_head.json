@@ -7,38 +7,32 @@
     {
       "parameter": "pan",
       "channel_offset": 0,
-      "default_value": 127,
-      "description": "Pan (horizontal movement)"
+      "default_value": 127
     },
     {
       "parameter": "pan_fine",
       "channel_offset": 1,
-      "default_value": 0,
-      "description": "Pan fine (16-bit LSB)"
+      "default_value": 0
     },
     {
       "parameter": "tilt",
       "channel_offset": 2,
-      "default_value": 127,
-      "description": "Tilt (vertical movement)"
+      "default_value": 127
     },
     {
       "parameter": "tilt_fine",
       "channel_offset": 3,
-      "default_value": 0,
-      "description": "Tilt fine (16-bit LSB)"
+      "default_value": 0
     },
     {
       "parameter": "intensity",
       "channel_offset": 4,
-      "default_value": 0,
-      "description": "Master intensity/dimmer"
+      "default_value": 0
     },
     {
       "parameter": "strobe",
       "channel_offset": 5,
-      "default_value": 0,
-      "description": "Shutter/strobe control"
+      "default_value": 0
     },
     {
       "parameter": "red",
@@ -63,38 +57,32 @@
     {
       "parameter": "gobo",
       "channel_offset": 10,
-      "default_value": 0,
-      "description": "Gobo wheel selection"
+      "default_value": 0
     },
     {
       "parameter": "prism",
       "channel_offset": 11,
-      "default_value": 0,
-      "description": "Prism control"
+      "default_value": 0
     },
     {
       "parameter": "focus",
       "channel_offset": 12,
-      "default_value": 127,
-      "description": "Focus control"
+      "default_value": 127
     },
     {
       "parameter": "zoom",
       "channel_offset": 13,
-      "default_value": 127,
-      "description": "Zoom control"
+      "default_value": 127
     },
     {
       "parameter": "iris",
       "channel_offset": 14,
-      "default_value": 255,
-      "description": "Iris control (beam size)"
+      "default_value": 255
     },
     {
       "parameter": "frost",
       "channel_offset": 15,
-      "default_value": 0,
-      "description": "Frost/diffusion control"
+      "default_value": 0
     }
   ],
   "notes": "Generic 16-channel moving head with RGBW color mixing, pan/tilt, gobo, iris, focus, zoom, prism, and strobe"

@@ -122,9 +122,6 @@ pub struct ParameterMapping {
     /// Optional default value (0-255)
     #[serde(default)]
     pub default_value: Option<u8>,
-    /// Optional description for custom parameters
-    #[serde(default)]
-    pub description: Option<String>,
 }
 
 /// Fixture profile definition loaded from JSON
@@ -262,19 +259,16 @@ mod tests {
                     parameter: FixtureParameter::Red,
                     channel_offset: 0,
                     default_value: None,
-                    description: None,
                 },
                 ParameterMapping {
                     parameter: FixtureParameter::Green,
                     channel_offset: 1,
                     default_value: None,
-                    description: None,
                 },
                 ParameterMapping {
                     parameter: FixtureParameter::Blue,
                     channel_offset: 2,
                     default_value: None,
-                    description: None,
                 },
             ],
             notes: None,
@@ -302,19 +296,16 @@ mod tests {
                     parameter: FixtureParameter::Red,
                     channel_offset: 0,
                     default_value: None,
-                    description: None,
                 },
                 ParameterMapping {
                     parameter: FixtureParameter::Green,
                     channel_offset: 1,
                     default_value: None,
-                    description: None,
                 },
                 ParameterMapping {
                     parameter: FixtureParameter::Blue,
                     channel_offset: 2,
                     default_value: None,
-                    description: None,
                 },
             ],
             notes: None,

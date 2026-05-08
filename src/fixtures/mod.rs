@@ -18,6 +18,8 @@ use std::path::Path;
 pub struct FixtureLibrary {
     /// All loaded fixture profiles (keyed by profile ID)
     profiles: HashMap<String, FixtureProfile>,
+    /// IDs of profiles loaded from the user config directory
+    user_profile_ids: std::collections::HashSet<String>,
     /// Patched fixtures
     patch_list: PatchList,
 }
@@ -27,6 +29,7 @@ impl FixtureLibrary {
     pub fn new() -> Self {
         let mut library = Self {
             profiles: HashMap::new(),
+            user_profile_ids: std::collections::HashSet::new(),
             patch_list: PatchList::new(),
         };
 
@@ -55,7 +58,7 @@ impl FixtureLibrary {
             return Ok(());
         };
 
-        self.load_profiles_from_dir(&bundled_dir, "bundled")
+        self.load_profiles_from_dir(&bundled_dir, "bundled", false)
     }
 
     /// Load user fixture profiles from platform-specific config directory
@@ -67,7 +70,6 @@ impl FixtureLibrary {
 
         if !user_dir.exists() {
             log::debug!("User fixture profiles directory not found: {:?}", user_dir);
-            // Create the directory for future use
             if let Err(e) = std::fs::create_dir_all(&user_dir) {
                 log::warn!("Failed to create user profiles directory: {}", e);
             } else {
@@ -76,11 +78,11 @@ impl FixtureLibrary {
             return Ok(());
         }
 
-        self.load_profiles_from_dir(&user_dir, "user")
+        self.load_profiles_from_dir(&user_dir, "user", true)
     }
 
     /// Load all JSON profiles from a directory
-    fn load_profiles_from_dir(&mut self, dir: &Path, source: &str) -> Result<()> {
+    fn load_profiles_from_dir(&mut self, dir: &Path, source: &str, mark_as_user: bool) -> Result<()> {
         let entries = std::fs::read_dir(dir)
             .map_err(|e| anyhow!("Failed to read directory {:?}: {}", dir, e))?;
 
@@ -90,7 +92,6 @@ impl FixtureLibrary {
             let entry = entry?;
             let path = entry.path();
 
-            // Only load .json files
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
@@ -113,6 +114,9 @@ impl FixtureLibrary {
                             path.file_name().unwrap_or_default()
                         );
                     }
+                    if mark_as_user {
+                        self.user_profile_ids.insert(id.clone());
+                    }
                     self.profiles.insert(id, profile);
                     loaded_count += 1;
                 }
@@ -126,6 +130,75 @@ impl FixtureLibrary {
             log::info!("Loaded {} {} profiles from {:?}", loaded_count, source, dir);
         }
 
+        Ok(())
+    }
+
+    /// Returns the path to the user fixture profiles directory, creating it if needed.
+    pub fn user_profiles_dir() -> Result<std::path::PathBuf> {
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?;
+        let dir = config_dir.join("easycue3").join("fixture_profiles");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| anyhow!("Failed to create user profiles directory: {}", e))?;
+        Ok(dir)
+    }
+
+    /// IDs of profiles that came from the user config directory.
+    pub fn user_profile_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.user_profile_ids.iter().cloned().collect();
+        ids.sort();
+        ids
+    }
+
+    /// Whether a given profile ID is user-created (not bundled).
+    pub fn is_user_profile(&self, id: &str) -> bool {
+        self.user_profile_ids.contains(id)
+    }
+
+    /// Save a profile to the user directory and register it in the library.
+    /// If `old_id` differs from `profile.id`, the old file is removed.
+    pub fn save_user_profile(&mut self, profile: FixtureProfile, old_id: Option<&str>) -> Result<()> {
+        let dir = Self::user_profiles_dir()?;
+
+        // Remove old file when the ID was renamed
+        if let Some(oid) = old_id {
+            if oid != profile.id {
+                let old_path = dir.join(format!("{}.json", oid));
+                if old_path.exists() {
+                    std::fs::remove_file(&old_path)
+                        .map_err(|e| anyhow!("Failed to remove old profile file: {}", e))?;
+                }
+                self.profiles.remove(oid);
+                self.user_profile_ids.remove(oid);
+            }
+        }
+
+        let path = dir.join(format!("{}.json", profile.id));
+        let json = serde_json::to_string_pretty(&profile)
+            .map_err(|e| anyhow!("Failed to serialize profile: {}", e))?;
+        std::fs::write(&path, json)
+            .map_err(|e| anyhow!("Failed to write profile to {:?}: {}", path, e))?;
+
+        self.user_profile_ids.insert(profile.id.clone());
+        self.profiles.insert(profile.id.clone(), profile);
+        log::info!("Saved user profile to {:?}", path);
+        Ok(())
+    }
+
+    /// Delete a user profile from disk and unregister it.
+    pub fn delete_user_profile(&mut self, id: &str) -> Result<()> {
+        if !self.user_profile_ids.contains(id) {
+            return Err(anyhow!("Profile '{}' is not a user profile", id));
+        }
+        let dir = Self::user_profiles_dir()?;
+        let path = dir.join(format!("{}.json", id));
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| anyhow!("Failed to delete profile file: {}", e))?;
+        }
+        self.user_profile_ids.remove(id);
+        self.profiles.remove(id);
+        log::info!("Deleted user profile '{}'", id);
         Ok(())
     }
 

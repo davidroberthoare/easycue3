@@ -5,6 +5,7 @@
 mod channels;
 mod color_wheel;
 mod cues;
+mod fixture_editor;
 mod magic_sheet;
 mod properties;
 mod patching;
@@ -16,6 +17,7 @@ use egui_phosphor::regular as ph;
 pub use color_wheel::ColorWheel;
 pub use channels::{render_channels_panel, update_command_from_fixture_selection};
 pub use cues::render_cues_panel;
+pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
 pub use magic_sheet::render_magic_sheet_panel;
 pub use properties::{render_cue_properties_panel, render_instrument_properties_panel};
 pub use patching::{render_patching_panel, PatchingPanelState};
@@ -41,6 +43,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_quit_confirmation(ctx, app);
     render_device_selector(ctx, app);
     render_colour_settings(ctx, app);
+    render_fixture_editor(ctx, app);
 }
 
 /// Handle global keyboard shortcuts
@@ -433,6 +436,12 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 ui.separator();
                 if ui.button("Colours...").clicked() {
                     app.ui_state.show_colour_settings = true;
+                    ui.close_menu();
+                }
+
+                ui.separator();
+                if ui.button("Fixture Profiles...").clicked() {
+                    app.ui_state.show_fixture_editor = true;
                     ui.close_menu();
                 }
             });

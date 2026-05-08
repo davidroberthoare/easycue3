@@ -7,8 +7,7 @@
     {
       "parameter": "intensity",
       "channel_offset": 0,
-      "default_value": 0,
-      "description": "Master intensity/dimmer"
+      "default_value": 0
     },
     {
       "parameter": "red",

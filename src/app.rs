@@ -129,6 +129,7 @@ pub struct UiState {
     pub show_quit_confirmation: bool,
     pub show_device_selector: bool,
     pub show_colour_settings: bool,
+    pub show_fixture_editor: bool,
     pub selected_usb_port: String,
 
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
@@ -171,6 +172,7 @@ impl Default for UiState {
             show_quit_confirmation: false,
             show_device_selector: false,
             show_colour_settings: false,
+            show_fixture_editor: false,
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
             #[cfg(feature = "audio")]
@@ -204,6 +206,7 @@ pub struct EasyCueApp {
     pub fixtures: FixtureLibrary,
     pub virtual_intensity: crate::fixtures::VirtualIntensity,
     pub ui_state: UiState,
+    pub fixture_editor: crate::ui::FixtureEditorState,
     pub patching_state: crate::ui::PatchingPanelState,
     /// Serialised magic sheet layout (saved with the show file).
     pub magic_sheet: crate::magic_sheet::MagicSheet,
@@ -381,21 +384,35 @@ impl EasyCueApp {
         let dmx_backend: Box<dyn DmxBackend> = {
             #[cfg(feature = "usb")]
             {
-                match EnttecUsbProBackend::list_recommended_ports() {
-                    Ok(ports) if !ports.is_empty() => {
-                        match EnttecUsbProBackend::new(&ports[0]) {
-                            Ok(backend) => {
-                                log::info!("✓ Connected to Enttec DMXUSB Pro at {}", ports[0]);
-                                Box::new(backend)
-                            }
-                            Err(e) => {
-                                log::warn!("Failed to connect to Enttec device: {}", e);
-                                Box::new(VirtualBackend::new(true))
-                            }
-                        }
+                // Run enumeration + open on a background thread with a 3-second timeout.
+                // On macOS, serialport::available_ports() can hang indefinitely when
+                // Bluetooth virtual serial ports (e.g. Bluetooth-Incoming-Port) are
+                // present and the Bluetooth stack is slow to respond — blocking the
+                // main thread and preventing the window from ever appearing.
+                let (tx, rx) = std::sync::mpsc::channel::<Option<EnttecUsbProBackend>>();
+                std::thread::spawn(move || {
+                    let result = EnttecUsbProBackend::list_recommended_ports()
+                        .ok()
+                        .and_then(|ports| ports.into_iter().next())
+                        .and_then(|port| {
+                            EnttecUsbProBackend::new(&port)
+                                .map_err(|e| { log::warn!("Failed to connect to Enttec device: {}", e); e })
+                                .ok()
+                        });
+                    let _ = tx.send(result);
+                });
+
+                match rx.recv_timeout(std::time::Duration::from_secs(3)) {
+                    Ok(Some(backend)) => {
+                        log::info!("✓ Connected to Enttec DMXUSB Pro: {}", backend.name());
+                        Box::new(backend) as Box<dyn DmxBackend>
                     }
-                    _ => {
+                    Ok(None) => {
                         log::info!("No Enttec USB device found, using Virtual DMX");
+                        Box::new(VirtualBackend::new(true))
+                    }
+                    Err(_) => {
+                        log::warn!("USB port enumeration timed out (Bluetooth port stall?) — using Virtual DMX");
                         Box::new(VirtualBackend::new(true))
                     }
                 }
@@ -425,6 +442,7 @@ impl EasyCueApp {
             fixtures: FixtureLibrary::new(),
             virtual_intensity: crate::fixtures::VirtualIntensity::new(),
             ui_state: UiState::default(),
+            fixture_editor: crate::ui::FixtureEditorState::default(),
             patching_state: crate::ui::PatchingPanelState::default(),
             magic_sheet: crate::magic_sheet::MagicSheet::default(),
             magic_sheet_state: MagicSheetState::default(),
