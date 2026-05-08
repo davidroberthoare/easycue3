@@ -117,8 +117,8 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
     }
 }
 
-/// Update command_input to reflect the current fixture selection (for @ level entry).
-/// Called whenever the selection changes so the user sees e.g. "1 2 3" and can type "@ 50".
+/// Update command_input to reflect the current fixture selection in EOS range syntax.
+/// Consecutive IDs are compressed: [1,2,4,5,6] → "1t2+4t6".
 pub fn update_command_from_fixture_selection(app: &mut EasyCueApp) {
     if app.ui_state.selected_fixtures.is_empty() {
         app.ui_state.command_input.clear();
@@ -126,7 +126,29 @@ pub fn update_command_from_fixture_selection(app: &mut EasyCueApp) {
     }
     let mut ids: Vec<usize> = app.ui_state.selected_fixtures.iter().copied().collect();
     ids.sort_unstable();
-    app.ui_state.command_input = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" ");
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut run_start = ids[0];
+    let mut run_end = ids[0];
+    for &id in &ids[1..] {
+        if id == run_end + 1 {
+            run_end = id;
+        } else {
+            parts.push(if run_end > run_start {
+                format!("{}t{}", run_start, run_end)
+            } else {
+                format!("{}", run_start)
+            });
+            run_start = id;
+            run_end = id;
+        }
+    }
+    parts.push(if run_end > run_start {
+        format!("{}t{}", run_start, run_end)
+    } else {
+        format!("{}", run_start)
+    });
+    app.ui_state.command_input = parts.join("+");
 }
 
 /// Set intensity for all selected fixtures

@@ -571,22 +571,30 @@ fn render_fixture_properties(
                     egui::vec2(COL_W, slider_h + 20.0),
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
-                        ui.label("Int");
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                            ui.label("Int");
+                        });
                         if has_int {
                             let mut v = int_raw;
-                            if ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut v, 0..=100).vertical()).changed() {
+                            if ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut v, 0..=100).vertical().show_value(false)).changed() {
                                 apply_int_raw = Some(v);
                             }
+                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                ui.label(format!("{}", int_raw));
+                            });
                         } else if is_rgb {
                             let mut v = vi_val;
                             if ui.add_sized(
                                 [COL_W - 8.0, slider_h],
                                 egui::Slider::new(&mut v, 0.0..=1.0)
                                     .vertical()
-                                    .custom_formatter(|val, _| format!("{:.0}", val * 100.0)),
+                                    .show_value(false),
                             ).changed() {
                                 apply_int_vi = Some(v);
                             }
+                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                ui.label(format!("{:.0}", vi_val * 100.0));
+                            });
                         }
                     },
                 );
@@ -613,15 +621,20 @@ fn render_fixture_properties(
                                     egui::vec2(COL_W, slider_h + 20.0),
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
-                                        ui.label($label);
+                                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                            ui.label($label);
+                                        });
                                         let mut v = $init;
                                         if ui.add_sized(
                                             [COL_W - 8.0, slider_h],
-                                            egui::Slider::new(&mut v, 0..=100).vertical(),
+                                            egui::Slider::new(&mut v, 0..=100).vertical().show_value(false),
                                         ).changed() {
                                             apply_channels.push((ch, v));
                                             let _ = needs_vi;
                                         }
+                                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                            ui.label(format!("{}", $init));
+                                        });
                                     },
                                 );
                             }
@@ -643,14 +656,19 @@ fn render_fixture_properties(
                             egui::vec2(COL_W, slider_h + 20.0),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
-                                ui.label(label.as_str());
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                    ui.label(label.as_str());
+                                });
                                 let mut v = *init_val;
                                 if ui.add_sized(
                                     [COL_W - 8.0, slider_h],
-                                    egui::Slider::new(&mut v, 0..=100).vertical(),
+                                    egui::Slider::new(&mut v, 0..=100).vertical().show_value(false),
                                 ).changed() {
                                     apply_channels.push((*ch, v));
                                 }
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                    ui.label(format!("{}", *init_val));
+                                });
                             },
                         );
                     }
@@ -1085,17 +1103,25 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     egui::vec2(COL_W, col_h),
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
-                        ui.label("Int");
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                            ui.label("Int");
+                        });
                         let resp = if int_uniform {
-                            ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical())
+                            ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical().show_value(false))
                         } else {
                             ui.scope(|ui| {
                                 gray_visuals(ui);
-                                ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical())
+                                ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical().show_value(false))
                             }).inner
                         };
                         if resp.changed() { apply_intensity = Some(int_val); }
-                        if !int_uniform { ui.colored_label(mixed_col, "≠"); }
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                            if int_uniform {
+                                ui.label(format!("{}", intensities[0]));
+                            } else {
+                                ui.colored_label(mixed_col, "≠");
+                            }
+                        });
                     },
                 );
 
@@ -1122,17 +1148,25 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                                 egui::vec2(COL_W, col_h),
                                 egui::Layout::top_down(egui::Align::Center),
                                 |ui| {
-                                    ui.label($label);
+                                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                        ui.label($label);
+                                    });
                                     let resp = if uniform {
-                                        ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                                        ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
                                     } else {
                                         ui.scope(|ui| {
                                             gray_visuals(ui);
-                                            ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                                            ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
                                         }).inner
                                     };
                                     if resp.changed() { $apply = Some(val); }
-                                    if !uniform { ui.colored_label(mixed_col, "≠"); }
+                                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                        if uniform {
+                                            ui.label(format!("{}", $vals[0]));
+                                        } else {
+                                            ui.colored_label(mixed_col, "≠");
+                                        }
+                                    });
                                 },
                             );
                         }};
@@ -1157,17 +1191,25 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                             egui::vec2(COL_W, col_h),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
-                                ui.label(label.as_str());
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                    ui.label(label.as_str());
+                                });
                                 let resp = if uniform {
-                                    ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                                    ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
                                 } else {
                                     ui.scope(|ui| {
                                         gray_visuals(ui);
-                                        ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical())
+                                        ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
                                     }).inner
                                 };
                                 if resp.changed() { apply_extra[i] = Some(val); }
-                                if !uniform { ui.colored_label(mixed_col, "≠"); }
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                                    if uniform {
+                                        ui.label(format!("{}", vals[0]));
+                                    } else {
+                                        ui.colored_label(mixed_col, "≠");
+                                    }
+                                });
                             },
                         );
                     }

@@ -339,6 +339,56 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
     }
 
+    // ── Rubber-band fixture selection (live mode, no shift) ───────────────────
+    if !edit_mode && !shift_held {
+        if canvas_response.drag_started() && !ui.input(|i| {
+            i.pointer.press_origin()
+                .map(|p| shapes_snapshot.iter().any(|(_, _, pos, scale, ..)| {
+                    let sc = canvas_to_screen(canvas_rect, app.magic_sheet_state.canvas_offset, app.magic_sheet_state.canvas_zoom, *pos);
+                    let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
+                    let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
+                    Rect::from_center_size(sc, egui::vec2(w, h)).contains(p)
+                }))
+                .unwrap_or(false)
+        }) {
+            app.magic_sheet_state.drag_select_start = ui.input(|i| i.pointer.press_origin());
+        }
+
+        if let Some(start) = app.magic_sheet_state.drag_select_start {
+            let current = ui.input(|i| i.pointer.interact_pos().unwrap_or(start));
+            let sel_rect = Rect::from_two_pos(start, current);
+            painter.rect_filled(sel_rect, 0.0, Color32::from_rgba_unmultiplied(50, 180, 120, 25));
+            painter.rect_stroke(sel_rect, 0.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(80, 220, 150, 200)), egui::epaint::StrokeKind::Outside);
+
+            if canvas_response.drag_stopped() {
+                let modifiers = ui.input(|i| i.modifiers);
+                if !modifiers.command && !modifiers.ctrl {
+                    app.ui_state.selected_fixtures.clear();
+                }
+                for (_, _, pos, scale, _, _, fixture_id, ..) in &shapes_snapshot {
+                    if let Some(fid) = fixture_id {
+                        let sc = canvas_to_screen(canvas_rect, app.magic_sheet_state.canvas_offset, app.magic_sheet_state.canvas_zoom, *pos);
+                        let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
+                        let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
+                        if sel_rect.intersects(Rect::from_center_size(sc, egui::vec2(w, h))) {
+                            app.ui_state.selected_fixtures.insert(*fid);
+                        }
+                    }
+                }
+                if !app.ui_state.selected_fixtures.is_empty() {
+                    update_command_from_fixture_selection(app);
+                }
+                app.magic_sheet_state.drag_select_start = None;
+            }
+        }
+
+        // Click empty canvas in live mode: deselect fixtures
+        if canvas_response.clicked() && app.magic_sheet_state.drag_select_start.is_none() {
+            app.ui_state.selected_fixtures.clear();
+            update_command_from_fixture_selection(app);
+        }
+    }
+
     // ── Sync canvas state back to show file (for persistence) ────────────────
     app.magic_sheet.canvas_offset = [
         app.magic_sheet_state.canvas_offset.x,
