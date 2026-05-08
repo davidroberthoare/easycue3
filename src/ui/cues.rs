@@ -32,10 +32,10 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let go_enabled = go_target_idx.is_some();
         let back_enabled = app.cue_list.previous_any_index().is_some();
 
-        // On-deck number box — same height as adjacent buttons
+        // On-deck number box — slightly taller to visually match adjacent buttons
         let btn_h = ui.spacing().interact_size.y;
         let ondeck_resp = ui.add_sized(
-            [45.0, btn_h],
+            [45.0, btn_h + 2.0],
             egui::TextEdit::singleline(&mut app.ui_state.go_cue_input)
                 .hint_text(&next_hint)
                 .font(egui::TextStyle::Monospace),
