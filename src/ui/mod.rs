@@ -44,6 +44,8 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_device_selector(ctx, app);
     render_colour_settings(ctx, app);
     render_fixture_editor(ctx, app);
+    render_help_shortcuts(ctx, app);
+    render_help_about(ctx, app);
 }
 
 /// Handle global keyboard shortcuts
@@ -450,14 +452,12 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             // Help menu
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard Shortcuts").clicked() {
-                    log::info!("Keyboard shortcuts: Space=GO, B=BACK, S=STOP, Ctrl+R=Record, Ctrl+S=Save, Ctrl+O=Open");
-                    app.ui_state.status_message = "See console for keyboard shortcuts".to_string();
+                    app.ui_state.show_help_shortcuts = true;
                     ui.close_menu();
                 }
                 ui.separator();
                 if ui.button("About").clicked() {
-                    log::info!("EasyCue3 - Theatrical Lighting & Media Console");
-                    app.ui_state.status_message = "EasyCue3 v0.1.0".to_string();
+                    app.ui_state.show_help_about = true;
                     ui.close_menu();
                 }
             });
@@ -469,6 +469,73 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             });
         });
     });
+}
+
+/// Render keyboard shortcuts help dialog
+fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_help_shortcuts {
+        return;
+    }
+
+    egui::Window::new("Keyboard Shortcuts")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new("Transport").strong());
+                ui.label("Space - GO");
+                ui.label("B - BACK");
+                ui.label("S - STOP");
+                ui.add_space(8.0);
+
+                ui.label(egui::RichText::new("Show File").strong());
+                ui.label("Ctrl+R - Record cue");
+                ui.label("Ctrl+S - Save");
+                ui.label("Ctrl+O - Open");
+                ui.add_space(10.0);
+
+                ui.label(egui::RichText::new("Tip: click a panel before typing command-line input.").small());
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    if ui.button("Close").clicked() {
+                        app.ui_state.show_help_shortcuts = false;
+                    }
+                });
+            });
+        });
+}
+
+/// Render about dialog
+fn render_help_about(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_help_about {
+        return;
+    }
+
+    egui::Window::new("About EasyCue3")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new("EasyCue3").heading());
+                ui.label(format!("Version: v{}", env!("CARGO_PKG_VERSION")));
+                ui.label("A simple theatrical lighting and media console for small venues and education.");
+                ui.add_space(6.0);
+                ui.label("Features include cue playback, fixture patching, command-line control, and optional audio cues.");
+                ui.add_space(6.0);
+                ui.hyperlink_to("GitHub: davidroberthoare/easycue3", "https://github.com/davidroberthoare/easycue3");
+                ui.label("License: GPL-3.0-or-later");
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    if ui.button("Close").clicked() {
+                        app.ui_state.show_help_about = false;
+                    }
+                });
+            });
+        });
 }
 
 /// Render the quit confirmation modal dialog

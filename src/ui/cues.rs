@@ -43,8 +43,9 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let enter_in_box = ondeck_resp.lost_focus()
             && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
+        let go_btn_color = EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
         let go_btn = egui::Button::new(format!("{} GO", ph::PLAY))
-            .fill(if go_enabled { egui::Color32::from_rgb(50, 120, 50) } else { egui::Color32::from_rgb(30, 60, 30) });
+            .fill(go_btn_color);
         if ui.add_enabled(go_enabled, go_btn).clicked() || (go_enabled && enter_in_box) {
             if app.ui_state.go_cue_input.trim().is_empty() {
                 if app.go_next() {
@@ -82,7 +83,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         ui.separator();
 
         // Edit actions
-        if ui.button(format!("{} Lighting", ph::PLUS)).on_hover_text("Record a lighting cue from the current live output").clicked() {
+        if ui.button(format!("{} LX", ph::PLUS)).on_hover_text("Record a lighting cue from the current live output").clicked() {
             let id = app.record_cue();
             app.ui_state.selected_cue_id = Some(id);
             app.ui_state.selected_lighting_cue_id = Some(id);
@@ -90,7 +91,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
 
         #[cfg(feature = "audio")]
-        if ui.button(format!("{} Sound", ph::PLUS)).on_hover_text("Add an audio file cue").clicked() {
+        if ui.button(format!("{} Snd", ph::PLUS)).on_hover_text("Add an audio file cue").clicked() {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Audio Files", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
                 .set_title("Select Audio File")
@@ -115,7 +116,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
 
         #[cfg(feature = "audio")]
-        if ui.button(format!("{} Adjust", ph::PLUS)).on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
+        if ui.button(format!("{} Adj", ph::PLUS)).on_hover_text("Add a sound adjust cue (volume ramp / stop)").clicked() {
             let next_number = app.cue_list.cues().iter()
                 .last()
                 .map(|c| c.number.floor() + 1.0)
@@ -127,7 +128,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             app.ui_state.status_message = format!("Added adjust cue {:.0}", next_number);
         }
 
-        if ui.button(format!("{} Delete", ph::TRASH)).clicked() {
+        if ui.button(format!("{}", ph::TRASH)).clicked() {
             if let Some(sel_id) = app.ui_state.selected_cue_id {
                 if let Some(abs_idx) = app.cue_list.cues().iter().position(|c| c.id == sel_id) {
                     let num = app.cue_list.get_cue(abs_idx).map(|c| c.number).unwrap_or(0.0);
@@ -459,7 +460,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         egui::Align2::LEFT_CENTER,
                         info_text,
                         egui::FontId::proportional(11.0),
-                        egui::Color32::from_rgb(160, 160, 160),
+                        egui::Color32::WHITE,
                     );
                     row_responses.push(resp);
                 });

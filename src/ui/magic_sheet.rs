@@ -225,7 +225,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
         // ── Edit mode: click to select, drag to move ──────────────────────────
         if edit_mode && !shift_held && app.magic_sheet_state.drag_select_start.is_none() {
-            if resp.drag_started() {
+            if resp.drag_started() && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
                 drag_started_on_shape = true;
             }
             if resp.clicked() {
@@ -241,7 +241,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     app.magic_sheet_state.selected_shape_ids.insert(shape_id);
                 }
             }
-            if resp.dragged() && is_selected_shape {
+            if resp.dragged() && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) && is_selected_shape {
                 drag_started_on_shape = true;
                 let delta = resp.drag_delta() / app.magic_sheet_state.canvas_zoom;
                 let selected: Vec<u32> = app.magic_sheet_state.selected_shape_ids.iter().copied().collect();
@@ -273,7 +273,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
 
             // ── Live mode: drag adjusts intensity on all selected fixtures ────
-            if resp.dragged() {
+            if resp.dragged() && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
                 if let Some(fid) = fixture_id {
                     let dy = resp.drag_delta().y;
                     if dy.abs() > 0.5 {
@@ -301,7 +301,10 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Rubber-band selection (edit mode, no shift, drag on empty canvas) ────
     if edit_mode && !shift_held {
         // Start rubber band when drag begins on empty canvas
-        if canvas_response.drag_started() && !drag_started_on_shape {
+        if canvas_response.drag_started()
+            && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary))
+            && !drag_started_on_shape
+        {
             app.magic_sheet_state.drag_select_start =
                 ui.input(|i| i.pointer.press_origin());
         }
@@ -334,14 +337,18 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
 
         // Click on empty canvas (no shift, no rubber-band release): deselect all
-        if canvas_response.clicked() && app.magic_sheet_state.drag_select_start.is_none() {
+        if canvas_response.clicked_by(egui::PointerButton::Primary)
+            && app.magic_sheet_state.drag_select_start.is_none()
+        {
             app.magic_sheet_state.selected_shape_ids.clear();
         }
     }
 
     // ── Rubber-band fixture selection (live mode, no shift) ───────────────────
     if !edit_mode && !shift_held {
-        if canvas_response.drag_started() && !ui.input(|i| {
+        if canvas_response.drag_started()
+            && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary))
+            && !ui.input(|i| {
             i.pointer.press_origin()
                 .map(|p| shapes_snapshot.iter().any(|(_, _, pos, scale, ..)| {
                     let sc = canvas_to_screen(canvas_rect, app.magic_sheet_state.canvas_offset, app.magic_sheet_state.canvas_zoom, *pos);
@@ -350,7 +357,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     Rect::from_center_size(sc, egui::vec2(w, h)).contains(p)
                 }))
                 .unwrap_or(false)
-        }) {
+        })
+        {
             app.magic_sheet_state.drag_select_start = ui.input(|i| i.pointer.press_origin());
         }
 
@@ -383,7 +391,9 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
 
         // Click empty canvas in live mode: deselect fixtures
-        if canvas_response.clicked() && app.magic_sheet_state.drag_select_start.is_none() {
+        if canvas_response.clicked_by(egui::PointerButton::Primary)
+            && app.magic_sheet_state.drag_select_start.is_none()
+        {
             app.ui_state.selected_fixtures.clear();
             update_command_from_fixture_selection(app);
         }

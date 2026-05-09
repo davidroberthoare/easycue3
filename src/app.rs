@@ -131,6 +131,8 @@ pub struct UiState {
     pub show_device_selector: bool,
     pub show_colour_settings: bool,
     pub show_fixture_editor: bool,
+    pub show_help_shortcuts: bool,
+    pub show_help_about: bool,
     pub selected_usb_port: String,
 
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
@@ -174,6 +176,8 @@ impl Default for UiState {
             show_device_selector: false,
             show_colour_settings: false,
             show_fixture_editor: false,
+            show_help_shortcuts: false,
+            show_help_about: false,
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
             #[cfg(feature = "audio")]
@@ -190,7 +194,7 @@ impl Default for UiState {
 impl UiState {
     pub fn update_command_context(&mut self) {
         self.command_context = match self.active_pane {
-            Some(TabKind::Channels) | Some(TabKind::Cues) => CommandContext::Lighting,
+            Some(TabKind::Channels) | Some(TabKind::Cues) | Some(TabKind::MagicSheet) => CommandContext::Lighting,
             _ => CommandContext::General,
         };
     }

@@ -176,6 +176,47 @@ This is a hobby project I've built and tested at my local theatre group and scho
 
 ---
 
+## Open Source Credits
+
+EasyCue3 is built on top of excellent open source projects. Thank you to all maintainers and contributors.
+
+### Core app and UI
+
+- [Rust](https://www.rust-lang.org/) - Systems language used for the application.
+- [egui](https://github.com/emilk/egui) - Immediate mode GUI framework.
+- [eframe](https://github.com/emilk/egui/tree/master/crates/eframe) - Native app framework for egui.
+- [egui_dock](https://crates.io/crates/egui_dock) - Dockable/tabbed panel layout.
+- [egui_extras](https://crates.io/crates/egui_extras) - Extra widgets such as table support.
+- [egui-phosphor](https://crates.io/crates/egui-phosphor) - Phosphor icon integration for egui.
+
+### Audio and media
+
+- [rodio](https://github.com/RustAudio/rodio) - Audio playback (feature-gated).
+- [lumina-video](https://github.com/lumina-video/lumina-video) - Video playback backend (feature-gated).
+
+### DMX, data, and platform integration
+
+- [serialport-rs](https://github.com/serialport/serialport-rs) - USB serial communication for DMX interfaces (feature-gated).
+- [artnet_protocol](https://crates.io/crates/artnet_protocol) - Art-Net packet structures and protocol support.
+- [serde](https://github.com/serde-rs/serde) - Serialization framework.
+- [serde_json](https://github.com/serde-rs/json) - JSON read/write support.
+- [tokio](https://github.com/tokio-rs/tokio) - Async runtime.
+- [rfd](https://github.com/PolyMeilex/rfd) - Native file dialogs.
+- [image](https://github.com/image-rs/image) - PNG/image loading.
+- [dirs](https://github.com/dirs-dev/dirs-rs) - Cross-platform user config/data directory resolution.
+
+### Logging, errors, and utility crates
+
+- [anyhow](https://github.com/dtolnay/anyhow) - Application-level error handling.
+- [thiserror](https://github.com/dtolnay/thiserror) - Custom error types.
+- [log](https://github.com/rust-lang/log) - Logging facade.
+- [env_logger](https://github.com/rust-cli/env_logger) - Logger implementation for development/runtime logs.
+- [chrono](https://github.com/chronotope/chrono) - Date/time utilities.
+
+For a complete, reproducible dependency graph (including transitive crates), see [Cargo.lock](Cargo.lock).
+
+---
+
 ## License
 
 GPL-3.0-or-later
