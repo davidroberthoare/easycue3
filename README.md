@@ -22,13 +22,13 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 - Virtual DMX backend for working without hardware
 - USB DMX output (Enttec USB Pro)
 
-Supports up to 2 universes (1024 channels). That's plenty for a 200-seat black box.
 
 ## What it doesn't do (yet)
 
 - Groups and presets
 - Video playback — planned, not started
 - Art-Net DMX over ethernet
+- Support more than 1 universe
 - Effects/chases
 - Anything resembling a moving light programmer
 
