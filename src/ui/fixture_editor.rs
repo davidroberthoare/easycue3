@@ -232,13 +232,14 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
         return;
     }
 
-    let mut close = false;
+    let mut open = true;
     let mut save_profile: Option<(FixtureProfile, Option<String>)> = None;
     let mut delete_id: Option<String> = None;
     let mut select_id: Option<String> = None;
     let mut create_new = false;
 
     egui::Window::new("Custom Fixture Profiles")
+        .open(&mut open)
         .collapsible(false)
         .resizable(true)
         .default_size([700.0, 480.0])
@@ -494,11 +495,6 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                                 state.blank_new();
                             }
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("  Close  ").clicked() {
-                                close = true;
-                            }
-                        });
                     });
                 });
             });
@@ -548,7 +544,7 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
         }
     }
 
-    if close {
+    if !open {
         app.ui_state.show_fixture_editor = false;
     }
 }

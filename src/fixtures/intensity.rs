@@ -217,6 +217,10 @@ impl VirtualIntensity {
         self.fixture_states.remove(&fixture_id);
     }
 
+    pub fn clear(&mut self) {
+        self.fixture_states.clear();
+    }
+
     /// Update fixture state after DMX values change (e.g., during cue playback fade)
     /// Recalculates ratios from current DMX to allow subsequent intensity control
     pub fn update_from_universe(

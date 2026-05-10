@@ -17,6 +17,10 @@ pub struct PatchingPanelState {
     pub fixture_number_input: String,
     pub quantity: u32,
     pub error_message: String,
+    pub show_clear_confirm: bool,
+    pub show_one_to_one_dialog: bool,
+    pub one_to_one_count_input: String,
+    pub one_to_one_error: String,
 }
 
 impl PatchingPanelState {
@@ -46,6 +50,24 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
             let default_profile = app.fixtures.profile_ids().first().cloned();
             let next_id = app.fixtures.next_available_fixture_id();
             state.open_add_dialog(default_profile, next_id);
+        }
+
+        ui.separator();
+
+        if ui
+            .add(egui::Button::new(egui::RichText::new(format!("{} 1-to-1", ph::ARROWS_HORIZONTAL)).color(egui::Color32::RED)))
+            .clicked()
+        {
+            state.show_one_to_one_dialog = true;
+            state.one_to_one_count_input.clear();
+            state.one_to_one_error.clear();
+        }
+
+        if ui
+            .add(egui::Button::new(egui::RichText::new(format!("{} Clear Patch", ph::TRASH)).color(egui::Color32::RED)))
+            .clicked()
+        {
+            state.show_clear_confirm = true;
         }
 
         ui.separator();
@@ -265,6 +287,104 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
     // Render patch dialog if open
     if state.show_patch_dialog {
         render_patch_dialog(ui, app, state);
+    }
+
+    // Clear patch confirmation dialog
+    if state.show_clear_confirm {
+        egui::Window::new("Clear Patch")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.set_min_width(300.0);
+                ui.label(RichText::new("This will delete all patched fixtures.").color(egui::Color32::RED));
+                ui.label("This cannot be undone.");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        state.show_clear_confirm = false;
+                    }
+                    ui.add_space(10.0);
+                    if ui
+                        .add(egui::Button::new("Clear All Fixtures").fill(egui::Color32::DARK_RED))
+                        .clicked()
+                    {
+                        app.fixtures.patch_list_mut().clear();
+                        app.virtual_intensity.clear();
+                        app.ui_state.status_message = "Patch cleared".to_string();
+                        state.show_clear_confirm = false;
+                    }
+                });
+            });
+    }
+
+    // 1-to-1 dialog
+    if state.show_one_to_one_dialog {
+        egui::Window::new("1-to-1 Patch")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.set_min_width(300.0);
+                ui.label(RichText::new("This will delete all patched fixtures...").color(egui::Color32::RED));
+                ui.label("...and create simple dimmer channels.");
+                ui.label("This cannot be undone.");
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label("How many channels to create:");
+                    ui.text_edit_singleline(&mut state.one_to_one_count_input);
+                });
+                if !state.one_to_one_error.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(&state.one_to_one_error).color(egui::Color32::RED));
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        state.show_one_to_one_dialog = false;
+                        state.one_to_one_error.clear();
+                    }
+                    ui.add_space(10.0);
+                    if ui.button("Create").clicked() {
+                        match state.one_to_one_count_input.trim().parse::<u16>() {
+                            Ok(count) if count >= 1 && count <= 512 => {
+                                app.fixtures.patch_list_mut().clear();
+                                app.virtual_intensity.clear();
+                                let mut errors: Vec<String> = Vec::new();
+                                for i in 0..count {
+                                    let fid = (i + 1) as usize;
+                                    let addr = i + 1;
+                                    let label = format!("Ch{}", fid);
+                                    match app.fixtures.add_patch_with_id(
+                                        fid,
+                                        label,
+                                        "generic_dimmer".to_string(),
+                                        addr,
+                                    ) {
+                                        Ok(_) => {}
+                                        Err(e) => errors.push(e.to_string()),
+                                    }
+                                }
+                                if errors.is_empty() {
+                                    app.ui_state.status_message =
+                                        format!("Created {count} dimmer channels");
+                                    state.show_one_to_one_dialog = false;
+                                    state.one_to_one_error.clear();
+                                } else {
+                                    state.one_to_one_error = errors.join("; ");
+                                }
+                            }
+                            Ok(_) => {
+                                state.one_to_one_error =
+                                    "Enter a number between 1 and 512".to_string();
+                            }
+                            Err(_) => {
+                                state.one_to_one_error = "Enter a valid number".to_string();
+                            }
+                        }
+                    }
+                });
+            });
     }
 }
 

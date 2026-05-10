@@ -582,8 +582,10 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
     if !app.ui_state.show_device_selector {
         return;
     }
-    
+
+    let mut open = true;
     egui::Window::new("DMX Device Selection")
+        .open(&mut open)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -681,17 +683,12 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                 });
                 
                 ui.add_space(15.0);
-                
-                // Close button
-                ui.vertical_centered(|ui| {
-                    if ui.button("  Close  ").clicked() {
-                        app.ui_state.show_device_selector = false;
-                    }
-                });
-                
                 ui.add_space(5.0);
             });
         });
+    if !open {
+        app.ui_state.show_device_selector = false;
+    }
 }
 
 /// Render the cue colour settings popup
@@ -700,8 +697,9 @@ fn render_colour_settings(ctx: &Context, app: &mut EasyCueApp) {
         return;
     }
 
-    let mut close_requested = false;
+    let mut open = true;
     egui::Window::new("Cue Colours")
+        .open(&mut open)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -768,20 +766,13 @@ fn render_colour_settings(ctx: &Context, app: &mut EasyCueApp) {
             ui.separator();
             ui.add_space(4.0);
 
-            ui.horizontal(|ui| {
-                if ui.button("Reset to Defaults").clicked() {
-                    app.reset_cue_colors_to_defaults();
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("  Close  ").clicked() {
-                        close_requested = true;
-                    }
-                });
-            });
-
+            ui.add_space(4.0);
+            if ui.button("Reset to Defaults").clicked() {
+                app.reset_cue_colors_to_defaults();
+            }
             ui.add_space(4.0);
         });
-    if close_requested {
+    if !open {
         app.ui_state.show_colour_settings = false;
     }
 }

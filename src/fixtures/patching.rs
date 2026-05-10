@@ -76,6 +76,12 @@ impl PatchList {
         }
     }
 
+    /// Remove all patches and reset the ID counter
+    pub fn clear(&mut self) {
+        self.patches.clear();
+        self.next_id = 1;
+    }
+
     /// Add a new fixture patch
     pub fn add_patch(
         &mut self,
