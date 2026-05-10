@@ -138,6 +138,9 @@ pub struct UiState {
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
     pub go_cue_input: String,
 
+    /// True while the operator is in Ctrl+G goto mode (typing a cue number to jump to).
+    pub goto_mode: bool,
+
     /// Edit buffer for the Adjust cue "Target Cue" text field (persists across frames while typing).
     #[cfg(feature = "audio")]
     pub adjust_target_edit: String,
@@ -180,6 +183,7 @@ impl Default for UiState {
             show_help_about: false,
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
+            goto_mode: false,
             #[cfg(feature = "audio")]
             adjust_target_edit: String::new(),
             #[cfg(feature = "audio")]
@@ -886,6 +890,36 @@ impl EasyCueApp {
         fired
     }
 
+    /// Jump to a cue by its display number. Cue 0 is a special blackout: fades lights to zero
+    /// and stops all audio. Returns true if the operation succeeded.
+    pub fn goto_cue_by_number(&mut self, num: f32) -> bool {
+        if num == 0.0 {
+            self.fade_to_black(3.0);
+            return true;
+        }
+        let idx = self.cue_list.cues().iter()
+            .position(|c| (c.number - num).abs() < 0.005);
+        if let Some(abs_idx) = idx {
+            self.go_to_cue(abs_idx)
+        } else {
+            self.ui_state.status_message = format!("Cue {:.1} not found", num);
+            log::warn!("Goto: cue {:.1} not found", num);
+            false
+        }
+    }
+
+    /// Fade all lighting channels to zero over `fade_seconds` and stop all audio immediately.
+    pub fn fade_to_black(&mut self, fade_seconds: f32) {
+        if let Some(universe) = self.universes.first() {
+            self.playback.start_fade_to_black(universe, fade_seconds);
+        }
+        #[cfg(feature = "audio")]
+        self.audio_playback.stop_all();
+        self.autofollow_timer = None;
+        self.cue_list.set_current_index(None);
+        log::info!("Cue 0: blackout ({:.1}s fade)", fade_seconds);
+    }
+
     /// Execute an Adjust cue: ramp a specific audio stream's volume, or the global sound master.
     #[cfg(feature = "audio")]
     fn fire_adjust_cue(&mut self, adjust_cue_id: u32, data: crate::cue::AdjustData) {
@@ -1014,10 +1048,11 @@ impl eframe::App for EasyCueApp {
         // Suppress hotkeys while any text field (label editors, property boxes, etc.) has focus.
         // Ctrl+R (record) is safe to allow regardless.
         let text_focused = ctx.memory(|m| m.focused().is_some());
-        let (go, stop, record) = ctx.input(|i| (
+        let (go, stop, record, ctrl_g) = ctx.input(|i| (
             i.key_pressed(egui::Key::Space) && !i.modifiers.any() && !text_focused,
             i.key_pressed(egui::Key::S)     && !i.modifiers.any() && !text_focused,
             i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
+            i.key_pressed(egui::Key::G)     && i.modifiers.ctrl && !text_focused,
         ));
 
         if stop {
@@ -1030,6 +1065,10 @@ impl eframe::App for EasyCueApp {
             let id = self.record_cue();
             self.ui_state.selected_cue_id = Some(id);
             self.ui_state.selected_lighting_cue_id = Some(id);
+        }
+        if ctrl_g {
+            self.ui_state.goto_mode = true;
+            self.ui_state.command_input = "g".to_string();
         }
         if go {
             let pending_idx = {

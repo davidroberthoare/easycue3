@@ -631,10 +631,11 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
                                 _ => ph::KEYBOARD,
                             };
                             ui.label(egui::RichText::new(ctx_icon).size(16.0));
+                            let hint = if app.ui_state.goto_mode { "Goto cue... (Enter to go, Esc to cancel)" } else { "Enter command..." };
                             let resp = ui.add(
                                 egui::TextEdit::singleline(&mut app.ui_state.command_input)
                                     .desired_width(ui.available_width() - 80.0)
-                                    .hint_text("Enter command...")
+                                    .hint_text(hint)
                                     .font(egui::TextStyle::Monospace)
                             );
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {

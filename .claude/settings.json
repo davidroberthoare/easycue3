@@ -9,7 +9,10 @@
       "Read(//mnt/data/david/.cargo/registry/**)",
       "Bash(cargo search *)",
       "Bash(xargs cat *)",
-      "Bash(python3 -c \"import sys; [print\\(l\\) for l in sys.stdin if '\\\\\"vers\\\\\"' in l]\")"
+      "Bash(python3 -c \"import sys; [print\\(l\\) for l in sys.stdin if '\\\\\"vers\\\\\"' in l]\")",
+      "Read(//home/david/Downloads/twos_export/**)",
+      "Read(//mnt/data/david/Downloads/twos_export/**)",
+      "Bash(python3 -)"
     ]
   }
 }

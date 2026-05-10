@@ -168,36 +168,67 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
 
 /// Handle keyboard input for command-line operations
 fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
-    // Only process if we're in a command context
+    let is_text_focused = ctx.memory(|mem| mem.focused().is_some());
+
+    // Goto mode (Ctrl+G): active globally regardless of which pane is focused.
+    if app.ui_state.goto_mode {
+        if !is_text_focused {
+            ctx.input(|i| {
+                if i.key_pressed(egui::Key::Escape) {
+                    app.ui_state.goto_mode = false;
+                    app.ui_state.command_input.clear();
+                } else if i.key_pressed(egui::Key::Backspace) {
+                    if app.ui_state.command_input.len() > 1 {
+                        app.ui_state.command_input.pop();
+                    } else {
+                        app.ui_state.command_input.clear();
+                        app.ui_state.goto_mode = false;
+                    }
+                } else if i.key_pressed(egui::Key::Enter) {
+                    execute_goto(app);
+                } else {
+                    for event in &i.events {
+                        if let egui::Event::Text(text) = event {
+                            for ch in text.chars() {
+                                if ch.is_ascii_digit() || ch == '.' {
+                                    app.ui_state.command_input.push(ch);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        return;
+    }
+
+    // Only process regular lighting commands if we're in a command context
     if !matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting | crate::command::CommandContext::Sound) {
         return;
     }
-    
-    // Check if text field is focused BEFORE entering ctx.input closure
-    // to avoid nested borrow issues
-    let is_text_focused = ctx.memory(|mem| mem.focused().is_some());
+
     if is_text_focused {
         return;
     }
-    
+
     ctx.input(|i| {
         // Handle backspace
         if i.key_pressed(egui::Key::Backspace) {
             app.ui_state.command_input.pop();
         }
-        
+
         // Handle Enter to execute
         if i.key_pressed(egui::Key::Enter) {
             execute_command_line(app);
         }
-        
+
         // Handle character input in lighting context
         if matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting) {
             for event in &i.events {
                 if let egui::Event::Text(text) = event {
                     // Only accept valid command characters
                     for ch in text.chars() {
-                        if ch.is_ascii_digit() || 
+                        if ch.is_ascii_digit() ||
                            ch == 'a' || ch == '@' ||  // "at" operator
                            ch == '+' || ch == ',' ||  // addition
                            ch == '-' ||               // range or subtraction
@@ -211,6 +242,22 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
             }
         }
     });
+}
+
+fn execute_goto(app: &mut EasyCueApp) {
+    let input = app.ui_state.command_input.trim().to_string();
+    app.ui_state.goto_mode = false;
+    app.ui_state.command_input.clear();
+    let num_str = input.strip_prefix('g').unwrap_or(&input);
+    if num_str.is_empty() {
+        return;
+    }
+    match num_str.parse::<f32>() {
+        Ok(num) => { app.goto_cue_by_number(num); }
+        Err(_) => {
+            app.ui_state.status_message = format!("Invalid cue number: {}", num_str);
+        }
+    }
 }
 
 /// Render the dockable area
@@ -847,11 +894,22 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
 /// Execute the current command line input
 pub fn execute_command_line(app: &mut EasyCueApp) {
     let input = app.ui_state.command_input.trim().to_string();
-    
+
     if input.is_empty() {
         return;
     }
-    
+
+    // Goto command: g<number> — works from any context
+    if let Some(num_str) = input.strip_prefix('g') {
+        if !num_str.is_empty() {
+            if let Ok(num) = num_str.parse::<f32>() {
+                app.goto_cue_by_number(num);
+                app.ui_state.command_input.clear();
+                return;
+            }
+        }
+    }
+
     // Use context-aware parsing
     let context = app.ui_state.command_context;
     

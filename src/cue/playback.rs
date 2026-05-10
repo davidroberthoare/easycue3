@@ -56,6 +56,19 @@ impl PlaybackEngine {
         self.fade_start = None;
     }
 
+    /// Fade all DMX channels from current universe values to zero over `fade_seconds`.
+    pub fn start_fade_to_black(&mut self, universe: &Universe, fade_seconds: f32) {
+        for channel in 1..=512 {
+            self.previous_values[(channel - 1) as usize] = universe.get_channel(channel).unwrap_or(0);
+        }
+        self.target_values.fill(0);
+        self.fade_duration = fade_seconds;
+        self.fade_start = Some(Instant::now());
+        self.state = CueState::Fading { progress: 0.0 };
+        self.current_cue_id = None;
+        log::info!("Fading to black over {:.1}s", fade_seconds);
+    }
+
     /// Update playback state and write interpolated values to universe.
     pub fn update(&mut self, universe: &mut Universe) {
         match self.state {
