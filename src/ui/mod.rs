@@ -523,10 +523,14 @@ fn render_help_about(ctx: &Context, app: &mut EasyCueApp) {
                 ui.label(format!("Version: v{}", env!("CARGO_PKG_VERSION")));
                 ui.label("A simple theatrical lighting and media console for small venues and education.");
                 ui.add_space(6.0);
-                ui.label("Features include cue playback, fixture patching, command-line control, and optional audio cues.");
+                ui.label("Hi :) I'm David, the developer of EasyCue3. I hope it's working well for you and helping you bring your shows to life!");
+                ui.label("If you have any feedback, suggestions, or just want to say hi, please reach out via GitHub or email. I'm always happy to hear from users and fellow theatre techs.");
+                ui.label("If you like the project and want to say thank you, please consider donating, starring the GitHub repo or sharing it with others who might find it useful. Every bit of support helps!");
                 ui.add_space(6.0);
                 ui.hyperlink_to("GitHub: davidroberthoare/easycue3", "https://github.com/davidroberthoare/easycue3");
-                ui.label("License: GPL-3.0-or-later");
+                ui.hyperlink_to("Email: david@drhmedia.net", "mailto:david@drhmedia.net");
+                ui.hyperlink_to("Donate: https://ko-fi.com/davidhoare", "https://ko-fi.com/davidhoare");
+                ui.label("Thank you, and break a leg!");
                 ui.add_space(10.0);
 
                 ui.horizontal(|ui| {
