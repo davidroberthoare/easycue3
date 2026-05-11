@@ -138,6 +138,10 @@ pub struct UiState {
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
     pub go_cue_input: String,
 
+    // Art-Net configuration UI state
+    pub artnet_target_ip: String,
+    pub artnet_universe: u16,
+
     /// True while the operator is in Ctrl+G goto mode (typing a cue number to jump to).
     pub goto_mode: bool,
 
@@ -184,6 +188,8 @@ impl Default for UiState {
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
             goto_mode: false,
+            artnet_target_ip: "255.255.255.255".to_string(),
+            artnet_universe: 0,
             #[cfg(feature = "audio")]
             adjust_target_edit: String::new(),
             #[cfg(feature = "audio")]
@@ -726,6 +732,16 @@ impl EasyCueApp {
         let backend = EnttecUsbProBackend::new(port)?;
         self.dmx_backend = Box::new(backend);
         log::info!("Switched to Enttec USB Pro at {}", port);
+        Ok(())
+    }
+
+    /// Switch to Art-Net UDP output. `target` is the destination IP (or broadcast).
+    /// `universe` is the Art-Net universe number (0-based, 0–32767).
+    pub fn switch_to_artnet(&mut self, target: &str, universe: u16) -> anyhow::Result<()> {
+        use crate::dmx::backends::ArtNetBackend;
+        let backend = ArtNetBackend::new(target, universe)?;
+        self.dmx_backend = Box::new(backend);
+        log::info!("Switched to Art-Net → {} universe {}", target, universe);
         Ok(())
     }
 

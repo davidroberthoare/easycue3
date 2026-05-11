@@ -8,9 +8,11 @@ use crate::dmx::Universe;
 
 pub mod virtual_dmx;
 pub mod enttec_usb_pro;
+pub mod artnet;
 
 pub use virtual_dmx::VirtualBackend;
 pub use enttec_usb_pro::EnttecUsbProBackend;
+pub use artnet::ArtNetBackend;
 
 /// Convert 0-100 intensity to 0-255 DMX value
 #[inline]
