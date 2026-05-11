@@ -12,17 +12,17 @@
     {
       "parameter": "red",
       "channel_offset": 1,
-      "default_value": 0
+      "default_value": 100
     },
     {
       "parameter": "green",
       "channel_offset": 2,
-      "default_value": 0
+      "default_value": 100
     },
     {
       "parameter": "blue",
       "channel_offset": 3,
-      "default_value": 0
+      "default_value": 100
     }
   ],
   "notes": "4-channel RGB fixture with separate intensity channel"
