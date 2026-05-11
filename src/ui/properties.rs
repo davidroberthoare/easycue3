@@ -339,18 +339,33 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
         );
         let mut changed = false;
         let mut new_routes = routes.clone();
+        let mut remove_idx: Option<usize> = None;
+
+        // Pre-compute which device names each route should exclude (already used by another route).
+        let used_per_route: Vec<std::collections::HashSet<String>> = (0..new_routes.len())
+            .map(|i| {
+                new_routes.iter().enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, r)| r.device_name.clone())
+                    .collect()
+            })
+            .collect();
 
         for (i, route) in new_routes.iter_mut().enumerate() {
+            let used = &used_per_route[i];
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt(("route_dev", i))
                     .selected_text(if route.device_name.is_empty() { "Default" } else { &route.device_name })
                     .width(140.0)
                     .show_ui(ui, |ui| {
-                        if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
-                            route.device_name.clear();
-                            changed = true;
+                        if !used.contains("") {
+                            if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
+                                route.device_name.clear();
+                                changed = true;
+                            }
                         }
                         for name in &device_names {
+                            if used.contains(name) { continue; }
                             if ui.selectable_label(&route.device_name == name, name).clicked() {
                                 route.device_name = name.clone();
                                 changed = true;
@@ -362,12 +377,14 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     route.volume = vol_pct as f32 / 100.0;
                     changed = true;
                 }
-                if ui.small_button("✕").clicked() {
-                    new_routes.remove(i);
+                if ui.small_button(ph::TRASH).clicked() {
+                    remove_idx = Some(i);
                     changed = true;
-                    return;
                 }
             });
+        }
+        if let Some(i) = remove_idx {
+            new_routes.remove(i);
         }
 
         if ui.small_button("+ Add Output").clicked() {

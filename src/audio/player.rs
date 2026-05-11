@@ -66,7 +66,12 @@ impl AudioPlayer {
                     Ok(n) => n,
                     Err(_) => continue,
                 };
-                if already.contains(&name) {
+                // "default" is an ALSA virtual device that aliases the actual
+                // default output; skip it to avoid a duplicate entry.
+                if name.to_ascii_lowercase() == "default" {
+                    continue;
+                }
+                if already.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
                     continue;
                 }
                 match OutputStream::try_from_device(&device) {

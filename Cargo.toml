@@ -16,6 +16,7 @@ egui_extras = "0.31"  # Extra widgets including Table
 # Media Playback
 lumina-video = { git = "https://github.com/lumina-video/lumina-video", rev = "cb0d543", optional = true }
 rodio = { version = "0.19", optional = true }
+cpal = { version = "0.15", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -44,7 +45,7 @@ egui-phosphor = "0.9.0"
 [features]
 default = ["usb", "audio"]  # Enable USB DMX and audio by default
 usb = ["serialport"]  # Enable USB DMX interfaces (Enttec USB Pro)
-audio = ["rodio"]  # Enable audio playback (requires ALSA on Linux)
+audio = ["rodio", "cpal"]  # Enable audio playback (requires ALSA on Linux)
 video = ["lumina-video"]  # Enable video playback (requires GStreamer on Linux)
 media = ["audio", "video"]  # Enable all media features
 full = ["usb", "media"]  # Enable all optional features

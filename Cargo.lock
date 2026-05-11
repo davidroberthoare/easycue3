@@ -1113,6 +1113,7 @@ dependencies = [
  "anyhow",
  "artnet_protocol",
  "chrono",
+ "cpal 0.15.3",
  "dirs",
  "eframe",
  "egui",
