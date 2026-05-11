@@ -34,6 +34,14 @@ impl VirtualBackend {
 }
 
 impl DmxBackend for VirtualBackend {
+    /// Log all universes so multi-universe configurations are visible in the debug output.
+    fn send_universes(&mut self, universes: &[Universe]) -> Result<()> {
+        for universe in universes {
+            self.send_universe(universe)?;
+        }
+        Ok(())
+    }
+
     fn send_universe(&mut self, universe: &Universe) -> Result<()> {
         if self.verbose {
             // Convert to DMX values for logging

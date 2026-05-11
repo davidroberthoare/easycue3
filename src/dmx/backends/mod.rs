@@ -30,8 +30,18 @@ pub fn universe_to_dmx(universe: &Universe) -> [u8; 512] {
 
 /// Trait for DMX output backends
 pub trait DmxBackend: Send + Sync {
-    /// Send a universe to the output
+    /// Send a single universe to the output (used internally by `send_universes`).
     fn send_universe(&mut self, universe: &Universe) -> Result<()>;
+
+    /// Send all active universes.  The default implementation sends only the first
+    /// universe (correct for single-universe backends such as Enttec USB Pro).
+    /// Multi-universe backends (Art-Net) should override this.
+    fn send_universes(&mut self, universes: &[Universe]) -> Result<()> {
+        if let Some(u) = universes.first() {
+            self.send_universe(u)?;
+        }
+        Ok(())
+    }
 
     /// Get backend name/description
     fn name(&self) -> &str;

@@ -397,7 +397,9 @@ impl EasyCueApp {
         log::info!("[startup] Fonts configured in {:.2}ms", font_start.elapsed().as_secs_f64() * 1000.0);
 
         let universe_start = std::time::Instant::now();
-        let universes = vec![Universe::new(0), Universe::new(1)];
+        // Create 8 universes (1-based IDs 1–8). Only those referenced by patched
+        // fixtures will carry any output; the rest stay at zero and cost nothing.
+        let universes: Vec<Universe> = (1..=8).map(Universe::new).collect();
         log::info!("[startup] Universes created in {:.2}ms", universe_start.elapsed().as_secs_f64() * 1000.0);
 
         let dmx_init_start = std::time::Instant::now();
@@ -637,12 +639,21 @@ impl EasyCueApp {
         }
         self.cue_list.set_next_id(show.next_cue_id);
 
-        // Load patch
+        // Load patch — preserve fixture ID and universe from the saved file.
         *self.fixtures.patch_list_mut() = crate::fixtures::PatchList::new();
         for patch in show.patch {
             if self.fixtures.get_profile(&patch.profile_id).is_some() {
-                match self.fixtures.add_patch(patch.label.clone(), patch.profile_id.clone(), patch.start_address) {
-                    Ok(_) => log::debug!("Loaded patch: {} ({}) at {}", patch.label, patch.profile_id, patch.start_address),
+                match self.fixtures.add_patch_with_id(
+                    patch.id,
+                    patch.label.clone(),
+                    patch.profile_id.clone(),
+                    patch.start_address,
+                    patch.universe,
+                ) {
+                    Ok(_) => log::debug!(
+                        "Loaded patch: {} ({}) at U{}:{}",
+                        patch.label, patch.profile_id, patch.universe, patch.start_address
+                    ),
                     Err(e) => log::warn!("Failed to load patch '{}': {}", patch.label, e),
                 }
             } else {
@@ -696,24 +707,27 @@ impl EasyCueApp {
         Ok(())
     }
 
-    /// Apply lighting master and blackout before DMX output
-    pub fn apply_masters(&self, universe: &Universe) -> Universe {
-        let mut output = universe.clone();
-        if self.ui_state.blackout_active {
-            output.clear();
-            return output;
-        }
-        if self.ui_state.lighting_master < 1.0 {
-            for ch in 1..=512 {
-                if let Ok(value) = universe.get_channel(ch) {
-                    if value > 0 {
-                        let scaled = (value as f32 * self.ui_state.lighting_master).round() as u8;
-                        let _ = output.set_channel(ch, scaled);
+    /// Apply lighting master and blackout before DMX output.
+    /// Returns a cloned Vec of universes with masters applied, ready to send.
+    pub fn apply_masters(&self, universes: &[Universe]) -> Vec<Universe> {
+        universes.iter().map(|universe| {
+            let mut output = universe.clone();
+            if self.ui_state.blackout_active {
+                output.clear();
+                return output;
+            }
+            if self.ui_state.lighting_master < 1.0 {
+                for ch in 1..=512u16 {
+                    if let Ok(value) = universe.get_channel(ch) {
+                        if value > 0 {
+                            let scaled = (value as f32 * self.ui_state.lighting_master).round() as u8;
+                            let _ = output.set_channel(ch, scaled);
+                        }
                     }
                 }
             }
-        }
-        output
+            output
+        }).collect()
     }
 
     pub fn switch_to_virtual(&mut self) {
@@ -739,10 +753,8 @@ impl EasyCueApp {
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
             crate::cue::CueKind::Lighting(_) => {
-                if let Some(universe) = self.universes.first() {
-                    self.playback.start(&cue, universe);
-                    true
-                } else { false }
+                self.playback.start(&cue, &self.universes);
+                true
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Audio(_) => {
@@ -775,10 +787,8 @@ impl EasyCueApp {
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
             crate::cue::CueKind::Lighting(_) => {
-                if let Some(universe) = self.universes.first() {
-                    self.playback.start(&cue, universe);
-                    true
-                } else { false }
+                self.playback.start(&cue, &self.universes);
+                true
             }
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Audio(_) => {
@@ -803,9 +813,7 @@ impl EasyCueApp {
         let Some(next_idx) = self.cue_list.next_lighting_index() else { return false };
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
-        if let Some(universe) = self.universes.first() {
-            self.playback.start(&cue, universe);
-        }
+        self.playback.start(&cue, &self.universes);
         self.cue_list.set_current_index(Some(next_idx));
         log::info!("Lighting GO → cue {:.1} '{}'", cue.number, cue.label);
         true
@@ -817,9 +825,7 @@ impl EasyCueApp {
         let Some(prev_idx) = self.cue_list.previous_lighting_index() else { return false };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
-        if let Some(universe) = self.universes.first() {
-            self.playback.start(&cue, universe);
-        }
+        self.playback.start(&cue, &self.universes);
         self.cue_list.set_current_index(Some(prev_idx));
         log::info!("Lighting BACK → cue {:.1} '{}'", cue.number, cue.label);
         true
@@ -863,9 +869,7 @@ impl EasyCueApp {
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
             crate::cue::CueKind::Lighting(_) => {
-                if let Some(universe) = self.universes.first() {
-                    self.playback.start(&cue, universe);
-                }
+                self.playback.start(&cue, &self.universes);
                 true
             }
             #[cfg(feature = "audio")]
@@ -908,11 +912,10 @@ impl EasyCueApp {
         }
     }
 
-    /// Fade all lighting channels to zero over `fade_seconds` and stop all audio immediately.
+    /// Fade all lighting channels across all universes to zero over `fade_seconds`
+    /// and stop all audio immediately.
     pub fn fade_to_black(&mut self, fade_seconds: f32) {
-        if let Some(universe) = self.universes.first() {
-            self.playback.start_fade_to_black(universe, fade_seconds);
-        }
+        self.playback.start_fade_to_black(&self.universes, fade_seconds);
         #[cfg(feature = "audio")]
         self.audio_playback.stop_all();
         self.autofollow_timer = None;
@@ -975,12 +978,13 @@ impl EasyCueApp {
         // The ID that will be assigned by add_cue (cue.id is 0 → next_id is used)
         let assigned_id = self.cue_list.next_id();
 
-        if let Some(universe) = self.universes.first() {
-            if let Some(data) = cue.lighting_data_mut() {
+        if let Some(data) = cue.lighting_data_mut() {
+            for (uni_idx, universe) in self.universes.iter().enumerate() {
+                let universe_num = (uni_idx + 1) as u16; // 1-based
                 for ch in 1u16..=512 {
                     if let Ok(val) = universe.get_channel(ch) {
                         if val > 0 {
-                            data.set_channel(ch, val);
+                            data.set_channel_in_universe(universe_num, ch, val);
                         }
                     }
                 }
@@ -1118,16 +1122,15 @@ impl eframe::App for EasyCueApp {
             }
         }
 
-        if let Some(universe) = self.universes.first_mut() {
-            self.playback.update(universe);
-        }
+        self.playback.update(&mut self.universes);
 
         // Keep VirtualIntensity state in sync with whatever the playback engine wrote to the
-        // universe this frame, so that intensity reads in the UI panels are never stale.
+        // universes this frame, so that intensity reads in the UI panels are never stale.
         if self.playback.is_playing() {
-            if let Some(universe) = self.universes.first() {
-                let patches: Vec<_> = self.fixtures.patch_list().patches().to_vec();
-                for patch in &patches {
+            let patches: Vec<_> = self.fixtures.patch_list().patches().to_vec();
+            for patch in &patches {
+                let uni_idx = (patch.universe as usize).saturating_sub(1);
+                if let Some(universe) = self.universes.get(uni_idx) {
                     if let Some(profile) = self.fixtures.get_profile(&patch.profile_id) {
                         if !profile.has_intensity() {
                             self.virtual_intensity.update_from_universe(
@@ -1153,11 +1156,9 @@ impl eframe::App for EasyCueApp {
         }
 
         let dmx_send_start = std::time::Instant::now();
-        if let Some(universe) = self.universes.first() {
-            let output_universe = self.apply_masters(universe);
-            if let Err(e) = self.dmx_backend.send_universe(&output_universe) {
-                log::error!("DMX output error: {}", e);
-            }
+        let output_universes = self.apply_masters(&self.universes);
+        if let Err(e) = self.dmx_backend.send_universes(&output_universes) {
+            log::error!("DMX output error: {}", e);
         }
         let dmx_send_time = dmx_send_start.elapsed();
 

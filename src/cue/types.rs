@@ -6,6 +6,19 @@ use std::collections::HashMap;
 #[cfg(feature = "audio")]
 use std::path::PathBuf;
 
+/// Encode (1-based universe, 1-based channel 1–512) into the u16 key stored in
+/// `LightingData::channel_values`.  Universe 1, channels 1–512 map to keys 1–512,
+/// preserving full backwards compatibility with existing show files.
+pub fn universe_key(universe: u16, channel: u16) -> u16 {
+    (universe.saturating_sub(1)) * 512 + channel
+}
+
+/// Decode a `channel_values` key back to `(universe, channel)` (both 1-based).
+pub fn decode_universe_key(key: u16) -> (u16, u16) {
+    let z = key.saturating_sub(1);
+    (z / 512 + 1, z % 512 + 1)
+}
+
 /// Data for a lighting cue: channel intensities and fade timing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightingData {
@@ -14,6 +27,8 @@ pub struct LightingData {
     #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub fade_down: f32,
     /// Channel intensity values (0-100). Only non-zero channels stored.
+    /// Keys are encoded via `universe_key(universe, channel)` so universe 1
+    /// keys are identical to raw channel numbers (backwards compatible).
     #[serde(deserialize_with = "crate::serde_helpers::deserialize_channel_map")]
     pub channel_values: HashMap<u16, u8>,
 }
@@ -29,16 +44,32 @@ impl Default for LightingData {
 }
 
 impl LightingData {
+    /// Set a channel in universe 1 (backwards-compatible shorthand).
     pub fn set_channel(&mut self, channel: u16, value: u8) {
+        self.set_channel_in_universe(1, channel, value);
+    }
+
+    /// Get a channel from universe 1.
+    pub fn get_channel(&self, channel: u16) -> u8 {
+        self.get_channel_in_universe(1, channel)
+    }
+
+    /// Set a channel value in a specific universe (1-based, channel 1–512).
+    pub fn set_channel_in_universe(&mut self, universe: u16, channel: u16, value: u8) {
+        let key = universe_key(universe, channel);
         if value > 0 {
-            self.channel_values.insert(channel, value);
+            self.channel_values.insert(key, value);
         } else {
-            self.channel_values.remove(&channel);
+            self.channel_values.remove(&key);
         }
     }
 
-    pub fn get_channel(&self, channel: u16) -> u8 {
-        self.channel_values.get(&channel).copied().unwrap_or(0)
+    /// Get a channel value from a specific universe (1-based).
+    pub fn get_channel_in_universe(&self, universe: u16, channel: u16) -> u8 {
+        self.channel_values
+            .get(&universe_key(universe, channel))
+            .copied()
+            .unwrap_or(0)
     }
 }
 

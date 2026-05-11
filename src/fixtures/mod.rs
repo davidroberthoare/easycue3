@@ -231,12 +231,13 @@ impl FixtureLibrary {
         &mut self.patch_list
     }
 
-    /// Add a new patched fixture
+    /// Add a new patched fixture on `universe` (1-based, default 1).
     pub fn add_patch(
         &mut self,
         label: String,
         profile_id: String,
         start_address: u16,
+        universe: u16,
     ) -> Result<usize> {
         // Verify profile exists
         let profile = self
@@ -249,18 +250,20 @@ impl FixtureLibrary {
                 label,
                 profile_id,
                 start_address,
+                universe,
                 profile.channel_count,
                 &channel_counts,
             )
     }
 
-    /// Add a fixture with a caller-supplied fixture number (ID). Rejects duplicate IDs.
+    /// Add a fixture with a caller-supplied fixture number (ID) and universe. Rejects duplicate IDs.
     pub fn add_patch_with_id(
         &mut self,
         fixture_id: usize,
         label: String,
         profile_id: String,
         start_address: u16,
+        universe: u16,
     ) -> Result<usize> {
         let profile = self
             .get_profile(&profile_id)
@@ -268,7 +271,7 @@ impl FixtureLibrary {
         let channel_count = profile.channel_count;
         let channel_counts = self.get_channel_counts();
         self.patch_list.add_patch_with_id(
-            fixture_id, label, profile_id, start_address, channel_count, &channel_counts,
+            fixture_id, label, profile_id, start_address, universe, channel_count, &channel_counts,
         )
     }
 

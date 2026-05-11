@@ -4,7 +4,7 @@ pub mod types;
 pub mod list;
 pub mod playback;
 
-pub use types::{Cue, CueKind, CueState, LightingData};
+pub use types::{Cue, CueKind, CueState, LightingData, universe_key, decode_universe_key};
 #[cfg(feature = "audio")]
 pub use types::{AudioData, AdjustData};
 pub use list::CueList;

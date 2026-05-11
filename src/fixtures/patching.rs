@@ -82,12 +82,13 @@ impl PatchList {
         self.next_id = 1;
     }
 
-    /// Add a new fixture patch
+    /// Add a new fixture patch on the given universe (1-based, default 1).
     pub fn add_patch(
         &mut self,
         label: String,
         profile_id: String,
         start_address: u16,
+        universe: u16,
         channel_count: u16,
         channel_counts: &HashMap<String, u16>,
     ) -> Result<usize> {
@@ -109,23 +110,24 @@ impl PatchList {
             ));
         }
 
-        // Check for overlaps with existing patches
-        if let Some(conflict) = self.find_overlap(start_address, channel_count, None, channel_counts) {
+        // Check for overlaps with existing patches in the same universe
+        if let Some(conflict) = self.find_overlap(start_address, channel_count, universe, None, channel_counts) {
             let conflict_channel_count = channel_counts.get(&conflict.profile_id).copied().unwrap_or(1);
             return Err(anyhow!(
-                "Address range {}-{} overlaps with fixture '{}' ({}-{})",
+                "Address range {}-{} overlaps with fixture '{}' ({}-{}) in universe {}",
                 start_address,
                 end_address,
                 conflict.label,
                 conflict.start_address,
-                conflict.end_address(conflict_channel_count)
+                conflict.end_address(conflict_channel_count),
+                universe,
             ));
         }
 
         let id = self.next_id;
         self.next_id += 1;
 
-        self.add_patch_with_explicit_id(id, label, profile_id, start_address, end_address)
+        self.add_patch_with_explicit_id(id, label, profile_id, start_address, end_address, universe)
     }
 
     /// Add a patch with a caller-supplied fixture ID. Checks that the ID is not already used.
@@ -135,6 +137,7 @@ impl PatchList {
         label: String,
         profile_id: String,
         start_address: u16,
+        universe: u16,
         channel_count: u16,
         channel_counts: &HashMap<String, u16>,
     ) -> Result<usize> {
@@ -148,16 +151,16 @@ impl PatchList {
         if self.patches.iter().any(|p| p.id == fixture_id) {
             return Err(anyhow!("Fixture number {} is already in use", fixture_id));
         }
-        if let Some(conflict) = self.find_overlap(start_address, channel_count, None, channel_counts) {
+        if let Some(conflict) = self.find_overlap(start_address, channel_count, universe, None, channel_counts) {
             let cc = channel_counts.get(&conflict.profile_id).copied().unwrap_or(1);
             return Err(anyhow!(
-                "Address range {}-{} overlaps with fixture '{}' ({}-{})",
+                "Address range {}-{} overlaps with fixture '{}' ({}-{}) in universe {}",
                 start_address, end_address, conflict.label,
-                conflict.start_address, conflict.end_address(cc)
+                conflict.start_address, conflict.end_address(cc), universe,
             ));
         }
         self.next_id = self.next_id.max(fixture_id + 1);
-        self.add_patch_with_explicit_id(fixture_id, label, profile_id, start_address, end_address)
+        self.add_patch_with_explicit_id(fixture_id, label, profile_id, start_address, end_address, universe)
     }
 
     fn add_patch_with_explicit_id(
@@ -167,10 +170,12 @@ impl PatchList {
         profile_id: String,
         start_address: u16,
         end_address: u16,
+        universe: u16,
     ) -> Result<usize> {
-        let patch = Patch::new(id, label, profile_id, start_address);
+        let mut patch = Patch::new(id, label, profile_id, start_address);
+        patch.universe = universe;
         self.patches.push(patch);
-        log::info!("Patched fixture #{} at address {}-{}", id, start_address, end_address);
+        log::info!("Patched fixture #{} at U{}:{}-{}", id, universe, start_address, end_address);
         Ok(id)
     }
 
@@ -238,11 +243,12 @@ impl PatchList {
         })
     }
 
-    /// Find overlapping patch (excluding patch with given ID)
+    /// Find overlapping patch within the same universe (excluding patch with given ID).
     fn find_overlap(
         &self,
         start_address: u16,
         channel_count: u16,
+        universe: u16,
         exclude_id: Option<usize>,
         channel_counts: &HashMap<String, u16>,
     ) -> Option<&Patch> {
@@ -250,12 +256,10 @@ impl PatchList {
 
         self.patches.iter().find(|p| {
             if let Some(id) = exclude_id {
-                if p.id == id {
-                    return false;
-                }
+                if p.id == id { return false; }
             }
-
-            // Check for range overlap
+            // Only overlaps matter within the same universe
+            if p.universe != universe { return false; }
             let p_channel_count = channel_counts.get(&p.profile_id).copied().unwrap_or(1);
             let p_end = p.start_address + p_channel_count - 1;
             !(end_address < p.start_address || start_address > p_end)
@@ -278,7 +282,7 @@ impl PatchList {
         self.patches.is_empty()
     }
 
-    /// Update a patch's address (with overlap validation)
+    /// Update a patch's address (with universe-aware overlap validation).
     pub fn update_patch_address(
         &mut self,
         id: usize,
@@ -304,8 +308,11 @@ impl PatchList {
             ));
         }
 
-        // Check for overlaps (excluding this patch)
-        if let Some(conflict) = self.find_overlap(new_start_address, channel_count, Some(id), channel_counts) {
+        // Fetch the universe of this patch before the mutable borrow.
+        let universe = self.patches.iter().find(|p| p.id == id).map(|p| p.universe).unwrap_or(1);
+
+        // Check for overlaps within the same universe (excluding this patch)
+        if let Some(conflict) = self.find_overlap(new_start_address, channel_count, universe, Some(id), channel_counts) {
             let conflict_channel_count = channel_counts.get(&conflict.profile_id).copied().unwrap_or(1);
             return Err(anyhow!(
                 "New address range {}-{} overlaps with fixture '{}' ({}-{})",
@@ -324,10 +331,8 @@ impl PatchList {
 
         patch.start_address = new_start_address;
         log::info!(
-            "Updated fixture #{} address to {}-{}",
-            id,
-            new_start_address,
-            end_address
+            "Updated fixture #{} address to U{}:{}-{}",
+            id, universe, new_start_address, end_address
         );
 
         Ok(())
@@ -357,29 +362,36 @@ mod tests {
         let mut channel_counts = HashMap::new();
         channel_counts.insert("rgb".to_string(), 3);
 
-        // Add valid patch
+        // Add valid patch on universe 1
         let id = patch_list
-            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3, &channel_counts)
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 1, 3, &channel_counts)
             .unwrap();
         assert_eq!(id, 1);
         assert_eq!(patch_list.len(), 1);
 
-        // Try to add overlapping patch (should fail)
+        // Try to add overlapping patch in the same universe (should fail)
         let result = patch_list.add_patch(
             "RGB #2".to_string(),
             "rgb".to_string(),
             11,
+            1,
             3,
             &channel_counts,
         );
         assert!(result.is_err());
 
-        // Add non-overlapping patch (should succeed)
-        let id2 = patch_list
-            .add_patch("RGB #2".to_string(), "rgb".to_string(), 20, 3, &channel_counts)
+        // Same address on a different universe (should succeed)
+        let id_u2 = patch_list
+            .add_patch("RGB #U2".to_string(), "rgb".to_string(), 11, 2, 3, &channel_counts)
             .unwrap();
-        assert_eq!(id2, 2);
-        assert_eq!(patch_list.len(), 2);
+        assert_eq!(id_u2, 2);
+
+        // Add non-overlapping patch on universe 1 (should succeed)
+        let id2 = patch_list
+            .add_patch("RGB #2".to_string(), "rgb".to_string(), 20, 1, 3, &channel_counts)
+            .unwrap();
+        assert_eq!(id2, 3);
+        assert_eq!(patch_list.len(), 3);
     }
 
     #[test]
@@ -388,7 +400,7 @@ mod tests {
         let mut channel_counts = HashMap::new();
         channel_counts.insert("rgb".to_string(), 3);
         patch_list
-            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3, &channel_counts)
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 1, 3, &channel_counts)
             .unwrap();
 
         // Find patch at channels 10-12
@@ -407,7 +419,7 @@ mod tests {
         let mut channel_counts = HashMap::new();
         channel_counts.insert("rgb".to_string(), 3);
         let id = patch_list
-            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 3, &channel_counts)
+            .add_patch("RGB #1".to_string(), "rgb".to_string(), 10, 1, 3, &channel_counts)
             .unwrap();
 
         assert_eq!(patch_list.len(), 1);
@@ -428,17 +440,29 @@ mod tests {
         channel_counts.insert("dimmer".to_string(), 1);
 
         patch_list
-            .add_patch("iRGB #1".to_string(), "irgb".to_string(), 1, 4, &channel_counts)
+            .add_patch("iRGB #1".to_string(), "irgb".to_string(), 1, 1, 4, &channel_counts)
             .unwrap();
 
-        // 4 is inside iRGB #1 range (1-4), so this dimmer patch must fail.
+        // 4 is inside iRGB #1 range (1-4) in universe 1, so this dimmer patch must fail.
         let result = patch_list.add_patch(
             "Dimmer #1".to_string(),
             "dimmer".to_string(),
             4,
             1,
+            1,
             &channel_counts,
         );
         assert!(result.is_err());
+
+        // Same address on universe 2 must succeed.
+        let result2 = patch_list.add_patch(
+            "Dimmer #U2".to_string(),
+            "dimmer".to_string(),
+            4,
+            2,
+            1,
+            &channel_counts,
+        );
+        assert!(result2.is_ok());
     }
 }
