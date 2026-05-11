@@ -921,20 +921,61 @@ impl EasyCueApp {
     }
 
     /// Execute an Adjust cue: ramp a specific audio stream's volume, or the global sound master.
+    /// If the cue has `output_fades`, per-device route volumes are faded instead.
     #[cfg(feature = "audio")]
     fn fire_adjust_cue(&mut self, adjust_cue_id: u32, data: crate::cue::AdjustData) {
-        if let Some(target_num) = data.target_audio_cue {
-            // Targeted: find the active stream by cue number
-            let target_id = self.cue_list.cues().iter()
+        // Resolve target stream ID (0 = all streams).
+        let target_id: u32 = if let Some(target_num) = data.target_audio_cue {
+            self.cue_list.cues().iter()
                 .find(|c| (c.number - target_num).abs() < 0.005)
-                .map(|c| c.id);
-            if let Some(target_id) = target_id {
-                self.audio_playback.adjust_stream(target_id, data.volume, data.fade_time, data.stop_when_complete);
-                log::info!("Adjust: cue {} → {:.0}% over {:.1}s{}", target_num, data.volume * 100.0,
-                    data.fade_time, if data.stop_when_complete { " then stop" } else { "" });
-            } else {
-                log::warn!("Adjust: target cue {:.1} not found or not playing", target_num);
+                .map(|c| c.id)
+                .unwrap_or_else(|| {
+                    log::warn!("Adjust: target cue {:.1} not found", target_num);
+                    0
+                })
+        } else {
+            0
+        };
+
+        // If this cue specifies output fades, apply per-device volume changes.
+        if !data.output_fades.is_empty() {
+            for fade in &data.output_fades {
+                self.audio_playback.adjust_stream_output(
+                    target_id,
+                    &fade.device_name,
+                    fade.target_volume,
+                    data.fade_time,
+                    false, // stop_when_complete handled separately if needed
+                );
             }
+            if data.stop_when_complete {
+                // Still honour stop_when_complete on the last output fade timing.
+                // We attach a global stop to the stream after fade_time via a zero-volume adjust.
+                if target_id != 0 {
+                    self.audio_playback.adjust_stream(target_id, 0.0, data.fade_time, true);
+                } else {
+                    self.audio_playback.stop_all();
+                }
+            }
+            log::info!(
+                "Adjust: {} output fade(s) on cue {} over {:.1}s",
+                data.output_fades.len(),
+                data.target_audio_cue.map(|n| format!("{:.1}", n)).unwrap_or_else(|| "all".into()),
+                data.fade_time,
+            );
+            return;
+        }
+
+        // No output fades — original behaviour: adjust stream or global master.
+        if target_id != 0 {
+            self.audio_playback.adjust_stream(target_id, data.volume, data.fade_time, data.stop_when_complete);
+            log::info!(
+                "Adjust: cue {} → {:.0}% over {:.1}s{}",
+                data.target_audio_cue.unwrap_or(0.0),
+                data.volume * 100.0,
+                data.fade_time,
+                if data.stop_when_complete { " then stop" } else { "" },
+            );
         } else {
             // Global: ramp the sound master
             if data.fade_time <= 0.0 {

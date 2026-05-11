@@ -42,6 +42,47 @@ impl LightingData {
     }
 }
 
+/// A single output-device route for an audio cue.
+///
+/// The cue plays simultaneously on each route; `volume` scales the cue's base
+/// volume for that specific device (1.0 = same as the cue level).
+/// `device_name` empty string means "default output device".
+#[cfg(feature = "audio")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioOutputRoute {
+    /// Output device name as returned by the OS (empty = default device).
+    #[serde(default)]
+    pub device_name: String,
+    /// Per-route volume scale (0.0–1.0); multiplied with the cue's base volume.
+    #[serde(default = "default_route_volume", serialize_with = "crate::serde_helpers::round_f32_2")]
+    pub volume: f32,
+}
+
+#[cfg(feature = "audio")]
+fn default_route_volume() -> f32 { 1.0 }
+
+#[cfg(feature = "audio")]
+impl Default for AudioOutputRoute {
+    fn default() -> Self {
+        Self { device_name: String::new(), volume: 1.0 }
+    }
+}
+
+/// A per-output volume fade issued by an Adjust cue.
+///
+/// Fades the volume of a specific output device route on the targeted audio stream.
+/// This is how you "move" sound between outputs: set one device to 0.0 and
+/// another to 1.0 over a shared `fade_time` in `AdjustData`.
+#[cfg(feature = "audio")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputFade {
+    /// Device to target. Empty = default device.
+    pub device_name: String,
+    /// Volume to fade to (0.0–1.0).
+    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
+    pub target_volume: f32,
+}
+
 /// Data for an audio cue: file path and playback settings
 #[cfg(feature = "audio")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +101,10 @@ pub struct AudioData {
     /// None = play until the file ends.
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub length: Option<f32>,
+    /// Output routing: which physical devices to play on and at what per-device volume.
+    /// Empty = single stream on the default output device at full cue volume.
+    #[serde(default)]
+    pub output_routes: Vec<AudioOutputRoute>,
 }
 
 #[cfg(feature = "audio")]
@@ -77,6 +122,7 @@ impl AudioData {
             fade_out: 0.0,
             notes: String::new(),
             length: None,
+            output_routes: Vec::new(),
         }
     }
 
@@ -104,13 +150,15 @@ impl AudioData {
 }
 
 /// Data for an adjust cue: ramps the sound master to a target volume, then optionally stops audio.
+/// Can also fade individual output-device routes on a targeted audio stream.
 #[cfg(feature = "audio")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdjustData {
     /// Cue number of the specific audio cue to target. None = affect global sound master.
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub target_audio_cue: Option<f32>,
-    /// Target volume level (0.0–1.0)
+    /// Target volume level (0.0–1.0). When `output_fades` is empty this adjusts the sound master
+    /// (or the targeted cue's base volume); when `output_fades` is non-empty this field is unused.
     #[serde(default = "default_audio_volume", serialize_with = "crate::serde_helpers::round_f32_2")]
     pub volume: f32,
     /// Seconds to reach the target (0 = instant)
@@ -119,12 +167,24 @@ pub struct AdjustData {
     /// Stop the targeted stream (or all streams) when the fade completes
     #[serde(default)]
     pub stop_when_complete: bool,
+    /// Per-output-device volume fades. When non-empty, these fades run on the targeted stream
+    /// (or all streams if `target_audio_cue` is None) instead of touching the sound master.
+    /// Use this to move sound between outputs: fade one device to 0.0 and another to 1.0
+    /// over the same `fade_time`.
+    #[serde(default)]
+    pub output_fades: Vec<OutputFade>,
 }
 
 #[cfg(feature = "audio")]
 impl AdjustData {
     pub fn new() -> Self {
-        Self { target_audio_cue: None, volume: 0.8, fade_time: 2.0, stop_when_complete: false }
+        Self {
+            target_audio_cue: None,
+            volume: 0.8,
+            fade_time: 2.0,
+            stop_when_complete: false,
+            output_fades: Vec::new(),
+        }
     }
 }
 

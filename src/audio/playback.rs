@@ -1,18 +1,21 @@
-//! Multi-track audio playback engine.
+//! Multi-track, multi-output audio playback engine.
 //!
-//! Each audio cue gets its own Sink. Firing a new cue never stops existing ones;
-//! each stream runs independently until its length timer expires, the file ends,
-//! or stop_all() is called.
+//! Each audio cue gets its own set of Sinks — one per output route.  Firing a
+//! new cue never stops existing ones; each stream runs independently.
+//!
+//! An Adjust cue can fade the volume on individual output routes (to move sound
+//! between speakers) or adjust the overall cue or master volume as before.
 
 use crate::audio::{AudioCueState, AudioPlayer};
 use crate::cue::Cue;
 use rodio::Decoder;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::time::Instant;
 
-/// In-progress per-stream volume ramp driven by an Adjust cue.
-struct VolumeAdjust {
+/// In-progress volume ramp on a single output-device route.
+struct RouteAdjust {
     start_vol: f32,
     target_vol: f32,
     fade_time: f32,
@@ -20,22 +23,41 @@ struct VolumeAdjust {
     stop_when_complete: bool,
 }
 
+/// One device sink with its own per-route volume and an optional in-progress fade.
+struct DeviceSink {
+    device_name: String,
+    sink: rodio::Sink,
+    /// Current per-route volume scale (0.0–1.0).
+    volume: f32,
+    /// Ongoing route-level volume fade (from an Adjust cue).
+    adjust: Option<RouteAdjust>,
+}
+
 struct ActiveAudioStream {
     cue_id: u32,
-    sink: rodio::Sink,
+    /// One entry per output route (usually just the default device).
+    device_sinks: Vec<DeviceSink>,
     state: AudioCueState,
     base_volume: f32,
     fade_in_duration: f32,
     fade_out_duration: f32,
     fade_start: Option<Instant>,
-    /// Optional max play time from play_start; triggers fade/stop when elapsed.
     length: Option<f32>,
     play_start: Instant,
-    /// In-progress volume adjustment from an Adjust cue targeting this stream.
-    volume_adjust: Option<VolumeAdjust>,
+    /// Global volume ramp for this whole stream (existing Adjust cue behaviour).
+    global_adjust: Option<GlobalAdjust>,
 }
 
-/// Multi-track audio playback engine. Maintains a list of concurrently running streams.
+/// Volume ramp that affects the whole stream (not a specific route).
+struct GlobalAdjust {
+    start_vol: f32,
+    target_vol: f32,
+    fade_time: f32,
+    start: Instant,
+    stop_when_complete: bool,
+}
+
+/// Multi-track audio playback engine.
 pub struct AudioPlaybackEngine {
     streams: Vec<ActiveAudioStream>,
 }
@@ -45,32 +67,18 @@ impl AudioPlaybackEngine {
         Self { streams: Vec::new() }
     }
 
-    /// Start a new audio stream for this cue. Does NOT stop any currently playing streams.
+    /// Start a new audio stream for `cue`.  Does NOT stop existing streams.
     pub fn start(&mut self, cue: &Cue, player: &AudioPlayer) -> bool {
         let Some(data) = cue.audio_data() else { return false };
 
         let resolved = crate::paths::resolve_media_path(&data.audio_path);
-        let file = match File::open(&resolved) {
-            Ok(f) => f,
-            Err(e) => {
-                log::error!("Audio: cannot open {}: {}", resolved.display(), e);
-                return false;
-            }
-        };
-        let source = match Decoder::new(BufReader::new(file)) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Audio: decode error: {}", e);
-                return false;
-            }
-        };
-        let sink = match player.new_sink() {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Audio: cannot create sink: {}", e);
-                return false;
-            }
-        };
+
+        // Create one sink per output route (or default if routes is empty).
+        let route_sinks = player.new_sinks_for_routes(&data.output_routes);
+        if route_sinks.is_empty() {
+            log::error!("Audio: no sinks created for cue {:.2}", cue.number);
+            return false;
+        }
 
         let (initial_volume, initial_state, fade_start) = if data.fade_in > 0.0 {
             (0.0_f32, AudioCueState::FadingIn { progress: 0.0 }, Some(Instant::now()))
@@ -78,12 +86,35 @@ impl AudioPlaybackEngine {
             (data.volume, AudioCueState::Playing, None)
         };
 
-        sink.set_volume(initial_volume);
-        sink.append(source);
+        let mut device_sinks = Vec::with_capacity(route_sinks.len());
+        for (device_name, sink, route_vol) in route_sinks {
+            // Each device sink needs its own decoder — re-open the file.
+            let file = match File::open(&resolved) {
+                Ok(f) => f,
+                Err(e) => {
+                    log::error!("Audio: cannot open {}: {}", resolved.display(), e);
+                    continue;
+                }
+            };
+            let source = match Decoder::new(BufReader::new(file)) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Audio: decode error on '{}': {}", device_name, e);
+                    continue;
+                }
+            };
+            sink.set_volume(initial_volume * route_vol);
+            sink.append(source);
+            device_sinks.push(DeviceSink { device_name, sink, volume: route_vol, adjust: None });
+        }
+
+        if device_sinks.is_empty() {
+            return false;
+        }
 
         self.streams.push(ActiveAudioStream {
             cue_id: cue.id,
-            sink,
+            device_sinks,
             state: initial_state,
             base_volume: data.volume,
             fade_in_duration: data.fade_in,
@@ -91,27 +122,36 @@ impl AudioPlaybackEngine {
             fade_start,
             length: data.length,
             play_start: Instant::now(),
-            volume_adjust: None,
+            global_adjust: None,
         });
 
         log::info!(
-            "Audio start: cue {:.2} '{}' vol={:.0}% fade_in={:.1}s length={:?}",
-            cue.number, cue.label, data.volume * 100.0, data.fade_in, data.length
+            "Audio start: cue {:.2} '{}' vol={:.0}% routes={} fade_in={:.1}s",
+            cue.number,
+            cue.label,
+            data.volume * 100.0,
+            data.output_routes.len().max(1),
+            data.fade_in,
         );
         true
     }
 
-    /// Apply a volume ramp to the stream for a specific cue. Only takes effect while Playing.
-    /// If no stream for `cue_id` is active, this is a no-op.
-    pub fn adjust_stream(&mut self, cue_id: u32, target_vol: f32, fade_time: f32, stop_when_complete: bool) {
+    /// Apply a global volume ramp to a stream (existing Adjust-cue behaviour, no output routing).
+    pub fn adjust_stream(
+        &mut self,
+        cue_id: u32,
+        target_vol: f32,
+        fade_time: f32,
+        stop_when_complete: bool,
+    ) {
         if let Some(stream) = self.streams.iter_mut().find(|s| s.cue_id == cue_id) {
             if fade_time <= 0.0 {
                 stream.base_volume = target_vol;
                 if stop_when_complete {
-                    stream.sink.stop();
+                    for ds in &stream.device_sinks { ds.sink.stop(); }
                 }
             } else {
-                stream.volume_adjust = Some(VolumeAdjust {
+                stream.global_adjust = Some(GlobalAdjust {
                     start_vol: stream.base_volume,
                     target_vol,
                     fade_time,
@@ -122,117 +162,173 @@ impl AudioPlaybackEngine {
         }
     }
 
+    /// Fade the per-route volume for a specific output device on a stream.
+    /// `cue_id == 0` targets all active streams.  `device_name` empty = default device.
+    pub fn adjust_stream_output(
+        &mut self,
+        cue_id: u32,
+        device_name: &str,
+        target_vol: f32,
+        fade_time: f32,
+        stop_when_complete: bool,
+    ) {
+        for stream in self.streams.iter_mut() {
+            if cue_id != 0 && stream.cue_id != cue_id {
+                continue;
+            }
+            // Find the matching device sink (fall back to first if name is empty).
+            let ds_idx = if device_name.is_empty() {
+                Some(0)
+            } else {
+                stream.device_sinks.iter().position(|ds| ds.device_name == device_name)
+            };
+            if let Some(idx) = ds_idx {
+                let ds = &mut stream.device_sinks[idx];
+                if fade_time <= 0.0 {
+                    ds.volume = target_vol;
+                    if stop_when_complete {
+                        ds.sink.stop();
+                    }
+                } else {
+                    ds.adjust = Some(RouteAdjust {
+                        start_vol: ds.volume,
+                        target_vol,
+                        fade_time,
+                        start: Instant::now(),
+                        stop_when_complete,
+                    });
+                }
+            }
+        }
+    }
+
     /// Stop all active streams immediately.
     pub fn stop_all(&mut self) {
         for s in self.streams.drain(..) {
-            s.sink.stop();
+            for ds in s.device_sinks { ds.sink.stop(); }
         }
         log::debug!("Audio: all streams stopped");
     }
 
-    /// Advance every stream's fade state and apply sound_master each frame.
+    /// Advance fade state and apply sound_master each frame.
     pub fn update(&mut self, sound_master: f32) {
         self.streams.retain_mut(|stream| {
-            // File ended naturally
-            if stream.sink.empty() {
-                log::debug!("Audio cue {} finished (file end)", stream.cue_id);
+            // Drop stream if every sink has finished.
+            if stream.device_sinks.iter().all(|ds| ds.sink.empty()) {
+                log::debug!("Audio cue {} finished", stream.cue_id);
                 return false;
             }
 
-            // Length timer: once Playing, check if we've hit the length limit
+            // Length timer: once Playing, check elapsed.
             if matches!(stream.state, AudioCueState::Playing) {
                 if let Some(len) = stream.length {
                     if stream.play_start.elapsed().as_secs_f32() >= len {
                         if stream.fade_out_duration > 0.0 {
                             stream.state = AudioCueState::FadingOut { progress: 0.0 };
                             stream.fade_start = Some(Instant::now());
-                            log::debug!("Audio cue {} length expired, fading out", stream.cue_id);
                         } else {
-                            stream.sink.stop();
-                            log::debug!("Audio cue {} length expired, stopping", stream.cue_id);
+                            for ds in &stream.device_sinks { ds.sink.stop(); }
                             return false;
                         }
                     }
                 }
             }
 
-            // Volume adjust from an Adjust cue — only runs while Playing
+            // Advance global volume adjust (whole-stream ramp from Adjust cue).
             if matches!(stream.state, AudioCueState::Playing) {
-                if let Some(adj) = stream.volume_adjust.take() {
+                if let Some(adj) = stream.global_adjust.take() {
                     let progress = if adj.fade_time > 0.0 {
                         (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
                     } else {
                         1.0
                     };
-                    stream.base_volume = adj.start_vol + (adj.target_vol - adj.start_vol) * progress;
+                    stream.base_volume =
+                        adj.start_vol + (adj.target_vol - adj.start_vol) * progress;
                     if progress < 1.0 {
-                        stream.volume_adjust = Some(adj); // still running
+                        stream.global_adjust = Some(adj);
                     } else if adj.stop_when_complete {
-                        stream.sink.stop();
+                        for ds in &stream.device_sinks { ds.sink.stop(); }
                         return false;
                     }
-                    // otherwise adj is done, volume_adjust stays None
                 }
             }
 
-            // Compute per-stream volume based on fade state
-            let volume = match stream.state {
+            // Compute fade factor from state.
+            let fade_factor = match stream.state {
                 AudioCueState::FadingIn { .. } => {
                     let start = stream.fade_start.get_or_insert_with(Instant::now);
-                    let progress =
-                        (start.elapsed().as_secs_f32() / stream.fade_in_duration).clamp(0.0, 1.0);
-                    if progress >= 1.0 {
+                    let p = (start.elapsed().as_secs_f32() / stream.fade_in_duration)
+                        .clamp(0.0, 1.0);
+                    if p >= 1.0 {
                         stream.state = AudioCueState::Playing;
                         stream.fade_start = None;
                     } else {
-                        stream.state = AudioCueState::FadingIn { progress };
+                        stream.state = AudioCueState::FadingIn { progress: p };
                     }
-                    stream.base_volume * progress
+                    p
                 }
-                AudioCueState::Playing => stream.base_volume,
+                AudioCueState::Playing => 1.0,
                 AudioCueState::FadingOut { .. } => {
                     let start = stream.fade_start.get_or_insert_with(Instant::now);
-                    let progress =
-                        (start.elapsed().as_secs_f32() / stream.fade_out_duration).clamp(0.0, 1.0);
-                    if progress >= 1.0 {
-                        stream.sink.stop();
-                        log::debug!("Audio cue {} fade out complete", stream.cue_id);
+                    let p = (start.elapsed().as_secs_f32() / stream.fade_out_duration)
+                        .clamp(0.0, 1.0);
+                    if p >= 1.0 {
+                        for ds in &stream.device_sinks { ds.sink.stop(); }
                         return false;
                     }
-                    stream.state = AudioCueState::FadingOut { progress };
-                    stream.base_volume * (1.0 - progress)
+                    stream.state = AudioCueState::FadingOut { progress: p };
+                    1.0 - p
                 }
                 AudioCueState::Stopped => return false,
             };
 
-            stream.sink.set_volume((volume * sound_master).clamp(0.0, 2.0));
-            true
+            let base = stream.base_volume * fade_factor;
+
+            // Apply volume to each device sink (advance per-route fades too).
+            for ds in stream.device_sinks.iter_mut() {
+                // Advance per-route adjust.
+                if let Some(adj) = ds.adjust.take() {
+                    let progress = if adj.fade_time > 0.0 {
+                        (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
+                    ds.volume = adj.start_vol + (adj.target_vol - adj.start_vol) * progress;
+                    if progress < 1.0 {
+                        ds.adjust = Some(adj);
+                    } else if adj.stop_when_complete {
+                        ds.sink.stop();
+                        continue;
+                    }
+                }
+
+                ds.sink.set_volume((base * ds.volume * sound_master).clamp(0.0, 2.0));
+            }
+
+            // Remove stopped sinks.
+            stream.device_sinks.retain(|ds| !ds.sink.empty());
+            !stream.device_sinks.is_empty()
         });
     }
 
     // ── Query API ────────────────────────────────────────────────────────────
 
-    /// IDs of all currently active streams (for row coloring).
     pub fn active_cue_ids(&self) -> Vec<u32> {
         self.streams.iter().map(|s| s.cue_id).collect()
     }
 
-    /// Playback state for a specific cue, or None if that cue is not active.
     pub fn stream_state(&self, cue_id: u32) -> Option<AudioCueState> {
         self.streams.iter().find(|s| s.cue_id == cue_id).map(|s| s.state)
     }
 
-    /// The ID of the most recently started active stream (used for footer display).
     pub fn current_cue_id(&self) -> Option<u32> {
         self.streams.last().map(|s| s.cue_id)
     }
 
-    /// State of the most recently started active stream, or Stopped.
     pub fn state(&self) -> AudioCueState {
         self.streams.last().map(|s| s.state).unwrap_or(AudioCueState::Stopped)
     }
 
-    /// Number of streams currently active.
     pub fn active_count(&self) -> usize {
         self.streams.len()
     }
@@ -241,12 +337,12 @@ impl AudioPlaybackEngine {
         !self.streams.is_empty()
     }
 
-    /// Returns the 0–1 progress of the active volume-adjust fade for a stream, or None if no
-    /// fade is running on that stream (or the stream doesn't exist).
+    /// Progress (0–1) of the global volume-adjust fade for a stream, or None.
     pub fn volume_adjust_progress(&self, cue_id: u32) -> Option<f32> {
-        self.streams.iter()
+        self.streams
+            .iter()
             .find(|s| s.cue_id == cue_id)
-            .and_then(|s| s.volume_adjust.as_ref())
+            .and_then(|s| s.global_adjust.as_ref())
             .map(|adj| {
                 if adj.fade_time > 0.0 {
                     (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
@@ -256,6 +352,19 @@ impl AudioPlaybackEngine {
             })
     }
 
+    /// Current per-route volume for a specific device on a stream (for UI display).
+    pub fn route_volume(&self, cue_id: u32, device_name: &str) -> Option<f32> {
+        self.streams
+            .iter()
+            .find(|s| s.cue_id == cue_id)
+            .and_then(|s| {
+                let name = device_name;
+                s.device_sinks
+                    .iter()
+                    .find(|ds| ds.device_name == name || (name.is_empty() && ds.device_name == s.device_sinks[0].device_name))
+                    .map(|ds| ds.volume)
+            })
+    }
 }
 
 impl Default for AudioPlaybackEngine {

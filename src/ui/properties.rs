@@ -324,6 +324,65 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             });
             ui.end_row();
         });
+
+    // ── Output routing ────────────────────────────────────────────────────────
+    let device_names = app.audio_player.device_names();
+    let routes: Vec<crate::cue::AudioOutputRoute> = cue.audio_data()
+        .map(|d| d.output_routes.clone())
+        .unwrap_or_default();
+
+    ui.add_space(6.0);
+    ui.collapsing("Output Routing", |ui| {
+        ui.label(
+            egui::RichText::new("Empty = default device at full cue volume")
+                .small().italics()
+        );
+        let mut changed = false;
+        let mut new_routes = routes.clone();
+
+        for (i, route) in new_routes.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt(("route_dev", i))
+                    .selected_text(if route.device_name.is_empty() { "Default" } else { &route.device_name })
+                    .width(140.0)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
+                            route.device_name.clear();
+                            changed = true;
+                        }
+                        for name in &device_names {
+                            if ui.selectable_label(&route.device_name == name, name).clicked() {
+                                route.device_name = name.clone();
+                                changed = true;
+                            }
+                        }
+                    });
+                let mut vol_pct = (route.volume * 100.0) as i32;
+                if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+                    route.volume = vol_pct as f32 / 100.0;
+                    changed = true;
+                }
+                if ui.small_button("✕").clicked() {
+                    new_routes.remove(i);
+                    changed = true;
+                    return;
+                }
+            });
+        }
+
+        if ui.small_button("+ Add Output").clicked() {
+            new_routes.push(crate::cue::AudioOutputRoute::default());
+            changed = true;
+        }
+
+        if changed {
+            if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                if let Some(d) = c.audio_data_mut() {
+                    d.output_routes = new_routes;
+                }
+            }
+        }
+    });
 }
 
 /// Render properties for an Adjust cue (sound master ramp + optional stop)
@@ -431,6 +490,68 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             });
             ui.end_row();
         });
+
+    // ── Output fade routing ───────────────────────────────────────────────────
+    let device_names = app.audio_player.device_names();
+    let output_fades: Vec<crate::cue::OutputFade> = cue.adjust_data()
+        .map(|d| d.output_fades.clone())
+        .unwrap_or_default();
+
+    ui.add_space(6.0);
+    ui.collapsing("Output Fades", |ui| {
+        ui.label(
+            egui::RichText::new("Fade per-device volume on the targeted audio stream.\nUse fade time above. Empty = adjust master/cue volume only.")
+                .small().italics()
+        );
+        let mut changed = false;
+        let mut new_fades = output_fades.clone();
+
+        let mut to_remove: Option<usize> = None;
+        for (i, fade) in new_fades.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt(("ofade_dev", i))
+                    .selected_text(if fade.device_name.is_empty() { "Default" } else { &fade.device_name })
+                    .width(140.0)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(fade.device_name.is_empty(), "Default").clicked() {
+                            fade.device_name.clear(); changed = true;
+                        }
+                        for name in &device_names {
+                            if ui.selectable_label(&fade.device_name == name, name).clicked() {
+                                fade.device_name = name.clone(); changed = true;
+                            }
+                        }
+                    });
+                ui.label("→");
+                let mut vol_pct = (fade.target_volume * 100.0) as i32;
+                if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+                    fade.target_volume = vol_pct as f32 / 100.0;
+                    changed = true;
+                }
+                if ui.small_button("✕").clicked() {
+                    to_remove = Some(i);
+                    changed = true;
+                }
+            });
+        }
+        if let Some(i) = to_remove { new_fades.remove(i); }
+
+        if ui.small_button("+ Add Device Fade").clicked() {
+            new_fades.push(crate::cue::OutputFade {
+                device_name: String::new(),
+                target_volume: 0.0,
+            });
+            changed = true;
+        }
+
+        if changed {
+            if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                if let Some(d) = c.adjust_data_mut() {
+                    d.output_fades = new_fades;
+                }
+            }
+        }
+    });
 }
 
 /// Render properties for a single selected channel
