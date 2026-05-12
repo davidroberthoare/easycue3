@@ -944,6 +944,7 @@ impl EasyCueApp {
                     target_id,
                     &fade.device_name,
                     fade.target_volume,
+                    fade.target_pan,
                     data.fade_time,
                     false, // stop_when_complete handled separately if needed
                 );

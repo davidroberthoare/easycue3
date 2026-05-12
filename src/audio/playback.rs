@@ -3,15 +3,17 @@
 //! Each audio cue gets its own set of Sinks — one per output route.  Firing a
 //! new cue never stops existing ones; each stream runs independently.
 //!
-//! An Adjust cue can fade the volume on individual output routes (to move sound
-//! between speakers) or adjust the overall cue or master volume as before.
+//! An Adjust cue can fade the volume and/or pan on individual output routes
+//! (to move sound between speakers or sweep stereo position) or adjust the
+//! overall cue or master volume as before.
 
-use crate::audio::{AudioCueState, AudioPlayer};
+use crate::audio::{pan_source::PanSource, AudioCueState, AudioPlayer};
 use crate::cue::Cue;
-use rodio::Decoder;
-use std::collections::HashMap;
+use rodio::{Decoder, Source};
 use std::fs::File;
 use std::io::BufReader;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 /// In-progress volume ramp on a single output-device route.
@@ -23,7 +25,15 @@ struct RouteAdjust {
     stop_when_complete: bool,
 }
 
-/// One device sink with its own per-route volume and an optional in-progress fade.
+/// In-progress pan sweep on a single output-device route.
+struct RoutePanAdjust {
+    start_pan: f32,
+    target_pan: f32,
+    fade_time: f32,
+    start: Instant,
+}
+
+/// One device sink with its own per-route volume/pan and optional in-progress fades.
 struct DeviceSink {
     device_name: String,
     sink: rodio::Sink,
@@ -31,6 +41,18 @@ struct DeviceSink {
     volume: f32,
     /// Ongoing route-level volume fade (from an Adjust cue).
     adjust: Option<RouteAdjust>,
+    /// Current stereo pan (-1.0 = L, 0.0 = centre, 1.0 = R).
+    pan: f32,
+    /// Shared control that the PanSource reads from the audio thread.
+    pan_ctrl: Arc<AtomicU32>,
+    /// Ongoing pan sweep (from an Adjust cue).
+    pan_adjust: Option<RoutePanAdjust>,
+}
+
+impl DeviceSink {
+    fn write_pan(&self) {
+        self.pan_ctrl.store(self.pan.to_bits(), Ordering::Relaxed);
+    }
 }
 
 struct ActiveAudioStream {
@@ -87,7 +109,7 @@ impl AudioPlaybackEngine {
         };
 
         let mut device_sinks = Vec::with_capacity(route_sinks.len());
-        for (device_name, sink, route_vol) in route_sinks {
+        for (device_name, sink, route_vol, route_pan) in route_sinks {
             // Each device sink needs its own decoder — re-open the file.
             let file = match File::open(&resolved) {
                 Ok(f) => f,
@@ -96,16 +118,25 @@ impl AudioPlaybackEngine {
                     continue;
                 }
             };
-            let source = match Decoder::new(BufReader::new(file)) {
+            let raw = match Decoder::new(BufReader::new(file)) {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("Audio: decode error on '{}': {}", device_name, e);
                     continue;
                 }
             };
+            let (panned, pan_ctrl) = PanSource::new(raw.convert_samples::<f32>(), route_pan);
             sink.set_volume(initial_volume * route_vol);
-            sink.append(source);
-            device_sinks.push(DeviceSink { device_name, sink, volume: route_vol, adjust: None });
+            sink.append(panned);
+            device_sinks.push(DeviceSink {
+                device_name,
+                sink,
+                volume: route_vol,
+                adjust: None,
+                pan: route_pan,
+                pan_ctrl,
+                pan_adjust: None,
+            });
         }
 
         if device_sinks.is_empty() {
@@ -162,13 +193,15 @@ impl AudioPlaybackEngine {
         }
     }
 
-    /// Fade the per-route volume for a specific output device on a stream.
+    /// Fade the per-route volume and/or pan for a specific output device on a stream.
     /// `cue_id == 0` targets all active streams.  `device_name` empty = default device.
+    /// `target_pan` of `None` leaves pan unchanged.
     pub fn adjust_stream_output(
         &mut self,
         cue_id: u32,
         device_name: &str,
         target_vol: f32,
+        target_pan: Option<f32>,
         fade_time: f32,
         stop_when_complete: bool,
     ) {
@@ -176,7 +209,6 @@ impl AudioPlaybackEngine {
             if cue_id != 0 && stream.cue_id != cue_id {
                 continue;
             }
-            // Find the matching device sink (fall back to first if name is empty).
             let ds_idx = if device_name.is_empty() {
                 Some(0)
             } else {
@@ -184,8 +216,11 @@ impl AudioPlaybackEngine {
             };
             if let Some(idx) = ds_idx {
                 let ds = &mut stream.device_sinks[idx];
+
+                // Volume
                 if fade_time <= 0.0 {
                     ds.volume = target_vol;
+                    ds.adjust = None;
                     if stop_when_complete {
                         ds.sink.stop();
                     }
@@ -197,6 +232,22 @@ impl AudioPlaybackEngine {
                         start: Instant::now(),
                         stop_when_complete,
                     });
+                }
+
+                // Pan
+                if let Some(tp) = target_pan {
+                    if fade_time <= 0.0 {
+                        ds.pan = tp;
+                        ds.pan_adjust = None;
+                        ds.write_pan();
+                    } else {
+                        ds.pan_adjust = Some(RoutePanAdjust {
+                            start_pan: ds.pan,
+                            target_pan: tp,
+                            fade_time,
+                            start: Instant::now(),
+                        });
+                    }
                 }
             }
         }
@@ -284,9 +335,9 @@ impl AudioPlaybackEngine {
 
             let base = stream.base_volume * fade_factor;
 
-            // Apply volume to each device sink (advance per-route fades too).
+            // Apply volume and pan to each device sink.
             for ds in stream.device_sinks.iter_mut() {
-                // Advance per-route adjust.
+                // Advance per-route volume adjust.
                 if let Some(adj) = ds.adjust.take() {
                     let progress = if adj.fade_time > 0.0 {
                         (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
@@ -299,6 +350,20 @@ impl AudioPlaybackEngine {
                     } else if adj.stop_when_complete {
                         ds.sink.stop();
                         continue;
+                    }
+                }
+
+                // Advance per-route pan sweep.
+                if let Some(adj) = ds.pan_adjust.take() {
+                    let progress = if adj.fade_time > 0.0 {
+                        (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
+                    ds.pan = adj.start_pan + (adj.target_pan - adj.start_pan) * progress;
+                    ds.write_pan();
+                    if progress < 1.0 {
+                        ds.pan_adjust = Some(adj);
                     }
                 }
 
@@ -358,11 +423,31 @@ impl AudioPlaybackEngine {
             .iter()
             .find(|s| s.cue_id == cue_id)
             .and_then(|s| {
-                let name = device_name;
                 s.device_sinks
                     .iter()
-                    .find(|ds| ds.device_name == name || (name.is_empty() && ds.device_name == s.device_sinks[0].device_name))
+                    .find(|ds| {
+                        ds.device_name == device_name
+                            || (device_name.is_empty()
+                                && ds.device_name == s.device_sinks[0].device_name)
+                    })
                     .map(|ds| ds.volume)
+            })
+    }
+
+    /// Current per-route pan for a specific device on a stream (for UI display).
+    pub fn route_pan(&self, cue_id: u32, device_name: &str) -> Option<f32> {
+        self.streams
+            .iter()
+            .find(|s| s.cue_id == cue_id)
+            .and_then(|s| {
+                s.device_sinks
+                    .iter()
+                    .find(|ds| {
+                        ds.device_name == device_name
+                            || (device_name.is_empty()
+                                && ds.device_name == s.device_sinks[0].device_name)
+                    })
+                    .map(|ds| ds.pan)
             })
     }
 }

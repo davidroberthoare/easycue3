@@ -377,6 +377,22 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     route.volume = vol_pct as f32 / 100.0;
                     changed = true;
                 }
+                // Pan: -100 = full L, 0 = centre, +100 = full R
+                ui.label("Pan:");
+                let mut pan_pct = (route.pan * 100.0).round() as i32;
+                if ui.add(
+                    egui::DragValue::new(&mut pan_pct)
+                        .speed(1.0)
+                        .range(-100..=100)
+                        .custom_formatter(|n, _| {
+                            if n.abs() < 0.5 { "C".into() }
+                            else if n < 0.0 { format!("L{}", (-n).round() as i32) }
+                            else { format!("R{}", n.round() as i32) }
+                        })
+                ).changed() {
+                    route.pan = pan_pct as f32 / 100.0;
+                    changed = true;
+                }
                 if ui.small_button(ph::TRASH).clicked() {
                     remove_idx = Some(i);
                     changed = true;
@@ -439,11 +455,16 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                     .map(|n| format!("{:.1}", n))
                     .unwrap_or_default();
             }
+            let hint = if target_audio_cue.is_none() {
+                "blank = global master"
+            } else {
+                "cue number"
+            };
             let target_resp = ui.add(
                 egui::TextEdit::singleline(&mut app.ui_state.adjust_target_edit)
                     .id(target_id)
                     .desired_width(80.0)
-                    .hint_text("all (master)"),
+                    .hint_text(hint),
             );
             if target_resp.lost_focus() {
                 let parsed = app.ui_state.adjust_target_edit.trim().parse::<f32>().ok();
@@ -539,11 +560,34 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                             }
                         }
                     });
-                ui.label("→");
+                ui.label("Vol→");
                 let mut vol_pct = (fade.target_volume * 100.0) as i32;
                 if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
                     fade.target_volume = vol_pct as f32 / 100.0;
                     changed = true;
+                }
+                // Optional pan fade: checkbox enables it, then a L/C/R DragValue
+                ui.label("Pan:");
+                let mut pan_enabled = fade.target_pan.is_some();
+                if ui.checkbox(&mut pan_enabled, "").changed() {
+                    fade.target_pan = if pan_enabled { Some(0.0) } else { None };
+                    changed = true;
+                }
+                if let Some(ref mut tp) = fade.target_pan {
+                    let mut pan_pct = (*tp * 100.0).round() as i32;
+                    if ui.add(
+                        egui::DragValue::new(&mut pan_pct)
+                            .speed(1.0)
+                            .range(-100..=100)
+                            .custom_formatter(|n, _| {
+                                if n.abs() < 0.5 { "C".into() }
+                                else if n < 0.0 { format!("L{}", (-n).round() as i32) }
+                                else { format!("R{}", n.round() as i32) }
+                            })
+                    ).changed() {
+                        *tp = pan_pct as f32 / 100.0;
+                        changed = true;
+                    }
                 }
                 if ui.small_button("✕").clicked() {
                     to_remove = Some(i);
@@ -557,6 +601,7 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             new_fades.push(crate::cue::OutputFade {
                 device_name: String::new(),
                 target_volume: 0.0,
+                target_pan: None,
             });
             changed = true;
         }

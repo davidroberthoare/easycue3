@@ -121,7 +121,16 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 .last()
                 .map(|c| c.number.floor() + 1.0)
                 .unwrap_or(1.0);
-            let cue = crate::cue::Cue::new_adjust(next_number);
+            // Auto-target: find the most recent audio cue in the list so the
+            // Adjust operates on that cue's volume directly rather than the
+            // global master (which starts at 1.0 and makes UP fades confusing).
+            let prev_audio_num: Option<f32> = app.cue_list.cues().iter()
+                .rev()
+                .find_map(|c| c.audio_data().map(|_| c.number));
+            let mut cue = crate::cue::Cue::new_adjust(next_number);
+            if let crate::cue::CueKind::Adjust(ref mut d) = cue.kind {
+                d.target_audio_cue = prev_audio_num;
+            }
             let id = app.cue_list.next_id();
             app.cue_list.add_cue(cue);
             app.ui_state.selected_cue_id = Some(id);
@@ -199,6 +208,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
     let selected_id       = app.ui_state.selected_cue_id;
     let next_any_idx      = app.cue_list.next_any_index();
+    let current_any_idx   = app.cue_list.current_index();
     let lx_active_id      = app.playback.current_cue_id();
     let lx_fade           = app.playback.fade_progress();
     #[cfg(feature = "audio")]
@@ -344,10 +354,15 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
                 // Adjust cue: active while its targeted stream has a volume-adjust in progress,
                 // or while the global sound fade it triggered is still running.
+                // Guard on current_any_idx so that multiple adjust cues targeting the same
+                // audio stream don't all light up when only one of them has fired.
                 #[cfg(feature = "audio")]
                 let adjust_progress: Option<f32> = if is_adjust {
                     cue.adjust_data().and_then(|d| {
                         if let Some(target_num) = d.target_audio_cue {
+                            if current_any_idx != Some(abs_idx) {
+                                return None;
+                            }
                             let target_id = app.cue_list.cues().iter()
                                 .find(|c| (c.number - target_num).abs() < 0.005)
                                 .map(|c| c.id);

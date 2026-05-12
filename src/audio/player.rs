@@ -113,15 +113,15 @@ impl AudioPlayer {
     }
 
     /// Create sinks for all routes in `routes`.  If `routes` is empty, returns
-    /// a single sink on the default device with volume 1.0.
-    /// Each element is `(device_name, Sink, per_route_volume)`.
+    /// a single sink on the default device with volume 1.0 and pan 0.0.
+    /// Each element is `(device_name, Sink, per_route_volume, pan)`.
     pub fn new_sinks_for_routes(
         &self,
         routes: &[AudioOutputRoute],
-    ) -> Vec<(String, Sink, f32)> {
+    ) -> Vec<(String, Sink, f32, f32)> {
         if routes.is_empty() {
             match self.new_sink("") {
-                Ok(sink) => vec![(self.default_name().to_string(), sink, 1.0)],
+                Ok(sink) => vec![(self.default_name().to_string(), sink, 1.0, 0.0)],
                 Err(e) => {
                     log::error!("Audio: failed to create default sink: {}", e);
                     vec![]
@@ -138,7 +138,7 @@ impl AudioPlayer {
                             } else {
                                 route.device_name.clone()
                             };
-                            Some((name, sink, route.volume))
+                            Some((name, sink, route.volume, route.pan))
                         }
                         Err(e) => {
                             log::warn!(

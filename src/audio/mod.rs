@@ -10,6 +10,8 @@ pub mod types;
 pub mod player;
 #[cfg(feature = "audio")]
 pub mod playback;
+#[cfg(feature = "audio")]
+pub mod pan_source;
 
 #[cfg(feature = "audio")]
 pub use types::{AudioCue, AudioCueState};

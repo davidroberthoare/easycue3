@@ -56,6 +56,10 @@ pub struct AudioOutputRoute {
     /// Per-route volume scale (0.0–1.0); multiplied with the cue's base volume.
     #[serde(default = "default_route_volume", serialize_with = "crate::serde_helpers::round_f32_2")]
     pub volume: f32,
+    /// Stereo pan position: -1.0 = full left, 0.0 = center, 1.0 = full right.
+    /// Uses constant-power pan law. Only affects stereo sources.
+    #[serde(default, serialize_with = "crate::serde_helpers::round_f32_2")]
+    pub pan: f32,
 }
 
 #[cfg(feature = "audio")]
@@ -64,15 +68,15 @@ fn default_route_volume() -> f32 { 1.0 }
 #[cfg(feature = "audio")]
 impl Default for AudioOutputRoute {
     fn default() -> Self {
-        Self { device_name: String::new(), volume: 1.0 }
+        Self { device_name: String::new(), volume: 1.0, pan: 0.0 }
     }
 }
 
-/// A per-output volume fade issued by an Adjust cue.
+/// A per-output volume and/or pan fade issued by an Adjust cue.
 ///
-/// Fades the volume of a specific output device route on the targeted audio stream.
-/// This is how you "move" sound between outputs: set one device to 0.0 and
-/// another to 1.0 over a shared `fade_time` in `AdjustData`.
+/// Fades the volume and/or pan of a specific output device route on the targeted
+/// audio stream.  Use `output_fades` to move sound between outputs (fade one
+/// device to 0.0, another to 1.0) or to sweep pan position over `fade_time`.
 #[cfg(feature = "audio")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputFade {
@@ -81,6 +85,10 @@ pub struct OutputFade {
     /// Volume to fade to (0.0–1.0).
     #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub target_volume: f32,
+    /// Pan position to fade to (-1.0 = full left, 0.0 = center, 1.0 = full right).
+    /// None = do not fade pan (volume only).
+    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
+    pub target_pan: Option<f32>,
 }
 
 /// Data for an audio cue: file path and playback settings
