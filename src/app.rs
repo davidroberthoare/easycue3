@@ -500,13 +500,12 @@ impl EasyCueApp {
             let audio_init_start = std::time::Instant::now();
             log::info!("[startup][audio] Initializing audio subsystem");
             let player = AudioPlayer::new().unwrap_or_else(|e| {
-                log::error!("Failed to initialize audio player: {}", e);
-                AudioPlayer::new().unwrap()
+                panic!("Could not open default audio output: {}", e);
             });
             let playback = AudioPlaybackEngine::new();
             log::info!(
                 "[startup][audio] Audio subsystem initialized in {:.2}ms",
-                audio_init_start.elapsed().as_secs_f64() * 1000.0
+                audio_init_start.elapsed().as_secs_f64() * 1000.0,
             );
             (player, playback)
         };
