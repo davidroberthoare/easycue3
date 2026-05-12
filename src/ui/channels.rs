@@ -171,16 +171,7 @@ fn set_selected_fixtures_intensity(app: &mut EasyCueApp, intensity: f32) {
                     let _ = universe.set_channel(channel, (intensity * 100.0).round() as u8);
                 }
                 if intensity > 0.0 && profile.is_rgb() {
-                    let all_dark = profile.parameters.iter()
-                        .filter(|pm| pm.parameter.is_color())
-                        .all(|pm| universe.get_channel(patch.start_address + pm.channel_offset).unwrap_or(0) == 0);
-                    if all_dark {
-                        for pm in &profile.parameters {
-                            if pm.parameter.is_color() {
-                                let _ = universe.set_channel(patch.start_address + pm.channel_offset, pm.default_value.unwrap_or(100));
-                            }
-                        }
-                    }
+                    crate::fixtures::intensity::init_color_defaults_if_dark(universe, &patch, profile);
                 }
             } else if profile.is_rgb() {
                 let _ = app.virtual_intensity.set_intensity(fixture_id, intensity, universe, &patch, profile);

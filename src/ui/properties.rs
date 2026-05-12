@@ -825,18 +825,7 @@ fn render_fixture_properties(
         // zero (uninitialized), apply each color channel's profile default (or 100
         // = white if the profile doesn't specify one).
         if v > 0 && is_rgb {
-            let all_dark = r == 0 && g == 0 && b == 0
-                && amber_ch.map_or(true, |_| amber == 0)
-                && white_ch.map_or(true, |_| white == 0)
-                && uv_ch.map_or(true,   |_| uv    == 0);
-            if all_dark {
-                for pm in &profile.parameters {
-                    if pm.parameter.is_color() {
-                        let ch = patch.start_address + pm.channel_offset;
-                        let _ = universe.set_channel(ch, pm.default_value.unwrap_or(100));
-                    }
-                }
-            }
+            crate::fixtures::intensity::init_color_defaults_if_dark(universe, patch, profile);
         }
     }
     if let Some(v) = apply_int_vi {
@@ -1386,20 +1375,8 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
             if fi.has_intensity {
                 if let Some(u) = app.universes.first_mut() {
                     let _ = u.set_channel(fi.intensity_ch, new_val);
-                    // Apply color defaults when turning on a dark intensity+RGB fixture.
-                    let has_rgb = fi.r_ch.is_some() || fi.g_ch.is_some() || fi.b_ch.is_some();
-                    if new_val > 0 && has_rgb {
-                        let dark = [fi.r_ch, fi.g_ch, fi.b_ch, fi.amber_ch, fi.white_ch, fi.uv_ch]
-                            .into_iter().flatten()
-                            .all(|ch| u.get_channel(ch).unwrap_or(0) == 0);
-                        if dark {
-                            for pm in &fi.profile.parameters {
-                                if pm.parameter.is_color() {
-                                    let ch = fi.patch.start_address + pm.channel_offset;
-                                    let _ = u.set_channel(ch, pm.default_value.unwrap_or(100));
-                                }
-                            }
-                        }
+                    if new_val > 0 && fi.profile.is_rgb() {
+                        crate::fixtures::intensity::init_color_defaults_if_dark(u, &fi.patch, &fi.profile);
                     }
                 }
             } else if fi.is_rgb_only {

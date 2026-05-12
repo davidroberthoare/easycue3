@@ -235,6 +235,24 @@ impl VirtualIntensity {
     }
 }
 
+/// Seeds color channels from their profile defaults when intensity is raised on a dark fixture.
+///
+/// Call this after writing a non-zero value to the intensity channel of an intensity+RGB fixture.
+/// If all color channels are currently at zero (fixture was never touched), each color channel is
+/// set to its profile `default_value`, falling back to 100 (white) when unspecified.
+pub fn init_color_defaults_if_dark(universe: &mut Universe, patch: &Patch, profile: &FixtureProfile) {
+    let all_dark = profile.parameters.iter()
+        .filter(|pm| pm.parameter.is_color())
+        .all(|pm| universe.get_channel(patch.start_address + pm.channel_offset).unwrap_or(0) == 0);
+    if all_dark {
+        for pm in &profile.parameters {
+            if pm.parameter.is_color() {
+                let _ = universe.set_channel(patch.start_address + pm.channel_offset, pm.default_value.unwrap_or(100));
+            }
+        }
+    }
+}
+
 impl Default for VirtualIntensity {
     fn default() -> Self {
         Self::new()
