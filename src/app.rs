@@ -676,7 +676,10 @@ impl EasyCueApp {
             canvas_zoom: self.magic_sheet.canvas_zoom,
             ..MagicSheetState::default()
         };
-        self.show_title = show.title.clone();
+        self.show_title = path.file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "Untitled".to_string());
         self.current_file_path = Some(path.to_path_buf());
         self.ui_state.selected_cue_id = None;
         self.ui_state.selected_lighting_cue_id = None;
@@ -693,8 +696,12 @@ impl EasyCueApp {
     }
 
     /// Save the current show to a file
-    pub fn save_show(&mut self, path: &std::path::Path, title: &str) -> anyhow::Result<()> {
-        let mut show = ShowFile::new(title);
+    pub fn save_show(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
+        let title = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled");
+
+        let mut show = ShowFile::new();
         show.next_cue_id = self.cue_list.next_id();
         show.cues = self.cue_list.cues().to_vec();
         show.patch = self.fixtures.patch_list().patches().to_vec();
@@ -708,6 +715,7 @@ impl EasyCueApp {
         }
         show.save(path)?;
         self.current_file_path = Some(path.to_path_buf());
+        self.show_title = title.to_string();
         log::info!("Saved show: {} ({} cues, {} fixtures)", title, show.cues.len(), show.patch.len());
         Ok(())
     }

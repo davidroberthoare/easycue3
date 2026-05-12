@@ -104,8 +104,7 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
     if save_requested {
         // Save - use current file path if available, otherwise prompt
         if let Some(path) = &app.current_file_path.clone() {
-            let title = app.show_title.clone();
-            match app.save_show(path, &title) {
+            match app.save_show(path) {
                 Ok(_) => {
                     app.ui_state.status_message = format!("Saved to {:?}", path);
                     log::info!("Saved show to {:?}", path);
@@ -124,7 +123,7 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
                 .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
                 .save_file()
             {
-                match app.save_show(&path, &title) {
+                match app.save_show(&path) {
                     Ok(_) => {
                         app.ui_state.status_message = format!("Saved to {:?}", path);
                         log::info!("Saved show to {:?}", path);
@@ -147,7 +146,7 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
             .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
             .save_file()
         {
-            match app.save_show(&path, &title) {
+            match app.save_show(&path) {
                 Ok(_) => {
                     app.ui_state.status_message = format!("Saved to {:?}", path);
                     log::info!("Saved show to {:?}", path);
@@ -369,8 +368,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 if ui.button("Save (Ctrl+S)").clicked() {
                     // Save - use current file path if available, otherwise prompt
                     if let Some(path) = &app.current_file_path.clone() {
-                        let title = app.show_title.clone();
-                        match app.save_show(path, &title) {
+                        match app.save_show(path) {
                             Ok(_) => {
                                 app.ui_state.status_message = format!("Saved to {:?}", path);
                             }
@@ -388,7 +386,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                             .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
                             .save_file()
                         {
-                            match app.save_show(&path, &title) {
+                            match app.save_show(&path) {
                                 Ok(_) => {
                                     app.ui_state.status_message = format!("Saved to {:?}", path);
                                 }
@@ -410,7 +408,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
                         .save_file()
                     {
-                        match app.save_show(&path, &title) {
+                        match app.save_show(&path) {
                             Ok(_) => {
                                 app.ui_state.status_message = format!("Saved to {:?}", path);
                             }

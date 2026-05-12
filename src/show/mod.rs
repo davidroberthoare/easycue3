@@ -59,7 +59,6 @@ impl Default for CueColorSettings {
 /// Show file format — unified cue list (lighting + audio together)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShowFile {
-    pub title: String,
     pub description: String,
     pub created: String,
     pub modified: String,
@@ -96,10 +95,9 @@ pub struct ShowFile {
 
 impl ShowFile {
     /// Create a new empty show
-    pub fn new(title: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         Self {
-            title: title.into(),
             description: String::new(),
             created: now.clone(),
             modified: now,

@@ -295,7 +295,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let border_width = if highlight { 2.5 } else { 1.5 };
 
         draw_shape(&painter, kind, screen_center, w, h, effective_bg, Stroke::new(border_width, border_color));
-        draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb);
+        draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb, app.magic_sheet_state.canvas_zoom);
     }
 
     // ── Rubber-band selection (edit mode, no shift, drag on empty canvas) ────
@@ -727,11 +727,12 @@ fn draw_shape_label(
     fix_num: Option<usize>,
     intensity: f32,
     rgb: Option<Color32>,
+    zoom: f32,
 ) {
     let text_color = Color32::from_gray(220);
     let small_color = Color32::from_gray(160);
-    let font_sm = egui::FontId::proportional(10.0);
-    let font_md = egui::FontId::proportional(13.0);
+    let font_sm = egui::FontId::proportional(10.0 * zoom);
+    let font_md = egui::FontId::proportional(13.0 * zoom);
 
     if let Some(num) = fix_num {
         painter.text(
@@ -744,7 +745,7 @@ fn draw_shape_label(
     }
 
     if let Some(color) = rgb {
-        let swatch_r = 6.0f32.min(w / 6.0).min(h / 4.0);
+        let swatch_r = 6.0f32.min(w / 6.0).min(h / 4.0) * zoom;
         let swatch_pos = Pos2::new(center.x + w / 2.0 - swatch_r - 3.0, center.y - h / 2.0 + swatch_r + 3.0);
         painter.circle_filled(swatch_pos, swatch_r, color);
         painter.circle_stroke(swatch_pos, swatch_r, Stroke::new(0.5, Color32::from_gray(80)));
