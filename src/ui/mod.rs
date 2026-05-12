@@ -723,10 +723,52 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                 
                 ui.add_space(5.0);
                 
-                // Art-Net (disabled for now)
+                // Art-Net over Ethernet
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("🌐 Art-Net").strikethrough());
-                    ui.label(egui::RichText::new("(coming soon)").small().italics());
+                    ui.label("🌐 Art-Net (UDP):");
+                });
+                ui.indent("artnet_config", |ui| {
+                    egui::Grid::new("artnet_grid")
+                        .num_columns(2)
+                        .spacing([8.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Target IP:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut app.ui_state.artnet_target_ip)
+                                    .desired_width(140.0)
+                                    .hint_text("255.255.255.255"),
+                            );
+                            ui.end_row();
+
+                            ui.label("Universe:");
+                            ui.add(
+                                egui::DragValue::new(&mut app.ui_state.artnet_universe)
+                                    .range(0..=32767),
+                            );
+                            ui.end_row();
+                        });
+
+                    ui.add_space(4.0);
+                    if ui.button("Connect").clicked() {
+                        let ip = app.ui_state.artnet_target_ip.clone();
+                        let universe = app.ui_state.artnet_universe;
+                        match app.switch_to_artnet(&ip, universe) {
+                            Ok(_) => {
+                                app.ui_state.status_message =
+                                    format!("✓ Art-Net → {} universe {}", ip, universe);
+                                app.ui_state.show_device_selector = false;
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message = format!("✗ Art-Net error: {}", e);
+                                log::error!("Art-Net connect failed: {}", e);
+                            }
+                        }
+                    }
+                    ui.label(
+                        egui::RichText::new("Broadcast 255.255.255.255 reaches all nodes on subnet")
+                            .small()
+                            .italics(),
+                    );
                 });
                 
                 ui.add_space(15.0);
