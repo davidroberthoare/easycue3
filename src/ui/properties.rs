@@ -207,8 +207,8 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
     let Some(idx) = abs_idx else { return };
 
-    let (path, volume, fade_in, fade_out, length) = cue.audio_data()
-        .map(|d| (d.audio_path.clone(), d.volume, d.fade_in, d.fade_out, d.length))
+    let (path, fade_in, fade_out, length) = cue.audio_data()
+        .map(|d| (d.audio_path.clone(), d.fade_in, d.fade_out, d.length))
         .unwrap_or_default();
 
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("(none)").to_string();
@@ -251,15 +251,6 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             });
             ui.end_row();
 
-            ui.label("Volume:");
-            let mut vol_pct = (volume * 100.0) as i32;
-            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.audio_data_mut() { d.volume = vol_pct as f32 / 100.0; }
-                }
-            }
-            ui.end_row();
-
             ui.label("Fade In:");
             let mut fi = fade_in;
             if ui.add(egui::DragValue::new(&mut fi).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
@@ -278,7 +269,6 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             }
             ui.end_row();
 
-            // Length (optional auto-stop timer)
             ui.label("Length:");
             let mut len_enabled = length.is_some();
             let mut len_val = length.unwrap_or(10.0_f32).max(0.1);
@@ -302,7 +292,6 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             });
             ui.end_row();
 
-            // Auto-follow
             ui.label("Auto-follow:");
             let mut af_enabled = cue.autofollow.is_some();
             let mut af_delay = cue.autofollow.unwrap_or(2.0_f32).max(0.1);
@@ -325,109 +314,101 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             ui.end_row();
         });
 
-    // ── Output routing ────────────────────────────────────────────────────────
+    // ── Output routing (always visible, always at least one route) ─────────────
     let device_names = app.audio_player.device_names();
     let routes: Vec<crate::cue::AudioOutputRoute> = cue.audio_data()
         .map(|d| d.output_routes.clone())
         .unwrap_or_default();
 
     ui.add_space(6.0);
-    ui.collapsing("Output Routing", |ui| {
-        ui.label(
-            egui::RichText::new("Empty = default device at full cue volume")
-                .small().italics()
-        );
-        let mut changed = false;
-        let mut new_routes = routes.clone();
-        let mut remove_idx: Option<usize> = None;
+    ui.label(egui::RichText::new("Output Routing").strong());
 
-        // Pre-compute which device names each route should exclude (already used by another route).
-        let used_per_route: Vec<std::collections::HashSet<String>> = (0..new_routes.len())
-            .map(|i| {
-                new_routes.iter().enumerate()
-                    .filter(|(j, _)| *j != i)
-                    .map(|(_, r)| r.device_name.clone())
-                    .collect()
-            })
-            .collect();
+    let mut changed = false;
+    let mut new_routes = routes.clone();
+    let mut remove_idx: Option<usize> = None;
+    let can_remove = new_routes.len() > 1;
 
-        for (i, route) in new_routes.iter_mut().enumerate() {
-            let used = &used_per_route[i];
-            ui.horizontal(|ui| {
-                egui::ComboBox::from_id_salt(("route_dev", i))
-                    .selected_text(if route.device_name.is_empty() { "Default" } else { &route.device_name })
-                    .width(140.0)
-                    .show_ui(ui, |ui| {
-                        if !used.contains("") {
-                            if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
-                                route.device_name.clear();
-                                changed = true;
-                            }
+    let used_per_route: Vec<std::collections::HashSet<String>> = (0..new_routes.len())
+        .map(|i| {
+            new_routes.iter().enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, r)| r.device_name.clone())
+                .collect()
+        })
+        .collect();
+
+    for (i, route) in new_routes.iter_mut().enumerate() {
+        let used = &used_per_route[i];
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt(("route_dev", i))
+                .selected_text(if route.device_name.is_empty() { "Default" } else { &route.device_name })
+                .width(120.0)
+                .show_ui(ui, |ui| {
+                    if !used.contains("") {
+                        if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
+                            route.device_name.clear();
+                            changed = true;
                         }
-                        for name in &device_names {
-                            if used.contains(name) { continue; }
-                            if ui.selectable_label(&route.device_name == name, name).clicked() {
-                                route.device_name = name.clone();
-                                changed = true;
-                            }
+                    }
+                    for name in &device_names {
+                        if used.contains(name) { continue; }
+                        if ui.selectable_label(&route.device_name == name, name).clicked() {
+                            route.device_name = name.clone();
+                            changed = true;
                         }
-                    });
-                let mut vol_pct = (route.volume * 100.0) as i32;
-                if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
-                    route.volume = vol_pct as f32 / 100.0;
-                    changed = true;
-                }
-                // Pan: -100 = full L, 0 = centre, +100 = full R
-                ui.label("Pan:");
-                let mut pan_pct = (route.pan * 100.0).round() as i32;
-                if ui.add(
-                    egui::DragValue::new(&mut pan_pct)
-                        .speed(1.0)
-                        .range(-100..=100)
-                        .custom_formatter(|n, _| {
-                            if n.abs() < 0.5 { "C".into() }
-                            else if n < 0.0 { format!("L{}", (-n).round() as i32) }
-                            else { format!("R{}", n.round() as i32) }
-                        })
-                ).changed() {
-                    route.pan = pan_pct as f32 / 100.0;
-                    changed = true;
-                }
-                if ui.small_button(ph::TRASH).clicked() {
-                    remove_idx = Some(i);
-                    changed = true;
-                }
-            });
-        }
-        if let Some(i) = remove_idx {
-            new_routes.remove(i);
-        }
+                    }
+                });
+            let mut vol_pct = (route.volume * 100.0) as i32;
+            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+                route.volume = vol_pct as f32 / 100.0;
+                changed = true;
+            }
+            ui.label("Pan:");
+            let mut pan_pct = (route.pan * 100.0).round() as i32;
+            if ui.add(
+                egui::DragValue::new(&mut pan_pct)
+                    .speed(1.0)
+                    .range(-100..=100)
+                    .custom_formatter(|n, _| {
+                        if n.abs() < 0.5 { "C".into() }
+                        else if n < 0.0 { format!("L{}", (-n).round() as i32) }
+                        else { format!("R{}", n.round() as i32) }
+                    })
+            ).changed() {
+                route.pan = pan_pct as f32 / 100.0;
+                changed = true;
+            }
+            if can_remove && ui.small_button(ph::TRASH).clicked() {
+                remove_idx = Some(i);
+                changed = true;
+            }
+        });
+    }
+    if let Some(i) = remove_idx { new_routes.remove(i); }
 
-        if ui.small_button("+ Add Output").clicked() {
-            new_routes.push(crate::cue::AudioOutputRoute::default());
-            changed = true;
-        }
+    if ui.small_button("+ Add Output").clicked() {
+        new_routes.push(crate::cue::AudioOutputRoute::default());
+        changed = true;
+    }
 
-        if changed {
-            if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                if let Some(d) = c.audio_data_mut() {
-                    d.output_routes = new_routes;
-                }
+    if changed {
+        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+            if let Some(d) = c.audio_data_mut() {
+                d.output_routes = new_routes;
             }
         }
-    });
+    }
 }
 
-/// Render properties for an Adjust cue (sound master ramp + optional stop)
 #[cfg(feature = "audio")]
 fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
     ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::SLIDERS, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
 
-    let (target_audio_cue, volume, fade_time, stop_when_complete) = cue.adjust_data()
-        .map(|d| (d.target_audio_cue, d.volume, d.fade_time, d.stop_when_complete))
-        .unwrap_or((None, 0.8, 2.0, false));
+    let (target_audio_cue, fade_time, stop_when_complete) = cue.adjust_data()
+        .map(|d| (d.target_audio_cue, d.fade_time, d.stop_when_complete))
+        .unwrap_or((None, 2.0, false));
 
     egui::Grid::new("adjust_cue_props")
         .num_columns(2)
@@ -445,21 +426,14 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             }
             ui.end_row();
 
-            // Target cue: which audio cue to affect (None = global master)
             ui.label("Target Cue:");
             let target_id = ui.id().with("adjust_target_cue");
-            // Only sync from storage when the field is not actively being edited,
-            // so the user's in-progress typing isn't overwritten each frame.
             if !ui.memory(|m| m.has_focus(target_id)) {
                 app.ui_state.adjust_target_edit = target_audio_cue
                     .map(|n| format!("{:.1}", n))
                     .unwrap_or_default();
             }
-            let hint = if target_audio_cue.is_none() {
-                "blank = global master"
-            } else {
-                "cue number"
-            };
+            let hint = if target_audio_cue.is_none() { "blank = all streams" } else { "cue number" };
             let target_resp = ui.add(
                 egui::TextEdit::singleline(&mut app.ui_state.adjust_target_edit)
                     .id(target_id)
@@ -470,15 +444,6 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                 let parsed = app.ui_state.adjust_target_edit.trim().parse::<f32>().ok();
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
                     if let Some(d) = c.adjust_data_mut() { d.target_audio_cue = parsed; }
-                }
-            }
-            ui.end_row();
-
-            ui.label("Target Vol:");
-            let mut vol_pct = (volume * 100.0) as i32;
-            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.adjust_data_mut() { d.volume = vol_pct as f32 / 100.0; }
                 }
             }
             ui.end_row();
@@ -506,7 +471,6 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             }
             ui.end_row();
 
-            // Auto-follow
             ui.label("Auto-follow:");
             let mut af_enabled = cue.autofollow.is_some();
             let mut af_delay = cue.autofollow.unwrap_or(2.0_f32).max(0.1);
@@ -529,91 +493,86 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             ui.end_row();
         });
 
-    // ── Output fade routing ───────────────────────────────────────────────────
+    // ── Output fades (always visible, always at least one) ────────────────────
     let device_names = app.audio_player.device_names();
     let output_fades: Vec<crate::cue::OutputFade> = cue.adjust_data()
         .map(|d| d.output_fades.clone())
         .unwrap_or_default();
 
     ui.add_space(6.0);
-    ui.collapsing("Output Fades", |ui| {
-        ui.label(
-            egui::RichText::new("Fade per-device volume on the targeted audio stream.\nUse fade time above. Empty = adjust master/cue volume only.")
-                .small().italics()
-        );
-        let mut changed = false;
-        let mut new_fades = output_fades.clone();
+    ui.label(egui::RichText::new("Output Fades").strong());
 
-        let mut to_remove: Option<usize> = None;
-        for (i, fade) in new_fades.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                egui::ComboBox::from_id_salt(("ofade_dev", i))
-                    .selected_text(if fade.device_name.is_empty() { "Default" } else { &fade.device_name })
-                    .width(140.0)
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_label(fade.device_name.is_empty(), "Default").clicked() {
-                            fade.device_name.clear(); changed = true;
-                        }
-                        for name in &device_names {
-                            if ui.selectable_label(&fade.device_name == name, name).clicked() {
-                                fade.device_name = name.clone(); changed = true;
-                            }
-                        }
-                    });
-                ui.label("Vol→");
-                let mut vol_pct = (fade.target_volume * 100.0) as i32;
-                if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
-                    fade.target_volume = vol_pct as f32 / 100.0;
-                    changed = true;
-                }
-                // Optional pan fade: checkbox enables it, then a L/C/R DragValue
-                ui.label("Pan:");
-                let mut pan_enabled = fade.target_pan.is_some();
-                if ui.checkbox(&mut pan_enabled, "").changed() {
-                    fade.target_pan = if pan_enabled { Some(0.0) } else { None };
-                    changed = true;
-                }
-                if let Some(ref mut tp) = fade.target_pan {
-                    let mut pan_pct = (*tp * 100.0).round() as i32;
-                    if ui.add(
-                        egui::DragValue::new(&mut pan_pct)
-                            .speed(1.0)
-                            .range(-100..=100)
-                            .custom_formatter(|n, _| {
-                                if n.abs() < 0.5 { "C".into() }
-                                else if n < 0.0 { format!("L{}", (-n).round() as i32) }
-                                else { format!("R{}", n.round() as i32) }
-                            })
-                    ).changed() {
-                        *tp = pan_pct as f32 / 100.0;
-                        changed = true;
+    let mut changed = false;
+    let mut new_fades = output_fades.clone();
+    let mut to_remove: Option<usize> = None;
+    let can_remove = new_fades.len() > 1;
+
+    for (i, fade) in new_fades.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt(("ofade_dev", i))
+                .selected_text(if fade.device_name.is_empty() { "Default" } else { &fade.device_name })
+                .width(120.0)
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(fade.device_name.is_empty(), "Default").clicked() {
+                        fade.device_name.clear(); changed = true;
                     }
-                }
-                if ui.small_button("✕").clicked() {
-                    to_remove = Some(i);
+                    for name in &device_names {
+                        if ui.selectable_label(&fade.device_name == name, name).clicked() {
+                            fade.device_name = name.clone(); changed = true;
+                        }
+                    }
+                });
+            let mut vol_pct = (fade.target_volume * 100.0) as i32;
+            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+                fade.target_volume = vol_pct as f32 / 100.0;
+                changed = true;
+            }
+            ui.label("Pan:");
+            let mut pan_enabled = fade.target_pan.is_some();
+            if ui.checkbox(&mut pan_enabled, "").changed() {
+                fade.target_pan = if pan_enabled { Some(0.0) } else { None };
+                changed = true;
+            }
+            if let Some(ref mut tp) = fade.target_pan {
+                let mut pan_pct = (*tp * 100.0).round() as i32;
+                if ui.add(
+                    egui::DragValue::new(&mut pan_pct)
+                        .speed(1.0)
+                        .range(-100..=100)
+                        .custom_formatter(|n, _| {
+                            if n.abs() < 0.5 { "C".into() }
+                            else if n < 0.0 { format!("L{}", (-n).round() as i32) }
+                            else { format!("R{}", n.round() as i32) }
+                        })
+                ).changed() {
+                    *tp = pan_pct as f32 / 100.0;
                     changed = true;
-                }
-            });
-        }
-        if let Some(i) = to_remove { new_fades.remove(i); }
-
-        if ui.small_button("+ Add Device Fade").clicked() {
-            new_fades.push(crate::cue::OutputFade {
-                device_name: String::new(),
-                target_volume: 0.0,
-                target_pan: None,
-            });
-            changed = true;
-        }
-
-        if changed {
-            if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                if let Some(d) = c.adjust_data_mut() {
-                    d.output_fades = new_fades;
                 }
             }
+            if can_remove && ui.small_button("✕").clicked() {
+                to_remove = Some(i);
+                changed = true;
+            }
+        });
+    }
+    if let Some(i) = to_remove { new_fades.remove(i); }
+
+    if ui.small_button("+ Add Device Fade").clicked() {
+        new_fades.push(crate::cue::OutputFade {
+            device_name: String::new(),
+            target_volume: 1.0,
+            target_pan: None,
+        });
+        changed = true;
+    }
+
+    if changed {
+        if let Some(c) = app.cue_list.get_cue_mut(idx) {
+            if let Some(d) = c.adjust_data_mut() {
+                d.output_fades = new_fades;
+            }
         }
-    });
+    }
 }
 
 /// Render properties for a single selected channel

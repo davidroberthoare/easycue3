@@ -217,15 +217,6 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     #[cfg(not(feature = "audio"))]
     let audio_active_set: std::collections::HashSet<u32> = std::collections::HashSet::new();
 
-    // Pre-compute global sound-fade state so we can highlight the triggering Adjust cue row.
-    #[cfg(feature = "audio")]
-    let sound_fade_trigger: Option<u32> = app.sound_fade.as_ref().map(|sf| sf.trigger_cue_id);
-    #[cfg(feature = "audio")]
-    let sound_fade_progress: f32 = app.sound_fade.as_ref().map(|sf| {
-        if sf.fade_time > 0.0 {
-            (sf.start.elapsed().as_secs_f32() / sf.fade_time).clamp(0.0, 1.0)
-        } else { 1.0 }
-    }).unwrap_or(0.0);
 
     let cue_count = app.cue_list.len();
 
@@ -309,11 +300,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                                 let stop = if d.stop_when_complete { "+stop" } else { "" };
                                 let target = d.target_audio_cue
                                     .map(|n| format!("Q{:.1} ", n))
-                                    .unwrap_or_else(|| "master ".to_string());
+                                    .unwrap_or_else(|| "all ".to_string());
+                                let vol_hint = d.output_fades.first()
+                                    .map(|f| format!("{:.0}%", f.target_volume * 100.0))
+                                    .unwrap_or_default();
                                 if d.fade_time > 0.0 {
-                                    format!("{}{}{:.0}% {:.1}s{}", target, ph::CARET_RIGHT, d.volume * 100.0, d.fade_time, stop)
+                                    format!("{}{}{} {:.1}s{}", target, ph::CARET_RIGHT, vol_hint, d.fade_time, stop)
                                 } else {
-                                    format!("{}{}{:.0}% snap{}", target, ph::CARET_RIGHT, d.volume * 100.0, stop)
+                                    format!("{}{}{} snap{}", target, ph::CARET_RIGHT, vol_hint, stop)
                                 }
                             })
                             .unwrap_or_default()
@@ -352,26 +346,21 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 #[cfg(not(feature = "audio"))]
                 let is_audio_fading = false;
 
-                // Adjust cue: active while its targeted stream has a volume-adjust in progress,
-                // or while the global sound fade it triggered is still running.
-                // Guard on current_any_idx so that multiple adjust cues targeting the same
-                // audio stream don't all light up when only one of them has fired.
+                // Adjust cue: active while its targeted stream has a per-route fade in progress.
+                // Guard on current_any_idx so that sibling adjust cues targeting the same stream
+                // don't all light up when only the play-head cue has fired.
                 #[cfg(feature = "audio")]
-                let adjust_progress: Option<f32> = if is_adjust {
+                let adjust_progress: Option<f32> = if is_adjust && current_any_idx == Some(abs_idx) {
                     cue.adjust_data().and_then(|d| {
-                        if let Some(target_num) = d.target_audio_cue {
-                            if current_any_idx != Some(abs_idx) {
-                                return None;
-                            }
-                            let target_id = app.cue_list.cues().iter()
+                        let target_id: u32 = if let Some(target_num) = d.target_audio_cue {
+                            app.cue_list.cues().iter()
                                 .find(|c| (c.number - target_num).abs() < 0.005)
-                                .map(|c| c.id);
-                            target_id.and_then(|tid| app.audio_playback.volume_adjust_progress(tid))
-                        } else if sound_fade_trigger == Some(cue_id) {
-                            Some(sound_fade_progress)
+                                .map(|c| c.id)
+                                .unwrap_or(0)
                         } else {
-                            None
-                        }
+                            0
+                        };
+                        app.audio_playback.volume_adjust_progress(target_id)
                     })
                 } else {
                     None

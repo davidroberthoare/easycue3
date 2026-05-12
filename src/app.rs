@@ -239,22 +239,8 @@ pub struct EasyCueApp {
     /// Pending autofollow: time the current cue fired + delay to wait before calling go_next()
     pub autofollow_timer: Option<(std::time::Instant, f32)>,
 
-    /// In-progress sound master fade driven by an Adjust cue.
-    #[cfg(feature = "audio")]
-    pub sound_fade: Option<SoundFadeState>,
 }
 
-/// Tracks a timed fade of the sound master, driven by an Adjust cue.
-#[cfg(feature = "audio")]
-pub struct SoundFadeState {
-    pub start_volume: f32,
-    pub target_volume: f32,
-    pub fade_time: f32,
-    pub start: std::time::Instant,
-    pub stop_when_complete: bool,
-    /// Stable ID of the Adjust cue that triggered this fade (for row highlighting).
-    pub trigger_cue_id: u32,
-}
 
 impl EasyCueApp {
     pub fn color32_from_rgba(color: RgbaColor) -> egui::Color32 {
@@ -557,8 +543,6 @@ impl EasyCueApp {
             audio_player,
             audio_playback,
             autofollow_timer: None,
-            #[cfg(feature = "audio")]
-            sound_fade: None,
         };
 
         let startup_show_load_start = std::time::Instant::now();
@@ -920,11 +904,10 @@ impl EasyCueApp {
         log::info!("Cue 0: blackout ({:.1}s fade)", fade_seconds);
     }
 
-    /// Execute an Adjust cue: ramp a specific audio stream's volume, or the global sound master.
-    /// If the cue has `output_fades`, per-device route volumes are faded instead.
+    /// Execute an Adjust cue: fade per-device volume/pan on the targeted audio stream.
+    /// `target_audio_cue = None` targets all playing streams.
     #[cfg(feature = "audio")]
-    fn fire_adjust_cue(&mut self, adjust_cue_id: u32, data: crate::cue::AdjustData) {
-        // Resolve target stream ID (0 = all streams).
+    fn fire_adjust_cue(&mut self, _adjust_cue_id: u32, data: crate::cue::AdjustData) {
         let target_id: u32 = if let Some(target_num) = data.target_audio_cue {
             self.cue_list.cues().iter()
                 .find(|c| (c.number - target_num).abs() < 0.005)
@@ -937,68 +920,24 @@ impl EasyCueApp {
             0
         };
 
-        // If this cue specifies output fades, apply per-device volume changes.
-        if !data.output_fades.is_empty() {
-            for fade in &data.output_fades {
-                self.audio_playback.adjust_stream_output(
-                    target_id,
-                    &fade.device_name,
-                    fade.target_volume,
-                    fade.target_pan,
-                    data.fade_time,
-                    false, // stop_when_complete handled separately if needed
-                );
-            }
-            if data.stop_when_complete {
-                // Still honour stop_when_complete on the last output fade timing.
-                // We attach a global stop to the stream after fade_time via a zero-volume adjust.
-                if target_id != 0 {
-                    self.audio_playback.adjust_stream(target_id, 0.0, data.fade_time, true);
-                } else {
-                    self.audio_playback.stop_all();
-                }
-            }
-            log::info!(
-                "Adjust: {} output fade(s) on cue {} over {:.1}s",
-                data.output_fades.len(),
-                data.target_audio_cue.map(|n| format!("{:.1}", n)).unwrap_or_else(|| "all".into()),
+        for fade in &data.output_fades {
+            self.audio_playback.adjust_stream_output(
+                target_id,
+                &fade.device_name,
+                fade.target_volume,
+                fade.target_pan,
                 data.fade_time,
+                data.stop_when_complete,
             );
-            return;
         }
 
-        // No output fades — original behaviour: adjust stream or global master.
-        if target_id != 0 {
-            self.audio_playback.adjust_stream(target_id, data.volume, data.fade_time, data.stop_when_complete);
-            log::info!(
-                "Adjust: cue {} → {:.0}% over {:.1}s{}",
-                data.target_audio_cue.unwrap_or(0.0),
-                data.volume * 100.0,
-                data.fade_time,
-                if data.stop_when_complete { " then stop" } else { "" },
-            );
-        } else {
-            // Global: ramp the sound master
-            if data.fade_time <= 0.0 {
-                self.ui_state.sound_master = data.volume;
-                if data.stop_when_complete {
-                    self.audio_playback.stop_all();
-                }
-                log::info!("Adjust: snap master to {:.0}%{}", data.volume * 100.0,
-                    if data.stop_when_complete { " + stop all" } else { "" });
-            } else {
-                self.sound_fade = Some(SoundFadeState {
-                    start_volume: self.ui_state.sound_master,
-                    target_volume: data.volume,
-                    fade_time: data.fade_time,
-                    start: std::time::Instant::now(),
-                    stop_when_complete: data.stop_when_complete,
-                    trigger_cue_id: adjust_cue_id,
-                });
-                log::info!("Adjust: fade master to {:.0}% over {:.1}s{}", data.volume * 100.0,
-                    data.fade_time, if data.stop_when_complete { " then stop all" } else { "" });
-            }
-        }
+        log::info!(
+            "Adjust: {} fade(s) on {} over {:.1}s{}",
+            data.output_fades.len(),
+            data.target_audio_cue.map(|n| format!("Q{:.1}", n)).unwrap_or_else(|| "all".into()),
+            data.fade_time,
+            if data.stop_when_complete { " then stop" } else { "" },
+        );
     }
 
     /// Record a new lighting cue from the current universe state.
@@ -1138,25 +1077,6 @@ impl eframe::App for EasyCueApp {
             if start.elapsed().as_secs_f32() >= delay {
                 self.autofollow_timer = None;
                 self.go_next();
-            }
-        }
-
-        // Adjust cue: ramp sound master toward target
-        #[cfg(feature = "audio")]
-        if let Some(fade) = self.sound_fade.take() {
-            let elapsed = fade.start.elapsed().as_secs_f32();
-            let progress = if fade.fade_time > 0.0 {
-                (elapsed / fade.fade_time).clamp(0.0, 1.0)
-            } else {
-                1.0
-            };
-            self.ui_state.sound_master =
-                fade.start_volume + (fade.target_volume - fade.start_volume) * progress;
-            if progress < 1.0 {
-                self.sound_fade = Some(fade); // put it back, still running
-            } else if fade.stop_when_complete {
-                self.audio_playback.stop_all();
-                log::debug!("Adjust fade complete: stopping all audio");
             }
         }
 

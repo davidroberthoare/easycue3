@@ -60,23 +60,11 @@ struct ActiveAudioStream {
     /// One entry per output route (usually just the default device).
     device_sinks: Vec<DeviceSink>,
     state: AudioCueState,
-    base_volume: f32,
     fade_in_duration: f32,
     fade_out_duration: f32,
     fade_start: Option<Instant>,
     length: Option<f32>,
     play_start: Instant,
-    /// Global volume ramp for this whole stream (existing Adjust cue behaviour).
-    global_adjust: Option<GlobalAdjust>,
-}
-
-/// Volume ramp that affects the whole stream (not a specific route).
-struct GlobalAdjust {
-    start_vol: f32,
-    target_vol: f32,
-    fade_time: f32,
-    start: Instant,
-    stop_when_complete: bool,
 }
 
 /// Multi-track audio playback engine.
@@ -105,7 +93,7 @@ impl AudioPlaybackEngine {
         let (initial_volume, initial_state, fade_start) = if data.fade_in > 0.0 {
             (0.0_f32, AudioCueState::FadingIn { progress: 0.0 }, Some(Instant::now()))
         } else {
-            (data.volume, AudioCueState::Playing, None)
+            (1.0_f32, AudioCueState::Playing, None)
         };
 
         let mut device_sinks = Vec::with_capacity(route_sinks.len());
@@ -147,50 +135,21 @@ impl AudioPlaybackEngine {
             cue_id: cue.id,
             device_sinks,
             state: initial_state,
-            base_volume: data.volume,
             fade_in_duration: data.fade_in,
             fade_out_duration: data.fade_out,
             fade_start,
             length: data.length,
             play_start: Instant::now(),
-            global_adjust: None,
         });
 
         log::info!(
-            "Audio start: cue {:.2} '{}' vol={:.0}% routes={} fade_in={:.1}s",
+            "Audio start: cue {:.2} '{}' routes={} fade_in={:.1}s",
             cue.number,
             cue.label,
-            data.volume * 100.0,
             data.output_routes.len().max(1),
             data.fade_in,
         );
         true
-    }
-
-    /// Apply a global volume ramp to a stream (existing Adjust-cue behaviour, no output routing).
-    pub fn adjust_stream(
-        &mut self,
-        cue_id: u32,
-        target_vol: f32,
-        fade_time: f32,
-        stop_when_complete: bool,
-    ) {
-        if let Some(stream) = self.streams.iter_mut().find(|s| s.cue_id == cue_id) {
-            if fade_time <= 0.0 {
-                stream.base_volume = target_vol;
-                if stop_when_complete {
-                    for ds in &stream.device_sinks { ds.sink.stop(); }
-                }
-            } else {
-                stream.global_adjust = Some(GlobalAdjust {
-                    start_vol: stream.base_volume,
-                    target_vol,
-                    fade_time,
-                    start: Instant::now(),
-                    stop_when_complete,
-                });
-            }
-        }
     }
 
     /// Fade the per-route volume and/or pan for a specific output device on a stream.
@@ -285,25 +244,6 @@ impl AudioPlaybackEngine {
                 }
             }
 
-            // Advance global volume adjust (whole-stream ramp from Adjust cue).
-            if matches!(stream.state, AudioCueState::Playing) {
-                if let Some(adj) = stream.global_adjust.take() {
-                    let progress = if adj.fade_time > 0.0 {
-                        (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
-                    } else {
-                        1.0
-                    };
-                    stream.base_volume =
-                        adj.start_vol + (adj.target_vol - adj.start_vol) * progress;
-                    if progress < 1.0 {
-                        stream.global_adjust = Some(adj);
-                    } else if adj.stop_when_complete {
-                        for ds in &stream.device_sinks { ds.sink.stop(); }
-                        return false;
-                    }
-                }
-            }
-
             // Compute fade factor from state.
             let fade_factor = match stream.state {
                 AudioCueState::FadingIn { .. } => {
@@ -333,7 +273,7 @@ impl AudioPlaybackEngine {
                 AudioCueState::Stopped => return false,
             };
 
-            let base = stream.base_volume * fade_factor;
+            let base = fade_factor;
 
             // Apply volume and pan to each device sink.
             for ds in stream.device_sinks.iter_mut() {
@@ -402,18 +342,21 @@ impl AudioPlaybackEngine {
         !self.streams.is_empty()
     }
 
-    /// Progress (0–1) of the global volume-adjust fade for a stream, or None.
+    /// Progress (0–1) of any in-progress per-route volume fade on a stream, or None.
     pub fn volume_adjust_progress(&self, cue_id: u32) -> Option<f32> {
         self.streams
             .iter()
             .find(|s| s.cue_id == cue_id)
-            .and_then(|s| s.global_adjust.as_ref())
-            .map(|adj| {
-                if adj.fade_time > 0.0 {
-                    (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
-                } else {
-                    1.0
-                }
+            .and_then(|s| {
+                s.device_sinks.iter().find_map(|ds| {
+                    ds.adjust.as_ref().map(|adj| {
+                        if adj.fade_time > 0.0 {
+                            (adj.start.elapsed().as_secs_f32() / adj.fade_time).clamp(0.0, 1.0)
+                        } else {
+                            1.0
+                        }
+                    })
+                })
             })
     }
 
