@@ -138,18 +138,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
 
         if ui.button(format!("{}", ph::TRASH)).clicked() {
-            if let Some(sel_id) = app.ui_state.selected_cue_id {
-                if let Some(abs_idx) = app.cue_list.cues().iter().position(|c| c.id == sel_id) {
-                    let num = app.cue_list.get_cue(abs_idx).map(|c| c.number).unwrap_or(0.0);
-                    if app.cue_list.remove_cue(abs_idx).is_ok() {
-                        app.ui_state.selected_cue_id = None;
-                        app.ui_state.selected_lighting_cue_id = None;
-                        app.ui_state.selected_audio_cue_id = None;
-                        app.ui_state.status_message = format!("Deleted cue {:.1}", num);
-                        #[cfg(feature = "audio")]
-                        app.ui_state.audio_file_cache.clear();
-                    }
-                }
+            if app.ui_state.selected_cue_id.is_some() {
+                app.ui_state.pending_delete_cue_id = app.ui_state.selected_cue_id;
             } else {
                 app.ui_state.status_message = "Select a cue first".to_string();
             }
@@ -535,10 +525,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         }
                         ui.separator();
                         if ui.button("Delete").clicked() {
-                            if app.cue_list.remove_cue(abs_idx).is_ok() {
-                                app.ui_state.selected_cue_id = None;
-                                app.ui_state.status_message = format!("Deleted cue {:.1}", cue_number);
-                            }
+                            app.ui_state.pending_delete_cue_id = Some(cue_id);
                             ui.close_menu();
                         }
                     });
@@ -569,6 +556,48 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let num = app.cue_list.get_cue(abs_idx).map(|c| c.number).unwrap_or(0.0);
         app.go_to_cue(abs_idx);
         app.ui_state.status_message = format!("{} Q{:.1}", ph::CARET_RIGHT, num);
+    }
+
+    // ── Delete confirmation modal ──────────────────────────────────────────────
+    if let Some(del_id) = app.ui_state.pending_delete_cue_id {
+        let cue_label = app.cue_list.find_by_id(del_id)
+            .map(|c| format!("Q{:.1} — {}", c.number, c.label))
+            .unwrap_or_else(|| "this cue".to_string());
+        let mut confirmed = false;
+        let mut cancelled = false;
+        egui::Modal::new(egui::Id::new("delete_cue_confirm")).show(ui.ctx(), |ui| {
+            ui.set_min_width(280.0);
+            ui.heading("Delete Cue?");
+            ui.add_space(6.0);
+            ui.label(format!("Are you sure you want to delete {}?", cue_label));
+            ui.label(egui::RichText::new("This cannot be undone.").color(egui::Color32::from_rgb(200, 100, 100)));
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button(egui::RichText::new(format!("{} Delete", ph::TRASH)).color(egui::Color32::from_rgb(220, 80, 80))).clicked() {
+                    confirmed = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    cancelled = true;
+                }
+            });
+        });
+        if confirmed {
+            if let Some(abs_idx) = app.cue_list.cues().iter().position(|c| c.id == del_id) {
+                let num = app.cue_list.get_cue(abs_idx).map(|c| c.number).unwrap_or(0.0);
+                if app.cue_list.remove_cue(abs_idx).is_ok() {
+                    app.ui_state.selected_cue_id = None;
+                    app.ui_state.selected_lighting_cue_id = None;
+                    app.ui_state.selected_audio_cue_id = None;
+                    app.ui_state.status_message = format!("Deleted cue {:.1}", num);
+                    #[cfg(feature = "audio")]
+                    app.ui_state.audio_file_cache.clear();
+                }
+            }
+            app.ui_state.pending_delete_cue_id = None;
+        }
+        if cancelled {
+            app.ui_state.pending_delete_cue_id = None;
+        }
     }
 
     render_footer(ui, app);

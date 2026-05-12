@@ -127,6 +127,7 @@ pub struct UiState {
     pub theme_initialized: bool,
 
     // Dialog states
+    pub pending_delete_cue_id: Option<u32>,
     pub show_quit_confirmation: bool,
     pub show_device_selector: bool,
     pub show_colour_settings: bool,
@@ -179,6 +180,7 @@ impl Default for UiState {
             active_pane: None,
             command_context: CommandContext::General,
             theme_initialized: false,
+            pending_delete_cue_id: None,
             show_quit_confirmation: false,
             show_device_selector: false,
             show_colour_settings: false,
