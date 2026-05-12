@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-08T22:45:23.306761484+00:00",
+  "created": "2026-05-12T20:20:56.264885196+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -80,7 +80,13 @@
           "fade_out": 2.0,
           "length": null,
           "notes": "",
-          "volume": 0.800000011920929
+          "output_routes": [
+            {
+              "device_name": "",
+              "pan": 0.0,
+              "volume": 1.0
+            }
+          ]
         },
         "type": "Audio"
       },
@@ -148,10 +154,16 @@
       "id": 7,
       "kind": {
         "data": {
-          "fade_time": 2.0,
+          "fade_time": 3.0,
+          "output_fades": [
+            {
+              "device_name": "",
+              "target_pan": null,
+              "target_volume": 0.0
+            }
+          ],
           "stop_when_complete": true,
-          "target_audio_cue": 3.0,
-          "volume": 0.0
+          "target_audio_cue": 3.0
         },
         "type": "Adjust"
       },
@@ -165,10 +177,16 @@
         "data": {
           "audio_path": "media/sample2.mp3",
           "fade_in": 0.0,
-          "fade_out": 2.0,
+          "fade_out": 4.0,
           "length": 5.0,
           "notes": "",
-          "volume": 0.800000011920929
+          "output_routes": [
+            {
+              "device_name": "",
+              "pan": 0.0,
+              "volume": 1.0
+            }
+          ]
         },
         "type": "Audio"
       },
@@ -554,7 +572,7 @@
       }
     ]
   },
-  "modified": "2026-05-08T22:45:23.306862419+00:00",
+  "modified": "2026-05-12T20:20:56.265140405+00:00",
   "next_cue_id": 18,
   "patch": [
     {
