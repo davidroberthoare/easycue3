@@ -245,8 +245,22 @@ pub struct EasyCueApp {
     /// Pending autofollow: time the current cue fired + delay to wait before calling go_next()
     pub autofollow_timer: Option<(std::time::Instant, f32)>,
 
+    /// In-progress sound master fade driven by an Adjust cue.
+    #[cfg(feature = "audio")]
+    pub sound_fade: Option<SoundFadeState>,
 }
 
+/// Tracks a timed fade of the sound master, driven by an Adjust cue.
+#[cfg(feature = "audio")]
+pub struct SoundFadeState {
+    pub start_volume: f32,
+    pub target_volume: f32,
+    pub fade_time: f32,
+    pub start: std::time::Instant,
+    pub stop_when_complete: bool,
+    /// Stable ID of the Adjust cue that triggered this fade (for row highlighting).
+    pub trigger_cue_id: u32,
+}
 
 impl EasyCueApp {
     pub fn color32_from_rgba(color: RgbaColor) -> egui::Color32 {
@@ -550,6 +564,8 @@ impl EasyCueApp {
             audio_player,
             audio_playback,
             autofollow_timer: None,
+            #[cfg(feature = "audio")]
+            sound_fade: None,
         };
 
         let startup_show_load_start = std::time::Instant::now();
