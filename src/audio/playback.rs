@@ -67,6 +67,12 @@ struct ActiveAudioStream {
     play_start: Instant,
 }
 
+/// Ease-in/ease-out curve: slow at both ends, full speed in the middle.
+#[inline]
+fn smoothstep(p: f32) -> f32 {
+    p * p * (3.0 - 2.0 * p)
+}
+
 /// Multi-track audio playback engine.
 pub struct AudioPlaybackEngine {
     streams: Vec<ActiveAudioStream>,
@@ -256,7 +262,7 @@ impl AudioPlaybackEngine {
                     } else {
                         stream.state = AudioCueState::FadingIn { progress: p };
                     }
-                    p
+                    smoothstep(p)
                 }
                 AudioCueState::Playing => 1.0,
                 AudioCueState::FadingOut { .. } => {
@@ -268,7 +274,7 @@ impl AudioPlaybackEngine {
                         return false;
                     }
                     stream.state = AudioCueState::FadingOut { progress: p };
-                    1.0 - p
+                    smoothstep(1.0 - p)
                 }
                 AudioCueState::Stopped => return false,
             };
