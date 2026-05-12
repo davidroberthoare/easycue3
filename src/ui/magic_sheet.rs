@@ -864,6 +864,18 @@ fn adjust_selected_fixtures_intensity(app: &mut EasyCueApp, delta: f32) {
                 if let Some(offset) = profile.get_parameter_offset(&crate::fixtures::profiles::FixtureParameter::Intensity) {
                     let _ = universe.set_channel(patch.start_address + offset, (new_intensity * 100.0).round() as u8);
                 }
+                if new_intensity > 0.0 && profile.is_rgb() {
+                    let all_dark = profile.parameters.iter()
+                        .filter(|pm| pm.parameter.is_color())
+                        .all(|pm| universe.get_channel(patch.start_address + pm.channel_offset).unwrap_or(0) == 0);
+                    if all_dark {
+                        for pm in &profile.parameters {
+                            if pm.parameter.is_color() {
+                                let _ = universe.set_channel(patch.start_address + pm.channel_offset, pm.default_value.unwrap_or(100));
+                            }
+                        }
+                    }
+                }
             } else if profile.is_rgb() {
                 let _ = app.virtual_intensity.set_intensity(fid, new_intensity, universe, &patch, &profile);
             }
