@@ -21,6 +21,8 @@ pub struct PatchingPanelState {
     pub show_one_to_one_dialog: bool,
     pub one_to_one_count_input: String,
     pub one_to_one_error: String,
+    /// Universe number for the add-fixture dialog (1-based, default 1).
+    pub universe_input: u16,
 }
 
 impl PatchingPanelState {
@@ -33,6 +35,7 @@ impl PatchingPanelState {
         self.fixture_number_input = next_fixture_id.to_string();
         self.quantity = 1;
         self.error_message.clear();
+        if self.universe_input == 0 { self.universe_input = 1; }
     }
 
     pub fn close_dialog(&mut self) {
@@ -101,6 +104,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
             .column(egui_extras::Column::initial(120.0).at_least(80.0)) // Label
             .column(egui_extras::Column::initial(150.0).at_least(100.0)) // Type
             .column(egui_extras::Column::exact(140.0)) // Address
+            .column(egui_extras::Column::exact(55.0)) // Universe
             .column(egui_extras::Column::exact(70.0)) // Actions
             .header(20.0, |mut header| {
                 header.col(|ui| {
@@ -114,6 +118,9 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                 });
                 header.col(|ui| {
                     ui.strong("Address");
+                });
+                header.col(|ui| {
+                    ui.strong("Univ.");
                 });
                 header.col(|ui| {
                     ui.strong("Actions");
@@ -147,6 +154,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                 let mut profile_updates: Vec<(usize, String, u16)> = Vec::new();
                 let mut address_updates: Vec<(usize, u16, u16)> = Vec::new();
                 let mut id_updates: Vec<(usize, usize)> = Vec::new();
+                let mut universe_updates: Vec<(usize, u16)> = Vec::new();
 
                 for (patch, profile_name, profile_missing, channel_count) in patch_data {
                     body.row(24.0, |mut row| {
@@ -216,6 +224,17 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                             });
                         });
 
+                        // Universe (1-based)
+                        row.col(|ui| {
+                            let mut uni = patch.universe.max(1) as i32;
+                            let resp = ui.add(
+                                egui::DragValue::new(&mut uni).range(1..=16).speed(1.0)
+                            );
+                            if resp.changed() && uni >= 1 {
+                                universe_updates.push((patch.id, uni as u16));
+                            }
+                        });
+
                         // Actions
                         row.col(|ui| {
                             if ui.small_button(ph::TRASH).clicked() {
@@ -269,6 +288,12 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                     app.virtual_intensity.remove_fixture(old_id);
                     if let Err(e) = app.fixtures.rename_fixture_id(old_id, new_id) {
                         app.ui_state.status_message = format!("Error: {}", e);
+                    }
+                }
+
+                for (id, new_universe) in universe_updates {
+                    if let Some(patch) = app.fixtures.patch_list_mut().get_patch_mut(id) {
+                        patch.universe = new_universe;
                     }
                 }
 
@@ -360,6 +385,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                                         label,
                                         "generic_dimmer".to_string(),
                                         addr,
+                                        1, // 1-to-1 always universe 1
                                     ) {
                                         Ok(_) => {}
                                         Err(e) => errors.push(e.to_string()),
@@ -453,6 +479,17 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                     });
                     ui.end_row();
 
+                    // Universe
+                    ui.label("Universe:");
+                    ui.horizontal(|ui| {
+                        if state.universe_input == 0 { state.universe_input = 1; }
+                        let mut uni = state.universe_input as i32;
+                        ui.add(egui::DragValue::new(&mut uni).range(1..=16).speed(1.0));
+                        state.universe_input = uni as u16;
+                        ui.label(RichText::new("(1 = default)").color(Color32::GRAY).small());
+                    });
+                    ui.end_row();
+
                     // Quantity (only shown for new patches)
                     if !is_editing {
                         ui.label("Quantity:");
@@ -517,6 +554,7 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                                     .get_profile(&state.selected_profile_id)
                                     .map(|p| p.channel_count as usize)
                                     .unwrap_or(1);
+                                let universe = state.universe_input.max(1);
                                 let mut last_id = 0usize;
                                 let mut errors: Vec<String> = Vec::new();
                                 for i in 0..qty {
@@ -531,7 +569,7 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                                     };
                                     match app.fixtures.add_patch_with_id(
                                         fid, label,
-                                        state.selected_profile_id.clone(), addr,
+                                        state.selected_profile_id.clone(), addr, universe,
                                     ) {
                                         Ok(id) => { last_id = id; }
                                         Err(e) => { errors.push(format!("#{fid}: {e}")); }

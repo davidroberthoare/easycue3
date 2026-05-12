@@ -37,17 +37,17 @@
     {
       "parameter": "red",
       "channel_offset": 6,
-      "default_value": 0
+      "default_value": 100
     },
     {
       "parameter": "green",
       "channel_offset": 7,
-      "default_value": 0
+      "default_value": 100
     },
     {
       "parameter": "blue",
       "channel_offset": 8,
-      "default_value": 0
+      "default_value": 100
     },
     {
       "parameter": "white",

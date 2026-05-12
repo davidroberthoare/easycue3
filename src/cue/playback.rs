@@ -1,10 +1,10 @@
 //! Lighting cue playback engine with crossfade support
 
-use crate::cue::{Cue, CueState};
+use crate::cue::{Cue, CueState, decode_universe_key};
 use crate::dmx::Universe;
 use std::time::Instant;
 
-/// Manages lighting cue playback and crossfades.
+/// Manages lighting cue playback and crossfades across multiple DMX universes.
 /// Navigation (which cue is next) is the caller's responsibility;
 /// this engine only starts, updates, and stops fades.
 pub struct PlaybackEngine {
@@ -12,8 +12,9 @@ pub struct PlaybackEngine {
     current_cue_id: Option<u32>,
     fade_start: Option<Instant>,
     fade_duration: f32,
-    previous_values: [u8; 512],
-    target_values: [u8; 512],
+    /// One 512-channel block per universe (0-indexed; block 0 = universe 1).
+    previous_values: Vec<[u8; 512]>,
+    target_values: Vec<[u8; 512]>,
 }
 
 impl PlaybackEngine {
@@ -23,23 +24,40 @@ impl PlaybackEngine {
             current_cue_id: None,
             fade_start: None,
             fade_duration: 0.0,
-            previous_values: [0; 512],
-            target_values: [0; 512],
+            previous_values: vec![[0; 512]],
+            target_values: vec![[0; 512]],
+        }
+    }
+
+    fn ensure_capacity(&mut self, num_universes: usize) {
+        while self.previous_values.len() < num_universes {
+            self.previous_values.push([0; 512]);
+            self.target_values.push([0; 512]);
         }
     }
 
     /// Start fading to the given lighting cue. The caller has already decided which cue to fire.
-    pub fn start(&mut self, cue: &Cue, universe: &Universe) {
+    pub fn start(&mut self, cue: &Cue, universes: &[Universe]) {
         let Some(data) = cue.lighting_data() else { return };
 
-        for channel in 1..=512 {
-            self.previous_values[(channel - 1) as usize] = universe.get_channel(channel).unwrap_or(0);
+        self.ensure_capacity(universes.len());
+
+        // Snapshot current universe state as the starting values for the crossfade.
+        for (ui, universe) in universes.iter().enumerate() {
+            for ch in 1..=512u16 {
+                self.previous_values[ui][(ch - 1) as usize] = universe.get_channel(ch).unwrap_or(0);
+            }
         }
 
-        self.target_values.fill(0);
-        for (&channel, &value) in &data.channel_values {
-            if channel >= 1 && channel <= 512 {
-                self.target_values[(channel - 1) as usize] = value;
+        // Clear all target arrays then populate from cue data.
+        for arr in self.target_values.iter_mut() {
+            arr.fill(0);
+        }
+        for (&key, &value) in &data.channel_values {
+            let (universe_1based, channel) = decode_universe_key(key);
+            let ui = (universe_1based - 1) as usize;
+            if ui < self.target_values.len() && channel >= 1 && channel <= 512 {
+                self.target_values[ui][(channel - 1) as usize] = value;
             }
         }
 
@@ -56,12 +74,17 @@ impl PlaybackEngine {
         self.fade_start = None;
     }
 
-    /// Fade all DMX channels from current universe values to zero over `fade_seconds`.
-    pub fn start_fade_to_black(&mut self, universe: &Universe, fade_seconds: f32) {
-        for channel in 1..=512 {
-            self.previous_values[(channel - 1) as usize] = universe.get_channel(channel).unwrap_or(0);
+    /// Fade all DMX channels across all universes to zero over `fade_seconds`.
+    pub fn start_fade_to_black(&mut self, universes: &[Universe], fade_seconds: f32) {
+        self.ensure_capacity(universes.len());
+        for (ui, universe) in universes.iter().enumerate() {
+            for ch in 1..=512u16 {
+                self.previous_values[ui][(ch - 1) as usize] = universe.get_channel(ch).unwrap_or(0);
+            }
         }
-        self.target_values.fill(0);
+        for arr in self.target_values.iter_mut() {
+            arr.fill(0);
+        }
         self.fade_duration = fade_seconds;
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
@@ -69,8 +92,8 @@ impl PlaybackEngine {
         log::info!("Fading to black over {:.1}s", fade_seconds);
     }
 
-    /// Update playback state and write interpolated values to universe.
-    pub fn update(&mut self, universe: &mut Universe) {
+    /// Update playback state and write interpolated values to all universes.
+    pub fn update(&mut self, universes: &mut [Universe]) {
         match self.state {
             CueState::Fading { .. } => {
                 if let Some(start) = self.fade_start {
@@ -81,15 +104,24 @@ impl PlaybackEngine {
                         1.0
                     };
 
-                    for channel in 1..=512 {
-                        let prev = self.previous_values[(channel - 1) as usize] as f32;
-                        let target = self.target_values[(channel - 1) as usize] as f32;
-                        let _ = universe.set_channel(channel, (prev + (target - prev) * progress) as u8);
+                    for (ui, universe) in universes.iter_mut().enumerate() {
+                        if ui >= self.previous_values.len() {
+                            break;
+                        }
+                        for ch in 1..=512u16 {
+                            let prev = self.previous_values[ui][(ch - 1) as usize] as f32;
+                            let target = self.target_values[ui][(ch - 1) as usize] as f32;
+                            let _ = universe.set_channel(ch, (prev + (target - prev) * progress) as u8);
+                        }
                     }
 
                     if progress >= 1.0 {
                         self.state = CueState::Active;
-                        self.previous_values = self.target_values;
+                        for (i, target) in self.target_values.iter().enumerate() {
+                            if let Some(prev) = self.previous_values.get_mut(i) {
+                                *prev = *target;
+                            }
+                        }
                         log::debug!("Fade complete");
                     } else {
                         self.state = CueState::Fading { progress };
