@@ -40,6 +40,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_dock_area(ctx, app);
     
     // Modal dialogs (always on top)
+    render_autosave_recovery(ctx, app);
     render_quit_confirmation(ctx, app);
     render_device_selector(ctx, app);
     render_colour_settings(ctx, app);
@@ -583,6 +584,57 @@ fn render_help_about(ctx: &Context, app: &mut EasyCueApp) {
                         app.ui_state.show_help_about = false;
                     }
                 });
+            });
+        });
+}
+
+/// Render the autosave recovery dialog
+fn render_autosave_recovery(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_autosave_prompt {
+        return;
+    }
+
+    egui::Window::new("Recover Unsaved Work?")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(10.0);
+                ui.label("An autosave file was found with unsaved changes.");
+                ui.label("Would you like to recover it?");
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    if ui.button("  Keep Current  ").clicked() {
+                        log::info!("User chose to keep current show, discarding autosave");
+                        app.ui_state.show_autosave_prompt = false;
+                        app.ui_state.autosave_path = None;
+                    }
+
+                    ui.add_space(10.0);
+
+                    if ui.button("  Recover Autosave  ").clicked() {
+                        let autosave_path = app.ui_state.autosave_path.clone();
+                        if let Some(path) = autosave_path {
+                            match app.load_show(&path) {
+                                Ok(_) => {
+                                    app.ui_state.status_message =
+                                        "Recovered unsaved changes from autosave".to_string();
+                                    log::info!("User recovered autosave: {:?}", path);
+                                }
+                                Err(e) => {
+                                    app.ui_state.status_message = format!("Error loading autosave: {}", e);
+                                    log::error!("Failed to load autosave: {}", e);
+                                }
+                            }
+                        }
+                        app.ui_state.show_autosave_prompt = false;
+                        app.ui_state.autosave_path = None;
+                    }
+                });
+
+                ui.add_space(5.0);
             });
         });
 }

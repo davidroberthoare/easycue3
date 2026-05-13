@@ -134,6 +134,8 @@ pub struct UiState {
     pub show_fixture_editor: bool,
     pub show_help_shortcuts: bool,
     pub show_help_about: bool,
+    pub show_autosave_prompt: bool,
+    pub autosave_path: Option<std::path::PathBuf>,
     pub selected_usb_port: String,
 
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
@@ -187,6 +189,8 @@ impl Default for UiState {
             show_fixture_editor: false,
             show_help_shortcuts: false,
             show_help_about: false,
+            show_autosave_prompt: false,
+            autosave_path: None,
             selected_usb_port: String::new(),
             go_cue_input: String::new(),
             goto_mode: false,
@@ -250,6 +254,9 @@ pub struct EasyCueApp {
     /// In-progress sound master fade driven by an Adjust cue.
     #[cfg(feature = "audio")]
     pub sound_fade: Option<SoundFadeState>,
+
+    /// Last saved file path to persistent storage (avoid redundant saves).
+    last_persisted_file_path: Option<std::path::PathBuf>,
 }
 
 /// Tracks a timed fade of the sound master, driven by an Adjust cue.
@@ -568,6 +575,7 @@ impl EasyCueApp {
             autofollow_timer: None,
             #[cfg(feature = "audio")]
             sound_fade: None,
+            last_persisted_file_path: None,
         };
 
         let startup_show_load_start = std::time::Instant::now();
@@ -576,18 +584,39 @@ impl EasyCueApp {
             .map(std::path::PathBuf::from)
             .filter(|p| p.exists());
 
-        if let Some(path) = last_file {
+        let loaded_path = if let Some(path) = last_file {
             match app.load_show(&path) {
-                Ok(_) => log::info!("Loaded last used show: {}", path.display()),
-                Err(e) => log::warn!("Could not load last used show: {}", e),
+                Ok(_) => {
+                    log::info!("Loaded last used show: {}", path.display());
+                    Some(path)
+                }
+                Err(e) => {
+                    log::warn!("Could not load last used show: {}", e);
+                    None
+                }
             }
         } else {
             if let Some(default_path) = crate::paths::find_resource_file(std::path::Path::new("shows/default_show.json")) {
                 match app.load_show(&default_path) {
-                    Ok(_) => log::info!("Loaded default show on startup"),
-                    Err(e) => log::warn!("Could not load default show: {}", e),
+                    Ok(_) => {
+                        log::info!("Loaded default show on startup");
+                        Some(default_path)
+                    }
+                    Err(e) => {
+                        log::warn!("Could not load default show: {}", e);
+                        None
+                    }
                 }
+            } else {
+                None
             }
+        };
+
+        // Check for autosave recovery after show is loaded
+        if let Some(autosave_path) = Self::check_autosave_recovery(loaded_path.as_deref()) {
+            app.ui_state.show_autosave_prompt = true;
+            app.ui_state.autosave_path = Some(autosave_path);
+            log::info!("Autosave recovery available on startup");
         }
 
         log::info!(
@@ -1019,6 +1048,74 @@ impl EasyCueApp {
         log::info!("Recorded cue {:.0} with {} channels", next_number, channel_count);
         assigned_id
     }
+
+    /// Compare two show files, ignoring timestamps. Returns true if they're substantially identical.
+    fn shows_are_equivalent(show_a: &ShowFile, show_b: &ShowFile) -> bool {
+        // Serialize to JSON and compare, which ignores timestamp fields
+        let json_a = serde_json::to_value(show_a).ok();
+        let json_b = serde_json::to_value(show_b).ok();
+
+        if let (Some(mut a), Some(mut b)) = (json_a, json_b) {
+            // Remove timestamp fields before comparing
+            if let Some(obj_a) = a.as_object_mut() {
+                obj_a.remove("created");
+                obj_a.remove("modified");
+            }
+            if let Some(obj_b) = b.as_object_mut() {
+                obj_b.remove("created");
+                obj_b.remove("modified");
+            }
+            a == b
+        } else {
+            false
+        }
+    }
+
+    /// Check if autosave exists, is more recent than the loaded show, and has different content.
+    /// If so, offer to recover it.
+    fn check_autosave_recovery(loaded_path: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+        let autosave_path = std::path::PathBuf::from("shows/.autosave.json");
+
+        if !autosave_path.exists() {
+            return None;
+        }
+
+        let autosave_mtime = std::fs::metadata(&autosave_path)
+            .ok()
+            .and_then(|m| m.modified().ok());
+
+        if autosave_mtime.is_none() {
+            return None;
+        }
+
+        let loaded_mtime = loaded_path
+            .and_then(|p| std::fs::metadata(p).ok())
+            .and_then(|m| m.modified().ok());
+
+        // Autosave must be more recent than the loaded file (or there's no loaded file)
+        if let (Some(autosave_time), Some(loaded_time)) = (autosave_mtime, loaded_mtime) {
+            if autosave_time <= loaded_time {
+                return None;
+            }
+        }
+
+        // Compare file contents, ignoring timestamps
+        match (ShowFile::load(&autosave_path), loaded_path.and_then(|p| ShowFile::load(p).ok())) {
+            (Ok(autosave), Some(loaded)) => {
+                if !Self::shows_are_equivalent(&autosave, &loaded) {
+                    log::info!("Autosave recovery: found newer, different autosave");
+                    return Some(autosave_path);
+                }
+            }
+            (Ok(_), None) => {
+                log::info!("Autosave recovery: no loaded show, but autosave exists");
+                return Some(autosave_path);
+            }
+            _ => {}
+        }
+
+        None
+    }
 }
 
 impl eframe::App for EasyCueApp {
@@ -1037,6 +1134,25 @@ impl eframe::App for EasyCueApp {
                 "[shutdown] audio_playback.stop_all completed in {:.2}ms",
                 audio_stop_start.elapsed().as_secs_f64() * 1000.0
             );
+        }
+
+        let autosave_start = std::time::Instant::now();
+        let autosave_path = std::path::PathBuf::from("shows/.autosave.json");
+        match self.save_show(&autosave_path) {
+            Ok(_) => {
+                log::info!(
+                    "[shutdown] Auto-saved to {:?} in {:.2}ms",
+                    autosave_path,
+                    autosave_start.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[shutdown] Failed to auto-save: {} (took {:.2}ms)",
+                    e,
+                    autosave_start.elapsed().as_secs_f64() * 1000.0
+                );
+            }
         }
 
         let dmx_close_start = std::time::Instant::now();
@@ -1064,7 +1180,7 @@ impl eframe::App for EasyCueApp {
         std::process::exit(0);
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if !self.ui_state.theme_initialized {
             Self::configure_cobalt_theme(ctx);
             self.ui_state.theme_initialized = true;
@@ -1227,6 +1343,14 @@ impl eframe::App for EasyCueApp {
         }
         if self.ui_state.show_debug_ui {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+
+        // Persist file path only if it changed (avoid redundant saves every frame)
+        if self.current_file_path != self.last_persisted_file_path {
+            if let Some(storage) = frame.storage_mut() {
+                self.save(storage);
+                self.last_persisted_file_path = self.current_file_path.clone();
+            }
         }
     }
 

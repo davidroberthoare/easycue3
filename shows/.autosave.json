@@ -1,0 +1,559 @@
+{
+  "audio_cues": [],
+  "created": "2026-05-13T13:30:24.994062+00:00",
+  "cue_colors": {
+    "base_adjust": {
+      "a": 255,
+      "b": 110,
+      "g": 100,
+      "r": 100
+    },
+    "base_audio": {
+      "a": 255,
+      "b": 190,
+      "g": 95,
+      "r": 65
+    },
+    "base_lighting": {
+      "a": 255,
+      "b": 170,
+      "g": 85,
+      "r": 150
+    },
+    "status_active": {
+      "a": 255,
+      "b": 45,
+      "g": 45,
+      "r": 175
+    },
+    "status_fading": {
+      "a": 255,
+      "b": 30,
+      "g": 160,
+      "r": 200
+    },
+    "status_on_deck": {
+      "a": 255,
+      "b": 45,
+      "g": 135,
+      "r": 45
+    }
+  },
+  "cues": [
+    {
+      "autofollow": null,
+      "id": 18,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 1",
+      "number": 1.0
+    },
+    {
+      "autofollow": null,
+      "id": 19,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 2",
+      "number": 2.0
+    },
+    {
+      "autofollow": null,
+      "id": 23,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 3",
+      "number": 3.0
+    },
+    {
+      "autofollow": null,
+      "id": 24,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 4",
+      "number": 4.0
+    },
+    {
+      "autofollow": null,
+      "id": 25,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 5",
+      "number": 5.0
+    },
+    {
+      "autofollow": null,
+      "id": 26,
+      "kind": {
+        "data": {
+          "channel_values": {},
+          "fade_down": 3.0,
+          "fade_up": 3.0
+        },
+        "type": "Lighting"
+      },
+      "label": "Cue 6",
+      "number": 6.0
+    }
+  ],
+  "description": "",
+  "magic_sheet": {
+    "canvas_offset": [
+      39.05858612060547,
+      94.1484375
+    ],
+    "canvas_zoom": 1.0290149450302124,
+    "next_shape_id": 15,
+    "shapes": [
+      {
+        "bg_color": [
+          136,
+          136,
+          136,
+          255
+        ],
+        "fixture_id": 1,
+        "id": 2,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          42.9127197265625,
+          220.3660888671875
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          136,
+          136,
+          136,
+          255
+        ],
+        "fixture_id": 2,
+        "id": 3,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          152.6258544921875,
+          249.26702880859375
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          136,
+          136,
+          136,
+          255
+        ],
+        "fixture_id": 4,
+        "id": 4,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          358.2568359375,
+          247.81732177734375
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          136,
+          136,
+          136,
+          255
+        ],
+        "fixture_id": 5,
+        "id": 5,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          469.6893310546875,
+          225.87432861328125
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 6,
+        "id": 6,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          152.1412353515625,
+          132.68157958984375
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 7,
+        "id": 7,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          250.01611328125,
+          150.0645751953125
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 8,
+        "id": 8,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          348.0721435546875,
+          132.5072021484375
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 9,
+        "id": 9,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          210.384765625,
+          76.38067626953125
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 10,
+        "id": 10,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          301.2882080078125,
+          74.54736328125
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 11,
+        "id": 11,
+        "kind": "Diamond",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          119.7017822265625,
+          -29.15582275390625
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 12,
+        "id": 12,
+        "kind": "Diamond",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          254.82421875,
+          -31.08673095703125
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          30,
+          50,
+          75,
+          255
+        ],
+        "fixture_id": 13,
+        "id": 13,
+        "kind": "Diamond",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          388.8726806640625,
+          -36.25665283203125
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          136,
+          136,
+          136,
+          255
+        ],
+        "fixture_id": 3,
+        "id": 14,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          254.9632568359375,
+          267.527099609375
+        ],
+        "scale": 1.0
+      }
+    ]
+  },
+  "modified": "2026-05-13T13:30:24.994122+00:00",
+  "next_cue_id": 27,
+  "patch": [
+    {
+      "id": 1,
+      "label": "FOH 1",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 1,
+      "universe": 1
+    },
+    {
+      "id": 2,
+      "label": "FOH 2",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 2,
+      "universe": 1
+    },
+    {
+      "id": 3,
+      "label": "FOH 3",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 3,
+      "universe": 1
+    },
+    {
+      "id": 4,
+      "label": "FOH 4",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 4,
+      "universe": 1
+    },
+    {
+      "id": 5,
+      "label": "FOH 5",
+      "notes": "",
+      "profile_id": "generic_dimmer",
+      "start_address": 5,
+      "universe": 1
+    },
+    {
+      "id": 6,
+      "label": "Top 1",
+      "notes": "",
+      "profile_id": "irgbawuvs",
+      "start_address": 20,
+      "universe": 1
+    },
+    {
+      "id": 7,
+      "label": "Top 2",
+      "notes": "",
+      "profile_id": "irgbawuvs",
+      "start_address": 28,
+      "universe": 1
+    },
+    {
+      "id": 8,
+      "label": "Top 3",
+      "notes": "",
+      "profile_id": "irgbawuvs",
+      "start_address": 36,
+      "universe": 1
+    },
+    {
+      "id": 9,
+      "label": "Top 4",
+      "notes": "",
+      "profile_id": "irgbawuvs",
+      "start_address": 44,
+      "universe": 1
+    },
+    {
+      "id": 10,
+      "label": "Top 5",
+      "notes": "",
+      "profile_id": "irgbawuvs",
+      "start_address": 52,
+      "universe": 1
+    },
+    {
+      "id": 11,
+      "label": "Cyc 1",
+      "notes": "",
+      "profile_id": "rgb",
+      "start_address": 100,
+      "universe": 1
+    },
+    {
+      "id": 12,
+      "label": "Cyc 2",
+      "notes": "",
+      "profile_id": "rgb",
+      "start_address": 103,
+      "universe": 1
+    },
+    {
+      "id": 13,
+      "label": "Cyc 3",
+      "notes": "",
+      "profile_id": "rgb",
+      "start_address": 106,
+      "universe": 1
+    }
+  ]
+}
