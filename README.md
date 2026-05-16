@@ -1,4 +1,4 @@
-# EasyCue3
+# EasyCue
 
 A simple theatrical lighting console I've been building for myself. After years of running lights for amateur theatre productions — mostly with whatever aging console came with the venue — I wanted something small, fast, and easy to hand off to a board op who's never touched a lighting console before.
 
@@ -35,7 +35,7 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 ---
 ## Download
 
-- Just visit the [releases page](https://github.com/davidroberthoare/easycue3/releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
+- Just visit the [releases page](https://github.com/davidroberthoare//releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
 
 ---
 ## Building
@@ -126,7 +126,7 @@ Put audio files in the `media/` directory next to your project. Show files refer
 
 ## Custom fixtures
 
-13 fixture profiles ship with the app: dimmer, RGB/RGBA/RGBW/RGBAW/RGBAWUV variants, LED PAR, and moving head. Add your own in `fixture_profiles/` (bundled) or `~/.config/easycue3/fixture_profiles/` (user, survives updates).
+13 fixture profiles ship with the app: dimmer, RGB/RGBA/RGBW/RGBAW/RGBAWUV variants, LED PAR, and moving head. Add your own in `fixture_profiles/` (bundled) or `~/.config//fixture_profiles/` (user, survives updates).
 
 ```json
 {
@@ -142,7 +142,7 @@ Put audio files in the `media/` directory next to your project. Show files refer
 }
 ```
 
-Restart EasyCue3 and the profile appears in the Patching panel dropdown. See `fixture_profiles/rgb.json` for a working example.
+Restart EasyCue and the profile appears in the Patching panel dropdown. See `fixture_profiles/rgb.json` for a working example.
 
 ---
 
@@ -178,7 +178,7 @@ This is a hobby project I've built and tested at my local theatre group and scho
 
 ## Open Source Credits
 
-EasyCue3 is built on top of excellent open source projects. Thank you to all maintainers and contributors.
+EasyCue is built on top of excellent open source projects. Thank you to all maintainers and contributors.
 
 ### Core app and UI
 
