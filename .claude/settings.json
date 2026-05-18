@@ -12,7 +12,12 @@
       "Bash(python3 -c \"import sys; [print\\(l\\) for l in sys.stdin if '\\\\\"vers\\\\\"' in l]\")",
       "Read(//home/david/Downloads/twos_export/**)",
       "Read(//mnt/data/david/Downloads/twos_export/**)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 log --oneline -20)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 log dd9526e..HEAD --oneline)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 diff Cargo.toml)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 tag -a v0.3.0 -m ' *)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 show v0.3.0 --no-patch)"
     ]
   }
 }
