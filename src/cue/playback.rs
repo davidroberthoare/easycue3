@@ -49,9 +49,10 @@ impl PlaybackEngine {
             }
         }
 
-        // Clear all target arrays then populate from cue data.
-        for arr in self.target_values.iter_mut() {
-            arr.fill(0);
+        // Tracking mode: start targets from current live state, then overlay only
+        // the channels explicitly set in this cue. Unspecified channels hold.
+        for i in 0..self.target_values.len() {
+            self.target_values[i] = self.previous_values[i];
         }
         for (&key, &value) in &data.channel_values {
             let (universe_1based, channel) = decode_universe_key(key);
