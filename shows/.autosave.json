@@ -1,62 +1,76 @@
 {
   "audio_cues": [],
-  "created": "2026-05-13T13:30:24.994062+00:00",
+  "created": "2026-05-18T16:27:09.947586236+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
-      "b": 110,
-      "g": 100,
-      "r": 100
+      "b": 95,
+      "g": 95,
+      "r": 95
     },
     "base_audio": {
       "a": 255,
-      "b": 190,
-      "g": 95,
-      "r": 65
+      "b": 170,
+      "g": 90,
+      "r": 50
     },
     "base_lighting": {
       "a": 255,
-      "b": 170,
-      "g": 85,
-      "r": 150
+      "b": 154,
+      "g": 97,
+      "r": 128
     },
     "status_active": {
       "a": 255,
-      "b": 45,
-      "g": 45,
-      "r": 175
+      "b": 33,
+      "g": 168,
+      "r": 24
     },
     "status_fading": {
       "a": 255,
-      "b": 30,
-      "g": 160,
-      "r": 200
+      "b": 149,
+      "g": 207,
+      "r": 0
     },
     "status_on_deck": {
       "a": 255,
-      "b": 45,
-      "g": 135,
-      "r": 45
+      "b": 0,
+      "g": 167,
+      "r": 193
     }
   },
   "cues": [
     {
       "autofollow": null,
-      "id": 18,
+      "id": 13,
       "kind": {
         "data": {
-          "channel_values": {},
+          "channel_values": {
+            "200": 33,
+            "202": 33,
+            "204": 80,
+            "206": 90,
+            "207": 27,
+            "208": 100,
+            "216": 70,
+            "218": 65,
+            "220": 80,
+            "222": 90,
+            "223": 27,
+            "224": 100,
+            "3": 75
+          },
           "fade_down": 3.0,
           "fade_up": 3.0
         },
         "type": "Lighting"
       },
-      "label": "Cue 1",
+      "label": "Intro Speech",
       "number": 1.0
     },
     {
-      "autofollow": null,
-      "id": 19,
+      "autofollow": 2.0,
+      "id": 14,
       "kind": {
         "data": {
           "channel_values": {},
@@ -65,54 +79,176 @@
         },
         "type": "Lighting"
       },
-      "label": "Cue 2",
+      "label": "Blackout",
       "number": 2.0
     },
     {
       "autofollow": null,
-      "id": 23,
+      "id": 4,
       "kind": {
         "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0
+          "audio_path": "media/sample1.mp3",
+          "fade_in": 0.0,
+          "fade_out": 2.0,
+          "length": null,
+          "notes": "",
+          "output_routes": [
+            {
+              "device_name": "",
+              "pan": 0.0,
+              "volume": 1.0
+            }
+          ]
         },
-        "type": "Lighting"
+        "type": "Audio"
       },
-      "label": "Cue 3",
+      "label": "sample1",
       "number": 3.0
     },
     {
-      "autofollow": null,
-      "id": 24,
+      "autofollow": 4.0,
+      "id": 15,
       "kind": {
         "data": {
-          "channel_values": {},
+          "channel_values": {
+            "1": 90,
+            "101": 32,
+            "102": 100,
+            "104": 32,
+            "105": 100,
+            "107": 32,
+            "108": 100,
+            "2": 90,
+            "20": 70,
+            "21": 100,
+            "22": 54,
+            "23": 34,
+            "24": 100,
+            "25": 100,
+            "28": 70,
+            "29": 100,
+            "3": 90,
+            "30": 54,
+            "31": 34,
+            "32": 100,
+            "33": 100,
+            "36": 70,
+            "37": 100,
+            "38": 54,
+            "39": 34,
+            "4": 90,
+            "40": 100,
+            "41": 100,
+            "44": 70,
+            "45": 100,
+            "46": 54,
+            "47": 34,
+            "48": 100,
+            "49": 100,
+            "5": 90,
+            "52": 70,
+            "53": 100,
+            "54": 54,
+            "55": 34,
+            "56": 100,
+            "57": 100
+          },
           "fade_down": 3.0,
           "fade_up": 3.0
         },
         "type": "Lighting"
       },
-      "label": "Cue 4",
+      "label": "Scene 1",
       "number": 4.0
     },
     {
       "autofollow": null,
-      "id": 25,
+      "id": 7,
       "kind": {
         "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0
+          "fade_time": 3.0,
+          "output_fades": [
+            {
+              "device_name": "",
+              "target_pan": null,
+              "target_volume": 0.0
+            }
+          ],
+          "stop_when_complete": true,
+          "target_audio_cue": 3.0
         },
-        "type": "Lighting"
+        "type": "Adjust"
       },
-      "label": "Cue 5",
-      "number": 5.0
+      "label": "fade out sample 1",
+      "number": 7.0
     },
     {
       "autofollow": null,
-      "id": 26,
+      "id": 5,
+      "kind": {
+        "data": {
+          "audio_path": "media/sample2.mp3",
+          "fade_in": 0.0,
+          "fade_out": 4.0,
+          "length": 5.0,
+          "notes": "",
+          "output_routes": [
+            {
+              "device_name": "",
+              "pan": 0.0,
+              "volume": 1.0
+            }
+          ]
+        },
+        "type": "Audio"
+      },
+      "label": "sample2",
+      "number": 8.0
+    },
+    {
+      "autofollow": null,
+      "id": 16,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "1": 100,
+            "100": 100,
+            "101": 40,
+            "102": 100,
+            "103": 100,
+            "104": 46,
+            "105": 100,
+            "106": 98,
+            "107": 37,
+            "108": 100,
+            "2": 50,
+            "20": 90,
+            "21": 100,
+            "28": 57,
+            "29": 100,
+            "30": 60,
+            "31": 66,
+            "37": 20,
+            "38": 4,
+            "39": 100,
+            "45": 20,
+            "46": 4,
+            "47": 100,
+            "53": 20,
+            "54": 4,
+            "55": 100
+          },
+          "fade_down": 1.0,
+          "fade_up": 1.0
+        },
+        "type": "Lighting"
+      },
+      "label": "SR Highlight",
+      "number": 9.0
+    },
+    {
+      "autofollow": null,
+      "id": 17,
       "kind": {
         "data": {
           "channel_values": {},
@@ -121,8 +257,8 @@
         },
         "type": "Lighting"
       },
-      "label": "Cue 6",
-      "number": 6.0
+      "label": "Blackout",
+      "number": 10.0
     }
   ],
   "description": "",
@@ -448,8 +584,8 @@
       }
     ]
   },
-  "modified": "2026-05-13T13:30:24.994122+00:00",
-  "next_cue_id": 27,
+  "modified": "2026-05-18T16:27:09.947704052+00:00",
+  "next_cue_id": 18,
   "patch": [
     {
       "id": 1,
@@ -553,6 +689,22 @@
       "notes": "",
       "profile_id": "rgb",
       "start_address": 106,
+      "universe": 1
+    },
+    {
+      "id": 14,
+      "label": "Mover 1",
+      "notes": "",
+      "profile_id": "moving_head",
+      "start_address": 200,
+      "universe": 1
+    },
+    {
+      "id": 15,
+      "label": "Mover 2",
+      "notes": "",
+      "profile_id": "moving_head",
+      "start_address": 216,
       "universe": 1
     }
   ]

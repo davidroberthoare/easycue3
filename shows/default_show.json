@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-12T20:20:56.264885196+00:00",
+  "created": "2026-05-18T16:25:51.398570908+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -46,6 +46,18 @@
       "kind": {
         "data": {
           "channel_values": {
+            "200": 33,
+            "202": 33,
+            "204": 80,
+            "206": 90,
+            "207": 27,
+            "208": 100,
+            "216": 70,
+            "218": 65,
+            "220": 80,
+            "222": 90,
+            "223": 27,
+            "224": 100,
             "3": 75
           },
           "fade_down": 3.0,
@@ -572,7 +584,7 @@
       }
     ]
   },
-  "modified": "2026-05-12T20:20:56.265140405+00:00",
+  "modified": "2026-05-18T16:25:51.398688444+00:00",
   "next_cue_id": 18,
   "patch": [
     {
@@ -678,7 +690,22 @@
       "profile_id": "rgb",
       "start_address": 106,
       "universe": 1
+    },
+    {
+      "id": 14,
+      "label": "Mover 1",
+      "notes": "",
+      "profile_id": "moving_head",
+      "start_address": 200,
+      "universe": 1
+    },
+    {
+      "id": 15,
+      "label": "Mover 2",
+      "notes": "",
+      "profile_id": "moving_head",
+      "start_address": 216,
+      "universe": 1
     }
-  ],
-  "title": "Example Show"
+  ]
 }
