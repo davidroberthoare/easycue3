@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-18T16:34:14.897924212+00:00",
+  "created": "2026-05-18T16:54:39.936354120+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -42,223 +42,207 @@
   "cues": [
     {
       "autofollow": null,
-      "id": 13,
-      "kind": {
-        "data": {
-          "channel_values": {
-            "200": 33,
-            "202": 33,
-            "204": 80,
-            "206": 90,
-            "207": 27,
-            "208": 100,
-            "216": 70,
-            "218": 65,
-            "220": 80,
-            "222": 90,
-            "223": 27,
-            "224": 100,
-            "3": 75
-          },
-          "fade_down": 3.0,
-          "fade_up": 3.0
+      "data": {
+        "channel_values": {
+          "200": 33,
+          "202": 33,
+          "204": 80,
+          "206": 90,
+          "207": 27,
+          "208": 100,
+          "216": 70,
+          "218": 65,
+          "220": 80,
+          "222": 90,
+          "223": 27,
+          "224": 100,
+          "3": 75
         },
-        "type": "Lighting"
+        "fade_down": 3.0,
+        "fade_up": 3.0
       },
+      "id": 13,
       "label": "Intro Speech",
-      "number": 1.0
+      "number": 1.0,
+      "type": "Lighting"
     },
     {
       "autofollow": 2.0,
-      "id": 14,
-      "kind": {
-        "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0
-        },
-        "type": "Lighting"
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
       },
+      "id": 14,
       "label": "Blackout",
-      "number": 2.0
+      "number": 2.0,
+      "type": "Lighting"
     },
     {
       "autofollow": null,
-      "id": 4,
-      "kind": {
-        "data": {
-          "audio_path": "media/sample1.mp3",
-          "fade_in": 0.0,
-          "fade_out": 2.0,
-          "length": null,
-          "notes": "",
-          "output_routes": [
-            {
-              "device_name": "",
-              "pan": 0.0,
-              "volume": 1.0
-            }
-          ]
-        },
-        "type": "Audio"
+      "data": {
+        "audio_path": "media/sample1.mp3",
+        "fade_in": 0.0,
+        "fade_out": 2.0,
+        "length": null,
+        "notes": "",
+        "output_routes": [
+          {
+            "device_name": "",
+            "pan": 0.0,
+            "volume": 1.0
+          }
+        ]
       },
-      "label": "sample1",
-      "number": 3.0
+      "id": 4,
+      "label": "play music #1",
+      "number": 3.0,
+      "type": "Audio"
     },
     {
       "autofollow": 4.0,
+      "data": {
+        "channel_values": {
+          "1": 90,
+          "101": 32,
+          "102": 100,
+          "104": 32,
+          "105": 100,
+          "107": 32,
+          "108": 100,
+          "2": 90,
+          "20": 70,
+          "21": 100,
+          "22": 54,
+          "23": 34,
+          "24": 100,
+          "25": 100,
+          "28": 70,
+          "29": 100,
+          "3": 90,
+          "30": 54,
+          "31": 34,
+          "32": 100,
+          "33": 100,
+          "36": 70,
+          "37": 100,
+          "38": 54,
+          "39": 34,
+          "4": 90,
+          "40": 100,
+          "41": 100,
+          "44": 70,
+          "45": 100,
+          "46": 54,
+          "47": 34,
+          "48": 100,
+          "49": 100,
+          "5": 90,
+          "52": 70,
+          "53": 100,
+          "54": 54,
+          "55": 34,
+          "56": 100,
+          "57": 100
+        },
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
       "id": 15,
-      "kind": {
-        "data": {
-          "channel_values": {
-            "1": 90,
-            "101": 32,
-            "102": 100,
-            "104": 32,
-            "105": 100,
-            "107": 32,
-            "108": 100,
-            "2": 90,
-            "20": 70,
-            "21": 100,
-            "22": 54,
-            "23": 34,
-            "24": 100,
-            "25": 100,
-            "28": 70,
-            "29": 100,
-            "3": 90,
-            "30": 54,
-            "31": 34,
-            "32": 100,
-            "33": 100,
-            "36": 70,
-            "37": 100,
-            "38": 54,
-            "39": 34,
-            "4": 90,
-            "40": 100,
-            "41": 100,
-            "44": 70,
-            "45": 100,
-            "46": 54,
-            "47": 34,
-            "48": 100,
-            "49": 100,
-            "5": 90,
-            "52": 70,
-            "53": 100,
-            "54": 54,
-            "55": 34,
-            "56": 100,
-            "57": 100
-          },
-          "fade_down": 3.0,
-          "fade_up": 3.0
-        },
-        "type": "Lighting"
-      },
       "label": "Scene 1",
-      "number": 4.0
+      "number": 4.0,
+      "type": "Lighting"
     },
     {
       "autofollow": null,
+      "data": {
+        "fade_time": 3.0,
+        "output_fades": [
+          {
+            "device_name": "",
+            "target_pan": null,
+            "target_volume": 0.0
+          }
+        ],
+        "stop_when_complete": true,
+        "target_audio_cue": 3.0
+      },
       "id": 7,
-      "kind": {
-        "data": {
-          "fade_time": 3.0,
-          "output_fades": [
-            {
-              "device_name": "",
-              "target_pan": null,
-              "target_volume": 0.0
-            }
-          ],
-          "stop_when_complete": true,
-          "target_audio_cue": 3.0
-        },
-        "type": "Adjust"
-      },
       "label": "fade out sample 1",
-      "number": 7.0
+      "number": 7.0,
+      "type": "Adjust"
     },
     {
       "autofollow": null,
+      "data": {
+        "audio_path": "media/sample2.mp3",
+        "fade_in": 0.0,
+        "fade_out": 4.0,
+        "length": 5.0,
+        "notes": "",
+        "output_routes": [
+          {
+            "device_name": "",
+            "pan": 0.0,
+            "volume": 1.0
+          }
+        ]
+      },
       "id": 5,
-      "kind": {
-        "data": {
-          "audio_path": "media/sample2.mp3",
-          "fade_in": 0.0,
-          "fade_out": 4.0,
-          "length": 5.0,
-          "notes": "",
-          "output_routes": [
-            {
-              "device_name": "",
-              "pan": 0.0,
-              "volume": 1.0
-            }
-          ]
-        },
-        "type": "Audio"
-      },
-      "label": "sample2",
-      "number": 8.0
+      "label": "Play music #2",
+      "number": 8.0,
+      "type": "Audio"
     },
     {
       "autofollow": null,
+      "data": {
+        "channel_values": {
+          "1": 100,
+          "100": 100,
+          "101": 40,
+          "102": 100,
+          "103": 100,
+          "104": 46,
+          "105": 100,
+          "106": 98,
+          "107": 37,
+          "108": 100,
+          "2": 50,
+          "20": 90,
+          "21": 100,
+          "28": 57,
+          "29": 100,
+          "30": 60,
+          "31": 66,
+          "37": 20,
+          "38": 4,
+          "39": 100,
+          "45": 20,
+          "46": 4,
+          "47": 100,
+          "53": 20,
+          "54": 4,
+          "55": 100
+        },
+        "fade_down": 1.0,
+        "fade_up": 1.0
+      },
       "id": 16,
-      "kind": {
-        "data": {
-          "channel_values": {
-            "1": 100,
-            "100": 100,
-            "101": 40,
-            "102": 100,
-            "103": 100,
-            "104": 46,
-            "105": 100,
-            "106": 98,
-            "107": 37,
-            "108": 100,
-            "2": 50,
-            "20": 90,
-            "21": 100,
-            "28": 57,
-            "29": 100,
-            "30": 60,
-            "31": 66,
-            "37": 20,
-            "38": 4,
-            "39": 100,
-            "45": 20,
-            "46": 4,
-            "47": 100,
-            "53": 20,
-            "54": 4,
-            "55": 100
-          },
-          "fade_down": 1.0,
-          "fade_up": 1.0
-        },
-        "type": "Lighting"
-      },
       "label": "SR Highlight",
-      "number": 9.0
+      "number": 9.0,
+      "type": "Lighting"
     },
     {
       "autofollow": null,
-      "id": 17,
-      "kind": {
-        "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0
-        },
-        "type": "Lighting"
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
       },
+      "id": 17,
       "label": "Blackout",
-      "number": 10.0
+      "number": 10.0,
+      "type": "Lighting"
     }
   ],
   "description": "",
@@ -776,7 +760,7 @@
       }
     ]
   },
-  "modified": "2026-05-18T16:34:14.898073298+00:00",
+  "modified": "2026-05-18T16:54:39.936504316+00:00",
   "next_cue_id": 18,
   "patch": [
     {

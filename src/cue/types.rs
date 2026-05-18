@@ -238,18 +238,15 @@ pub enum CueKind {
 }
 
 /// A single cue — identity, display number, label, and type-specific data
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Cue {
     /// Stable identity — assigned once, never changes. 0 means unassigned (set by CueList::add_cue).
-    #[serde(default)]
     pub id: u32,
     /// Display number (e.g. 1.0, 1.5, 2.0) — not used as identity
-    #[serde(serialize_with = "crate::serde_helpers::round_f32_2")]
     pub number: f32,
     /// Optional text label
     pub label: String,
     /// Seconds after this cue fires to automatically fire the next sequential cue. None = manual only.
-    #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub autofollow: Option<f32>,
     /// Cue type and its data
     pub kind: CueKind,
@@ -360,6 +357,91 @@ impl Cue {
     /// Get a channel value (returns 0 for non-lighting cues)
     pub fn get_channel(&self, channel: u16) -> u8 {
         self.lighting_data().map(|d| d.get_channel(channel)).unwrap_or(0)
+    }
+}
+
+impl serde::Serialize for Cue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("autofollow", &self.autofollow.map(|v| (v * 100.0).round() / 100.0))?;
+        map.serialize_entry("id", &self.id)?;
+        map.serialize_entry("label", &self.label)?;
+        map.serialize_entry("number", &((self.number * 100.0).round() / 100.0))?;
+        match &self.kind {
+            CueKind::Lighting(data) => {
+                map.serialize_entry("type", "Lighting")?;
+                map.serialize_entry("data", data)?;
+            }
+            #[cfg(feature = "audio")]
+            CueKind::Audio(data) => {
+                map.serialize_entry("type", "Audio")?;
+                map.serialize_entry("data", data)?;
+            }
+            #[cfg(feature = "audio")]
+            CueKind::Adjust(data) => {
+                map.serialize_entry("type", "Adjust")?;
+                map.serialize_entry("data", data)?;
+            }
+        }
+        map.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Cue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct CueVisitor;
+        impl<'de> serde::de::Visitor<'de> for CueVisitor {
+            type Value = Cue;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a cue object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Cue, A::Error> {
+                let mut id: Option<u32> = None;
+                let mut number: Option<f32> = None;
+                let mut label: Option<String> = None;
+                let mut autofollow: Option<Option<f32>> = None;
+                let mut cue_type: Option<String> = None;
+                let mut data: Option<serde_json::Value> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "id"         => id         = Some(map.next_value()?),
+                        "number"     => number     = Some(map.next_value()?),
+                        "label"      => label      = Some(map.next_value()?),
+                        "autofollow" => autofollow = Some(map.next_value()?),
+                        "type"       => cue_type   = Some(map.next_value()?),
+                        "data"       => data       = Some(map.next_value()?),
+                        _            => { let _ = map.next_value::<serde_json::Value>()?; }
+                    }
+                }
+                let cue_type = cue_type.ok_or_else(|| serde::de::Error::missing_field("type"))?;
+                let data     = data.ok_or_else(|| serde::de::Error::missing_field("data"))?;
+                let kind = match cue_type.as_str() {
+                    "Lighting" => CueKind::Lighting(
+                        serde_json::from_value(data).map_err(serde::de::Error::custom)?
+                    ),
+                    #[cfg(feature = "audio")]
+                    "Audio" => CueKind::Audio(
+                        serde_json::from_value(data).map_err(serde::de::Error::custom)?
+                    ),
+                    #[cfg(feature = "audio")]
+                    "Adjust" => CueKind::Adjust(
+                        serde_json::from_value(data).map_err(serde::de::Error::custom)?
+                    ),
+                    other => return Err(serde::de::Error::unknown_variant(
+                        other, &["Lighting", "Audio", "Adjust"],
+                    )),
+                };
+                Ok(Cue {
+                    id: id.unwrap_or(0),
+                    number: number.ok_or_else(|| serde::de::Error::missing_field("number"))?,
+                    label: label.ok_or_else(|| serde::de::Error::missing_field("label"))?,
+                    autofollow: autofollow.unwrap_or(None),
+                    kind,
+                })
+            }
+        }
+        deserializer.deserialize_map(CueVisitor)
     }
 }
 
