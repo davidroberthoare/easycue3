@@ -130,6 +130,7 @@ pub struct UiState {
 
     // Dialog states
     pub pending_delete_cue_id: Option<u32>,
+    pub pending_update_cue_id: Option<u32>,
     pub show_quit_confirmation: bool,
     pub show_device_selector: bool,
     pub show_colour_settings: bool,
@@ -185,6 +186,7 @@ impl Default for UiState {
             command_context: CommandContext::General,
             theme_initialized: false,
             pending_delete_cue_id: None,
+            pending_update_cue_id: None,
             show_quit_confirmation: false,
             show_device_selector: false,
             show_colour_settings: false,
@@ -849,8 +851,10 @@ impl EasyCueApp {
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
-            crate::cue::CueKind::Lighting(_) => {
-                self.playback.start(&cue, &self.universes);
+            crate::cue::CueKind::Lighting(data) => {
+                let tracked = self.cue_list.tracked_state_up_to(prev_idx);
+                let fade_time = data.fade_up;
+                self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
                 true
             }
             #[cfg(feature = "audio")]
@@ -931,8 +935,10 @@ impl EasyCueApp {
         let cue = self.cue_list.get_cue(abs_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
-            crate::cue::CueKind::Lighting(_) => {
-                self.playback.start(&cue, &self.universes);
+            crate::cue::CueKind::Lighting(data) => {
+                let tracked = self.cue_list.tracked_state_up_to(abs_idx);
+                let fade_time = data.fade_up;
+                self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
                 true
             }
             #[cfg(feature = "audio")]
@@ -1038,13 +1044,24 @@ impl EasyCueApp {
         // The ID that will be assigned by add_cue (cue.id is 0 → next_id is used)
         let assigned_id = self.cue_list.next_id();
 
+        // Tracking mode: only record channels that differ from the accumulated state
+        // of all existing cues. A channel going to 0 that was non-zero must be stored
+        // explicitly so the next cue knows to fade it out.
+        let tracked = if self.cue_list.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            self.cue_list.tracked_state_up_to(self.cue_list.len() - 1)
+        };
+
         if let Some(data) = cue.lighting_data_mut() {
             for (uni_idx, universe) in self.universes.iter().enumerate() {
-                let universe_num = (uni_idx + 1) as u16; // 1-based
+                let universe_num = (uni_idx + 1) as u16;
                 for ch in 1u16..=512 {
-                    if let Ok(val) = universe.get_channel(ch) {
-                        if val > 0 {
-                            data.set_channel_in_universe(universe_num, ch, val);
+                    if let Ok(live_val) = universe.get_channel(ch) {
+                        let key = crate::cue::universe_key(universe_num, ch);
+                        let tracked_val = tracked.get(&key).copied().unwrap_or(0);
+                        if live_val != tracked_val {
+                            data.channel_values.insert(key, live_val);
                         }
                     }
                 }

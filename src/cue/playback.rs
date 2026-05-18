@@ -2,6 +2,7 @@
 
 use crate::cue::{Cue, CueState, decode_universe_key};
 use crate::dmx::Universe;
+use std::collections::HashMap;
 use std::time::Instant;
 
 /// Manages lighting cue playback and crossfades across multiple DMX universes.
@@ -68,6 +69,40 @@ impl PlaybackEngine {
         self.current_cue_id = Some(cue.id);
 
         log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, data.fade_up);
+    }
+
+    /// Fade from the current live universe output to a pre-computed full channel state.
+    /// Used for cue jumps: the caller passes the tracked state accumulated across all
+    /// cues up to the target, so channels that were never in the jumped-to cue still
+    /// land at their correct tracked values.
+    pub fn start_to_state(
+        &mut self,
+        state: &HashMap<u16, u8>,
+        fade_time: f32,
+        cue_id: Option<u32>,
+        universes: &[Universe],
+    ) {
+        self.ensure_capacity(universes.len());
+        for (ui, universe) in universes.iter().enumerate() {
+            for ch in 1..=512u16 {
+                self.previous_values[ui][(ch - 1) as usize] = universe.get_channel(ch).unwrap_or(0);
+            }
+        }
+        for arr in self.target_values.iter_mut() {
+            arr.fill(0);
+        }
+        for (&key, &value) in state {
+            let (universe_1based, channel) = decode_universe_key(key);
+            let ui = (universe_1based - 1) as usize;
+            if ui < self.target_values.len() && channel >= 1 && channel <= 512 {
+                self.target_values[ui][(channel - 1) as usize] = value;
+            }
+        }
+        self.fade_duration = fade_time;
+        self.fade_start = Some(Instant::now());
+        self.state = CueState::Fading { progress: 0.0 };
+        self.current_cue_id = cue_id;
+        log::info!("Jump: fading to tracked state ({:.1}s)", fade_time);
     }
 
     pub fn stop(&mut self) {

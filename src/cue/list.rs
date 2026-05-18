@@ -1,7 +1,8 @@
 //! Cue list management — unified lighting and audio cues
 
-use crate::cue::Cue;
+use crate::cue::{Cue, CueKind};
 use anyhow::Result;
+use std::collections::HashMap;
 
 /// Manages the unified cue list with a single shared play head
 #[derive(Debug, Clone)]
@@ -184,6 +185,28 @@ impl CueList {
         self.cues.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(std::cmp::Ordering::Equal));
         self.current = current_id.and_then(|id| self.cues.iter().position(|c| c.id == id));
         Ok(())
+    }
+
+    // --- Tracking ---
+
+    /// Replay all lighting cues from 0 through `idx` (inclusive) to produce the
+    /// full tracked channel state at that point in the list.
+    /// A channel explicitly stored as 0 in a cue means "turn this off".
+    /// Channels absent from a cue track through unchanged from prior cues.
+    pub fn tracked_state_up_to(&self, idx: usize) -> HashMap<u16, u8> {
+        let mut state: HashMap<u16, u8> = HashMap::new();
+        for cue in self.cues.iter().take(idx + 1) {
+            if let CueKind::Lighting(data) = &cue.kind {
+                for (&key, &value) in &data.channel_values {
+                    if value == 0 {
+                        state.remove(&key);
+                    } else {
+                        state.insert(key, value);
+                    }
+                }
+            }
+        }
+        state
     }
 
     // --- Utility ---

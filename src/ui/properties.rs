@@ -167,20 +167,67 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
 
     ui.add_space(6.0);
     if ui.button("Update from Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
-        let channel_values: Vec<(u16, u8)> = if let Some(universe) = app.universes.first() {
-            (1u16..=512)
-                .filter_map(|ch| universe.get_channel(ch).ok().filter(|&v| v > 0).map(|v| (ch, v)))
-                .collect()
-        } else { vec![] };
-        if let Some(c) = app.cue_list.get_cue_mut(idx) {
-            if let Some(d) = c.lighting_data_mut() {
-                d.channel_values.clear();
-                for (ch, val) in channel_values {
-                    d.set_channel(ch, val);
+        app.ui_state.pending_update_cue_id = Some(cue.id);
+    }
+
+    // ── Update from Stage confirmation modal ──────────────────────────────────
+    if let Some(upd_id) = app.ui_state.pending_update_cue_id {
+        if let Some(upd_idx) = app.cue_list.cues().iter().position(|c| c.id == upd_id) {
+            let upd_number = app.cue_list.get_cue(upd_idx).map(|c| c.number).unwrap_or(0.0);
+            let mut confirmed = false;
+            let mut cancelled = false;
+            egui::Modal::new(egui::Id::new("update_cue_confirm")).show(ui.ctx(), |ui| {
+                ui.set_min_width(300.0);
+                ui.heading("Update Cue from Stage?");
+                ui.add_space(6.0);
+                ui.label(format!("Overwrite Q{:.1} with the current live output?", upd_number));
+                ui.label(egui::RichText::new("The existing channel data will be replaced.").color(egui::Color32::from_rgb(200, 140, 60)));
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Update").clicked() {
+                        confirmed = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                });
+            });
+            if confirmed {
+                let prev_tracked = if upd_idx > 0 {
+                    app.cue_list.tracked_state_up_to(upd_idx - 1)
+                } else {
+                    std::collections::HashMap::new()
+                };
+                let mut deltas: Vec<(u16, u8)> = Vec::new();
+                for (uni_idx, universe) in app.universes.iter().enumerate() {
+                    let universe_num = (uni_idx + 1) as u16;
+                    for ch in 1u16..=512 {
+                        if let Ok(live_val) = universe.get_channel(ch) {
+                            let key = crate::cue::universe_key(universe_num, ch);
+                            let tracked_val = prev_tracked.get(&key).copied().unwrap_or(0);
+                            if live_val != tracked_val {
+                                deltas.push((key, live_val));
+                            }
+                        }
+                    }
                 }
+                if let Some(c) = app.cue_list.get_cue_mut(upd_idx) {
+                    if let Some(d) = c.lighting_data_mut() {
+                        d.channel_values.clear();
+                        for (key, val) in deltas {
+                            d.channel_values.insert(key, val);
+                        }
+                    }
+                }
+                app.ui_state.status_message = format!("Captured stage to cue {:.1}", upd_number);
+                app.ui_state.pending_update_cue_id = None;
             }
+            if cancelled {
+                app.ui_state.pending_update_cue_id = None;
+            }
+        } else {
+            app.ui_state.pending_update_cue_id = None;
         }
-        app.ui_state.status_message = format!("Captured stage to cue {:.1}", cue.number);
     }
 
     // Non-zero channel values (compact list)
