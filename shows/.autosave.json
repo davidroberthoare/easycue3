@@ -1,62 +1,64 @@
 {
   "audio_cues": [],
-  "created": "2026-05-13T13:30:24.994062+00:00",
+  "created": "2026-05-18T16:17:20.647181177+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
-      "b": 110,
-      "g": 100,
-      "r": 100
+      "b": 95,
+      "g": 95,
+      "r": 95
     },
     "base_audio": {
       "a": 255,
-      "b": 190,
-      "g": 95,
-      "r": 65
+      "b": 170,
+      "g": 90,
+      "r": 50
     },
     "base_lighting": {
       "a": 255,
-      "b": 170,
-      "g": 85,
-      "r": 150
+      "b": 154,
+      "g": 97,
+      "r": 128
     },
     "status_active": {
       "a": 255,
-      "b": 45,
-      "g": 45,
-      "r": 175
+      "b": 33,
+      "g": 168,
+      "r": 24
     },
     "status_fading": {
       "a": 255,
-      "b": 30,
-      "g": 160,
-      "r": 200
+      "b": 149,
+      "g": 207,
+      "r": 0
     },
     "status_on_deck": {
       "a": 255,
-      "b": 45,
-      "g": 135,
-      "r": 45
+      "b": 0,
+      "g": 167,
+      "r": 193
     }
   },
   "cues": [
     {
       "autofollow": null,
-      "id": 18,
+      "id": 13,
       "kind": {
         "data": {
-          "channel_values": {},
+          "channel_values": {
+            "3": 75
+          },
           "fade_down": 3.0,
           "fade_up": 3.0
         },
         "type": "Lighting"
       },
-      "label": "Cue 1",
+      "label": "Intro Speech",
       "number": 1.0
     },
     {
-      "autofollow": null,
-      "id": 19,
+      "autofollow": 2.0,
+      "id": 14,
       "kind": {
         "data": {
           "channel_values": {},
@@ -65,54 +67,176 @@
         },
         "type": "Lighting"
       },
-      "label": "Cue 2",
+      "label": "Blackout",
       "number": 2.0
     },
     {
       "autofollow": null,
-      "id": 23,
+      "id": 4,
       "kind": {
         "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0
+          "audio_path": "media/sample1.mp3",
+          "fade_in": 0.0,
+          "fade_out": 2.0,
+          "length": null,
+          "notes": "",
+          "output_routes": [
+            {
+              "device_name": "",
+              "pan": 0.0,
+              "volume": 1.0
+            }
+          ]
         },
-        "type": "Lighting"
+        "type": "Audio"
       },
-      "label": "Cue 3",
+      "label": "sample1",
       "number": 3.0
     },
     {
-      "autofollow": null,
-      "id": 24,
+      "autofollow": 4.0,
+      "id": 15,
       "kind": {
         "data": {
-          "channel_values": {},
+          "channel_values": {
+            "1": 90,
+            "101": 32,
+            "102": 100,
+            "104": 32,
+            "105": 100,
+            "107": 32,
+            "108": 100,
+            "2": 90,
+            "20": 70,
+            "21": 100,
+            "22": 54,
+            "23": 34,
+            "24": 100,
+            "25": 100,
+            "28": 70,
+            "29": 100,
+            "3": 90,
+            "30": 54,
+            "31": 34,
+            "32": 100,
+            "33": 100,
+            "36": 70,
+            "37": 100,
+            "38": 54,
+            "39": 34,
+            "4": 90,
+            "40": 100,
+            "41": 100,
+            "44": 70,
+            "45": 100,
+            "46": 54,
+            "47": 34,
+            "48": 100,
+            "49": 100,
+            "5": 90,
+            "52": 70,
+            "53": 100,
+            "54": 54,
+            "55": 34,
+            "56": 100,
+            "57": 100
+          },
           "fade_down": 3.0,
           "fade_up": 3.0
         },
         "type": "Lighting"
       },
-      "label": "Cue 4",
+      "label": "Scene 1",
       "number": 4.0
     },
     {
       "autofollow": null,
-      "id": 25,
+      "id": 7,
       "kind": {
         "data": {
-          "channel_values": {},
-          "fade_down": 3.0,
-          "fade_up": 3.0
+          "fade_time": 3.0,
+          "output_fades": [
+            {
+              "device_name": "",
+              "target_pan": null,
+              "target_volume": 0.0
+            }
+          ],
+          "stop_when_complete": true,
+          "target_audio_cue": 3.0
         },
-        "type": "Lighting"
+        "type": "Adjust"
       },
-      "label": "Cue 5",
-      "number": 5.0
+      "label": "fade out sample 1",
+      "number": 7.0
     },
     {
       "autofollow": null,
-      "id": 26,
+      "id": 5,
+      "kind": {
+        "data": {
+          "audio_path": "media/sample2.mp3",
+          "fade_in": 0.0,
+          "fade_out": 4.0,
+          "length": 5.0,
+          "notes": "",
+          "output_routes": [
+            {
+              "device_name": "",
+              "pan": 0.0,
+              "volume": 1.0
+            }
+          ]
+        },
+        "type": "Audio"
+      },
+      "label": "sample2",
+      "number": 8.0
+    },
+    {
+      "autofollow": null,
+      "id": 16,
+      "kind": {
+        "data": {
+          "channel_values": {
+            "1": 100,
+            "100": 100,
+            "101": 40,
+            "102": 100,
+            "103": 100,
+            "104": 46,
+            "105": 100,
+            "106": 98,
+            "107": 37,
+            "108": 100,
+            "2": 50,
+            "20": 90,
+            "21": 100,
+            "28": 57,
+            "29": 100,
+            "30": 60,
+            "31": 66,
+            "37": 20,
+            "38": 4,
+            "39": 100,
+            "45": 20,
+            "46": 4,
+            "47": 100,
+            "53": 20,
+            "54": 4,
+            "55": 100
+          },
+          "fade_down": 1.0,
+          "fade_up": 1.0
+        },
+        "type": "Lighting"
+      },
+      "label": "SR Highlight",
+      "number": 9.0
+    },
+    {
+      "autofollow": null,
+      "id": 17,
       "kind": {
         "data": {
           "channel_values": {},
@@ -121,18 +245,54 @@
         },
         "type": "Lighting"
       },
-      "label": "Cue 6",
-      "number": 6.0
+      "label": "Blackout",
+      "number": 10.0
     }
   ],
   "description": "",
+  "groups": {
+    "groups": [
+      {
+        "fixture_ids": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "id": 1,
+        "label": "FOH"
+      },
+      {
+        "fixture_ids": [
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "id": 2,
+        "label": "Tops"
+      },
+      {
+        "fixture_ids": [
+          11,
+          12,
+          13
+        ],
+        "id": 3,
+        "label": "Cyc"
+      }
+    ],
+    "next_id": 4
+  },
   "magic_sheet": {
     "canvas_offset": [
-      39.05858612060547,
-      94.1484375
+      169.2216796875,
+      108.65618896484375
     ],
-    "canvas_zoom": 1.0290149450302124,
-    "next_shape_id": 15,
+    "canvas_zoom": 1.013893485069275,
+    "next_shape_id": 19,
     "shapes": [
       {
         "bg_color": [
@@ -142,7 +302,9 @@
           255
         ],
         "fixture_id": 1,
+        "group_id": null,
         "id": 2,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -166,7 +328,9 @@
           255
         ],
         "fixture_id": 2,
+        "group_id": null,
         "id": 3,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -190,7 +354,9 @@
           255
         ],
         "fixture_id": 4,
+        "group_id": null,
         "id": 4,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -214,7 +380,9 @@
           255
         ],
         "fixture_id": 5,
+        "group_id": null,
         "id": 5,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -238,7 +406,9 @@
           255
         ],
         "fixture_id": 6,
+        "group_id": null,
         "id": 6,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -262,7 +432,9 @@
           255
         ],
         "fixture_id": 7,
+        "group_id": null,
         "id": 7,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -286,7 +458,9 @@
           255
         ],
         "fixture_id": 8,
+        "group_id": null,
         "id": 8,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -310,7 +484,9 @@
           255
         ],
         "fixture_id": 9,
+        "group_id": null,
         "id": 9,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -334,7 +510,9 @@
           255
         ],
         "fixture_id": 10,
+        "group_id": null,
         "id": 10,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -358,7 +536,9 @@
           255
         ],
         "fixture_id": 11,
+        "group_id": null,
         "id": 11,
+        "is_group": false,
         "kind": "Diamond",
         "link_color": true,
         "link_intensity": true,
@@ -370,7 +550,7 @@
         ],
         "pos": [
           119.7017822265625,
-          -29.15582275390625
+          -31.08673095703125
         ],
         "scale": 1.0
       },
@@ -382,7 +562,9 @@
           255
         ],
         "fixture_id": 12,
+        "group_id": null,
         "id": 12,
+        "is_group": false,
         "kind": "Diamond",
         "link_color": true,
         "link_intensity": true,
@@ -393,7 +575,7 @@
           255
         ],
         "pos": [
-          254.82421875,
+          252.57847595214844,
           -31.08673095703125
         ],
         "scale": 1.0
@@ -406,7 +588,9 @@
           255
         ],
         "fixture_id": 13,
+        "group_id": null,
         "id": 13,
+        "is_group": false,
         "kind": "Diamond",
         "link_color": true,
         "link_intensity": true,
@@ -417,8 +601,8 @@
           255
         ],
         "pos": [
-          388.8726806640625,
-          -36.25665283203125
+          385.4551696777344,
+          -31.08673095703125
         ],
         "scale": 1.0
       },
@@ -430,7 +614,9 @@
           255
         ],
         "fixture_id": 3,
+        "group_id": null,
         "id": 14,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -445,11 +631,89 @@
           267.527099609375
         ],
         "scale": 1.0
+      },
+      {
+        "bg_color": [
+          75,
+          30,
+          40,
+          255
+        ],
+        "fixture_id": null,
+        "group_id": 1,
+        "id": 15,
+        "is_group": true,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          -80.5421142578125,
+          227.281494140625
+        ],
+        "scale": 0.75
+      },
+      {
+        "bg_color": [
+          30,
+          75,
+          44,
+          255
+        ],
+        "fixture_id": null,
+        "group_id": 2,
+        "id": 16,
+        "is_group": true,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
+        "outline_color": [
+          236,
+          238,
+          242,
+          255
+        ],
+        "pos": [
+          -78.1016845703125,
+          88.97991943359375
+        ],
+        "scale": 0.75
+      },
+      {
+        "bg_color": [
+          27,
+          31,
+          115,
+          255
+        ],
+        "fixture_id": null,
+        "group_id": 3,
+        "id": 18,
+        "is_group": true,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          -79.78694915771484,
+          -30.107868194580078
+        ],
+        "scale": 0.75
       }
     ]
   },
-  "modified": "2026-05-13T13:30:24.994122+00:00",
-  "next_cue_id": 27,
+  "modified": "2026-05-18T16:17:20.647430220+00:00",
+  "next_cue_id": 18,
   "patch": [
     {
       "id": 1,

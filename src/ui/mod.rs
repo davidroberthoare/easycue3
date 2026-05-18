@@ -251,7 +251,7 @@ fn execute_goto(app: &mut EasyCueApp) {
     let input = app.ui_state.command_input.trim().to_string();
     app.ui_state.goto_mode = false;
     app.ui_state.command_input.clear();
-    let num_str = input.strip_prefix('g').unwrap_or(&input);
+    let num_str = input.strip_prefix("go").unwrap_or(&input);
     if num_str.is_empty() {
         return;
     }
@@ -1003,8 +1003,8 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
         return;
     }
 
-    // Goto command: g<number> — works from any context
-    if let Some(num_str) = input.strip_prefix('g') {
+    // Goto command: go<number> — works from any context
+    if let Some(num_str) = input.strip_prefix("go") {
         if !num_str.is_empty() {
             if let Ok(num) = num_str.parse::<f32>() {
                 app.goto_cue_by_number(num);

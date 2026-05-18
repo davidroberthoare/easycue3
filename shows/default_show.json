@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-12T20:20:56.264885196+00:00",
+  "created": "2026-05-18T16:17:17.610787342+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -250,13 +250,49 @@
     }
   ],
   "description": "",
+  "groups": {
+    "groups": [
+      {
+        "fixture_ids": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "id": 1,
+        "label": "FOH"
+      },
+      {
+        "fixture_ids": [
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "id": 2,
+        "label": "Tops"
+      },
+      {
+        "fixture_ids": [
+          11,
+          12,
+          13
+        ],
+        "id": 3,
+        "label": "Cyc"
+      }
+    ],
+    "next_id": 4
+  },
   "magic_sheet": {
     "canvas_offset": [
-      39.05858612060547,
-      94.1484375
+      169.2216796875,
+      108.65618896484375
     ],
-    "canvas_zoom": 1.0290149450302124,
-    "next_shape_id": 15,
+    "canvas_zoom": 1.013893485069275,
+    "next_shape_id": 19,
     "shapes": [
       {
         "bg_color": [
@@ -266,7 +302,9 @@
           255
         ],
         "fixture_id": 1,
+        "group_id": null,
         "id": 2,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -290,7 +328,9 @@
           255
         ],
         "fixture_id": 2,
+        "group_id": null,
         "id": 3,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -314,7 +354,9 @@
           255
         ],
         "fixture_id": 4,
+        "group_id": null,
         "id": 4,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -338,7 +380,9 @@
           255
         ],
         "fixture_id": 5,
+        "group_id": null,
         "id": 5,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -362,7 +406,9 @@
           255
         ],
         "fixture_id": 6,
+        "group_id": null,
         "id": 6,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -386,7 +432,9 @@
           255
         ],
         "fixture_id": 7,
+        "group_id": null,
         "id": 7,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -410,7 +458,9 @@
           255
         ],
         "fixture_id": 8,
+        "group_id": null,
         "id": 8,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -434,7 +484,9 @@
           255
         ],
         "fixture_id": 9,
+        "group_id": null,
         "id": 9,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -458,7 +510,9 @@
           255
         ],
         "fixture_id": 10,
+        "group_id": null,
         "id": 10,
+        "is_group": false,
         "kind": "Circle",
         "link_color": true,
         "link_intensity": true,
@@ -482,7 +536,9 @@
           255
         ],
         "fixture_id": 11,
+        "group_id": null,
         "id": 11,
+        "is_group": false,
         "kind": "Diamond",
         "link_color": true,
         "link_intensity": true,
@@ -494,7 +550,7 @@
         ],
         "pos": [
           119.7017822265625,
-          -29.15582275390625
+          -31.08673095703125
         ],
         "scale": 1.0
       },
@@ -506,7 +562,9 @@
           255
         ],
         "fixture_id": 12,
+        "group_id": null,
         "id": 12,
+        "is_group": false,
         "kind": "Diamond",
         "link_color": true,
         "link_intensity": true,
@@ -517,7 +575,7 @@
           255
         ],
         "pos": [
-          254.82421875,
+          252.57847595214844,
           -31.08673095703125
         ],
         "scale": 1.0
@@ -530,7 +588,9 @@
           255
         ],
         "fixture_id": 13,
+        "group_id": null,
         "id": 13,
+        "is_group": false,
         "kind": "Diamond",
         "link_color": true,
         "link_intensity": true,
@@ -541,8 +601,8 @@
           255
         ],
         "pos": [
-          388.8726806640625,
-          -36.25665283203125
+          385.4551696777344,
+          -31.08673095703125
         ],
         "scale": 1.0
       },
@@ -554,7 +614,9 @@
           255
         ],
         "fixture_id": 3,
+        "group_id": null,
         "id": 14,
+        "is_group": false,
         "kind": "Rectangle",
         "link_color": false,
         "link_intensity": true,
@@ -569,10 +631,88 @@
           267.527099609375
         ],
         "scale": 1.0
+      },
+      {
+        "bg_color": [
+          75,
+          30,
+          40,
+          255
+        ],
+        "fixture_id": null,
+        "group_id": 1,
+        "id": 15,
+        "is_group": true,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          -80.5421142578125,
+          227.281494140625
+        ],
+        "scale": 0.75
+      },
+      {
+        "bg_color": [
+          30,
+          75,
+          44,
+          255
+        ],
+        "fixture_id": null,
+        "group_id": 2,
+        "id": 16,
+        "is_group": true,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
+        "outline_color": [
+          236,
+          238,
+          242,
+          255
+        ],
+        "pos": [
+          -78.1016845703125,
+          88.97991943359375
+        ],
+        "scale": 0.75
+      },
+      {
+        "bg_color": [
+          27,
+          31,
+          115,
+          255
+        ],
+        "fixture_id": null,
+        "group_id": 3,
+        "id": 18,
+        "is_group": true,
+        "kind": "Rectangle",
+        "link_color": false,
+        "link_intensity": false,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          -79.78694915771484,
+          -30.107868194580078
+        ],
+        "scale": 0.75
       }
     ]
   },
-  "modified": "2026-05-12T20:20:56.265140405+00:00",
+  "modified": "2026-05-18T16:17:17.610981620+00:00",
   "next_cue_id": 18,
   "patch": [
     {
@@ -679,6 +819,5 @@
       "start_address": 106,
       "universe": 1
     }
-  ],
-  "title": "Example Show"
+  ]
 }

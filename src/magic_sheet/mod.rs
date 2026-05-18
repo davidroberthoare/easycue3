@@ -52,6 +52,10 @@ pub struct MagicSheetShape {
     /// When set, clicking this shape in live mode selects all fixtures in the group.
     #[serde(default)]
     pub group_id: Option<u32>,
+    /// When true, this shape is treated as a group shape (even if no group is assigned yet).
+    /// Persists the mode selection in properties without requiring a group to be chosen first.
+    #[serde(default)]
+    pub is_group: bool,
     /// In live mode, mirror the linked fixture's RGB colour into the fill.
     #[serde(default)]
     pub link_color: bool,
@@ -71,6 +75,7 @@ impl MagicSheetShape {
             outline_color: [100, 150, 200, 255],
             fixture_id: None,
             group_id: None,
+            is_group: false,
             link_color: false,
             link_intensity: false,
         }
@@ -85,7 +90,7 @@ impl MagicSheetShape {
         outline_color: [u8; 4],
         fixture_id: Option<usize>,
     ) -> Self {
-        Self { id, kind, pos, scale, bg_color, outline_color, fixture_id, group_id: None, link_color: false, link_intensity: false }
+        Self { id, kind, pos, scale, bg_color, outline_color, fixture_id, group_id: None, is_group: false, link_color: false, link_intensity: false }
     }
 }
 

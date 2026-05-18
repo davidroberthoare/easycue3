@@ -20,7 +20,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
     // ── Toolbar ─────────────────────────────────────────────────────────────
     ui.horizontal(|ui| {
-        let label = if edit_mode { "✏ Edit" } else { "▶ Live" };
+        let label = if edit_mode { "▶ Live" } else { "✏ Edit" };
         ui.toggle_value(&mut app.magic_sheet_state.edit_mode, label);
 
         if app.magic_sheet_state.edit_mode {
@@ -172,6 +172,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let shapes_snapshot: Vec<_> = app.magic_sheet.shapes.iter().map(|s| {
         let fixture_id = s.fixture_id;
         let group_id = s.group_id;
+        let is_group = s.is_group;
         let kind = s.kind.clone();
         let pos = s.pos;
         let scale = s.scale;
@@ -180,12 +181,12 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let id = s.id;
         let link_color = s.link_color;
         let link_intensity = s.link_intensity;
-        (id, kind, pos, scale, bg, outline, fixture_id, group_id, link_color, link_intensity)
+        (id, kind, pos, scale, bg, outline, fixture_id, group_id, is_group, link_color, link_intensity)
     }).collect();
 
     let mut drag_started_on_shape = false;
 
-    for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id, group_id, link_color, link_intensity)
+    for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id, group_id, is_group, link_color, link_intensity)
         in &shapes_snapshot
     {
         let shape_id = *shape_id;
@@ -196,7 +197,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
 
         // Determine whether this is a group shape or a fixture shape.
-        let is_group_shape = group_id.is_some() && fixture_id.is_none();
+        let is_group_shape = *is_group || (group_id.is_some() && fixture_id.is_none());
 
         let (label, fix_num, intensity, rgb) = if is_group_shape {
             group_shape_info(app, *group_id)
@@ -224,14 +225,11 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
         let is_selected_shape = edit_mode
             && app.magic_sheet_state.selected_shape_ids.contains(&shape_id);
-        // A fixture shape is highlighted when its fixture is selected.
-        // A group shape is highlighted when any of its fixtures is selected.
+        // Fixture shapes highlight when their fixture is in the selection.
+        // Group shapes do not auto-highlight from fixture selection — they are
+        // selection shortcuts only and should not react to individual fixture picks.
         let is_selected_fixture = !edit_mode && if let Some(fid) = fixture_id {
             app.ui_state.selected_fixtures.contains(fid)
-        } else if let Some(gid) = group_id {
-            app.groups.resolve_fixtures(*gid)
-                .iter()
-                .any(|fid| app.ui_state.selected_fixtures.contains(fid))
         } else {
             false
         };
@@ -289,12 +287,10 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     app.ui_state.last_selected_fixture = *fixture_id;
                     update_command_from_fixture_selection(app);
                 } else if let Some(gid) = group_id {
-                    // Group shape — select all fixtures belonging to the group
+                    // Group shape — always additive: clicking a group adds its fixtures
+                    // to the current selection so multiple groups can be built up easily.
                     let group_fixtures = app.groups.resolve_fixtures(*gid);
                     if !group_fixtures.is_empty() {
-                        if !additive {
-                            app.ui_state.selected_fixtures.clear();
-                        }
                         for fid in &group_fixtures {
                             app.ui_state.selected_fixtures.insert(*fid);
                         }
@@ -306,18 +302,27 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
             // ── Live mode: drag adjusts intensity on all selected fixtures ────
             if resp.dragged() && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
-                // Only fixture shapes support drag-intensity (not group shapes)
-                if let Some(fid) = fixture_id {
-                    let dy = resp.drag_delta().y;
-                    if dy.abs() > 0.5 {
+                let dy = resp.drag_delta().y;
+                if dy.abs() > 0.5 {
+                    if let Some(fid) = fixture_id {
                         if !app.ui_state.selected_fixtures.contains(fid) {
                             app.ui_state.selected_fixtures.clear();
                             app.ui_state.selected_fixtures.insert(*fid);
                             app.ui_state.last_selected_fixture = *fixture_id;
                         }
-                        let delta = (-dy / h).clamp(-1.0, 1.0);
-                        adjust_selected_fixtures_intensity(app, delta);
+                    } else if let Some(gid) = group_id {
+                        // Drag on a group shape: select the group's fixtures if none are selected
+                        let group_fixtures = app.groups.resolve_fixtures(*gid);
+                        let any_selected = group_fixtures.iter().any(|fid| app.ui_state.selected_fixtures.contains(fid));
+                        if !any_selected && !group_fixtures.is_empty() {
+                            for fid in &group_fixtures {
+                                app.ui_state.selected_fixtures.insert(*fid);
+                            }
+                            app.ui_state.last_selected_fixture = group_fixtures.last().copied();
+                        }
                     }
+                    let delta = (-dy / h).clamp(-1.0, 1.0);
+                    adjust_selected_fixtures_intensity(app, delta);
                 }
             }
         }
@@ -410,13 +415,19 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 if !modifiers.command && !modifiers.ctrl {
                     app.ui_state.selected_fixtures.clear();
                 }
-                for (_, _, pos, scale, _, _, fixture_id, ..) in &shapes_snapshot {
-                    if let Some(fid) = fixture_id {
-                        let sc = canvas_to_screen(canvas_rect, app.magic_sheet_state.canvas_offset, app.magic_sheet_state.canvas_zoom, *pos);
-                        let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
-                        let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
-                        if sel_rect.intersects(Rect::from_center_size(sc, egui::vec2(w, h))) {
+                for (_, _, pos, scale, _, _, fixture_id, group_id, is_group, ..) in &shapes_snapshot {
+                    let sc = canvas_to_screen(canvas_rect, app.magic_sheet_state.canvas_offset, app.magic_sheet_state.canvas_zoom, *pos);
+                    let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
+                    let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
+                    if sel_rect.intersects(Rect::from_center_size(sc, egui::vec2(w, h))) {
+                        if let Some(fid) = fixture_id {
                             app.ui_state.selected_fixtures.insert(*fid);
+                        } else if *is_group || group_id.is_some() {
+                            if let Some(gid) = group_id {
+                                for fid in app.groups.resolve_fixtures(*gid) {
+                                    app.ui_state.selected_fixtures.insert(fid);
+                                }
+                            }
                         }
                     }
                 }
@@ -468,22 +479,17 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
 
     let mut fixture_id = shape.fixture_id;
     let mut group_id = shape.group_id;
+    let mut is_group = shape.is_group;
     let mut scale = shape.scale;
     let mut bg = Color32::from_rgba_unmultiplied(shape.bg_color[0], shape.bg_color[1], shape.bg_color[2], shape.bg_color[3]);
     let mut outline = Color32::from_rgba_unmultiplied(shape.outline_color[0], shape.outline_color[1], shape.outline_color[2], shape.outline_color[3]);
     let mut link_color = shape.link_color;
     let mut link_intensity = shape.link_intensity;
 
-    // Determine link mode: None / Fixture / Group
+    // Determine link mode: Fixture / Group (no None — new shapes default to Fixture)
     #[derive(PartialEq)]
-    enum LinkMode { None, Fixture, Group }
-    let mut link_mode = if fixture_id.is_some() {
-        LinkMode::Fixture
-    } else if group_id.is_some() {
-        LinkMode::Group
-    } else {
-        LinkMode::None
-    };
+    enum LinkMode { Fixture, Group }
+    let mut link_mode = if is_group { LinkMode::Group } else { LinkMode::Fixture };
 
     egui::Grid::new("shape_props_grid")
         .num_columns(2)
@@ -492,18 +498,15 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
             // ── Link mode selector ─────────────────────────────────────────────
             ui.label("Links to:");
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut link_mode, LinkMode::None, "None");
                 ui.selectable_value(&mut link_mode, LinkMode::Fixture, "Fixture");
                 ui.selectable_value(&mut link_mode, LinkMode::Group, "Group");
             });
             ui.end_row();
 
+            // Sync is_group flag whenever mode changes
+            is_group = link_mode == LinkMode::Group;
+
             match link_mode {
-                LinkMode::None => {
-                    // Clear both IDs when user picks None
-                    fixture_id = None;
-                    group_id = None;
-                }
                 LinkMode::Fixture => {
                     group_id = None; // clear group if switching mode
                     let patches: Vec<_> = app.fixtures.patch_list().patches().to_vec();
@@ -597,6 +600,7 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
     if let Some(s) = app.magic_sheet.get_shape_mut(shape_id) {
         s.fixture_id = fixture_id;
         s.group_id = group_id;
+        s.is_group = is_group;
         s.scale = scale;
         let [r, g, b, a] = bg.to_srgba_unmultiplied();
         s.bg_color = [r, g, b, a];
