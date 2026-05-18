@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-18T16:17:20.647181177+00:00",
+  "created": "2026-05-18T16:34:14.897924212+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -46,6 +46,18 @@
       "kind": {
         "data": {
           "channel_values": {
+            "200": 33,
+            "202": 33,
+            "204": 80,
+            "206": 90,
+            "207": 27,
+            "208": 100,
+            "216": 70,
+            "218": 65,
+            "220": 80,
+            "222": 90,
+            "223": 27,
+            "224": 100,
             "3": 75
           },
           "fade_down": 3.0,
@@ -288,11 +300,11 @@
   },
   "magic_sheet": {
     "canvas_offset": [
-      169.2216796875,
-      108.65618896484375
+      201.6802978515625,
+      160.3262939453125
     ],
-    "canvas_zoom": 1.013893485069275,
-    "next_shape_id": 19,
+    "canvas_zoom": 0.7899296283721924,
+    "next_shape_id": 21,
     "shapes": [
       {
         "bg_color": [
@@ -709,10 +721,62 @@
           -30.107868194580078
         ],
         "scale": 0.75
+      },
+      {
+        "bg_color": [
+          72,
+          86,
+          108,
+          255
+        ],
+        "fixture_id": 14,
+        "group_id": null,
+        "id": 19,
+        "is_group": false,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          190.8743896484375,
+          -128.13658142089844
+        ],
+        "scale": 1.0
+      },
+      {
+        "bg_color": [
+          72,
+          86,
+          108,
+          255
+        ],
+        "fixture_id": 15,
+        "group_id": null,
+        "id": 20,
+        "is_group": false,
+        "kind": "Circle",
+        "link_color": true,
+        "link_intensity": true,
+        "outline_color": [
+          100,
+          150,
+          200,
+          255
+        ],
+        "pos": [
+          319.39251708984375,
+          -125.81246185302734
+        ],
+        "scale": 1.0
       }
     ]
   },
-  "modified": "2026-05-18T16:17:20.647430220+00:00",
+  "modified": "2026-05-18T16:34:14.898073298+00:00",
   "next_cue_id": 18,
   "patch": [
     {
@@ -817,6 +881,22 @@
       "notes": "",
       "profile_id": "rgb",
       "start_address": 106,
+      "universe": 1
+    },
+    {
+      "id": 14,
+      "label": "Mover 1",
+      "notes": "",
+      "profile_id": "moving_head",
+      "start_address": 200,
+      "universe": 1
+    },
+    {
+      "id": 15,
+      "label": "Mover 2",
+      "notes": "",
+      "profile_id": "moving_head",
+      "start_address": 216,
       "universe": 1
     }
   ]

@@ -166,7 +166,7 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
         });
 
     ui.add_space(6.0);
-    if ui.button("Capture Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
+    if ui.button("Update from Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
         let channel_values: Vec<(u16, u8)> = if let Some(universe) = app.universes.first() {
             (1u16..=512)
                 .filter_map(|ch| universe.get_channel(ch).ok().filter(|&v| v > 0).map(|v| (ch, v)))
@@ -665,13 +665,24 @@ fn render_fixture_properties(
     let white = white_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
     let uv    = uv_ch   .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
 
+    // Position channels
+    let pan_ch   = profile.get_parameter_offset(&FixtureParameter::Pan ).map(|o| patch.start_address + o);
+    let tilt_ch  = profile.get_parameter_offset(&FixtureParameter::Tilt).map(|o| patch.start_address + o);
+    let pan_val  = pan_ch .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let tilt_val = tilt_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let has_position = pan_ch.is_some() || tilt_ch.is_some();
+
     // Extra channels: any parameter not already handled above.
     // Intensity is always shown; colour parameters are shown in the colour section
     // when is_rgb — otherwise they fall through here so nothing is silently dropped.
+    // Pan/Tilt coarse are shown in the gizmo when has_position; fine channels remain here.
     let extra_channels: Vec<(String, u16, u8)> = profile.parameters.iter()
         .filter(|pm| {
             if matches!(pm.parameter, FixtureParameter::Intensity) { return false; }
             if is_rgb && pm.parameter.is_color()                   { return false; }
+            if has_position && matches!(pm.parameter, FixtureParameter::Pan | FixtureParameter::Tilt) {
+                return false;
+            }
             true
         })
         .map(|pm| {
@@ -690,10 +701,11 @@ fn render_fixture_properties(
     }
 
     // ── Pending changes collected during rendering, applied after ─────────────
-    let mut apply_int_raw : Option<u8>  = None;
-    let mut apply_int_vi  : Option<f32> = None;
-    let mut apply_wheel   : bool        = false;
-    let mut apply_channels: Vec<(u16, u8)> = Vec::new();
+    let mut apply_int_raw  : Option<u8>       = None;
+    let mut apply_int_vi   : Option<f32>      = None;
+    let mut apply_wheel    : bool             = false;
+    let mut apply_pan_tilt : Option<(u8, u8)> = None;
+    let mut apply_channels : Vec<(u16, u8)>   = Vec::new();
 
     // ── Horizontal scroll area ────────────────────────────────────────────────
     egui::ScrollArea::horizontal()
@@ -790,7 +802,25 @@ fn render_fixture_properties(
                     col_slider!("UV", uv_ch,    uv   );
                 }
 
-                // Extra channels — Strobe, Pan, Tilt, Focus, Zoom, Gobo, Custom, etc.
+                // Pan/Tilt gizmo
+                if has_position {
+                    ui.separator();
+                    let gizmo_size = wheel_size;
+                    ui.vertical(|ui| {
+                        ui.label("Pos");
+                        if let Some(result) = crate::ui::PanTiltGizmo::new().show(
+                            ui, pan_val, tilt_val, gizmo_size,
+                        ) {
+                            apply_pan_tilt = Some(result);
+                        }
+                        ui.label(
+                            egui::RichText::new(format!("P:{} T:{}", pan_val, tilt_val))
+                                .small(),
+                        );
+                    });
+                }
+
+                // Extra channels — Strobe, Focus, Zoom, Gobo, PanFine, TiltFine, Custom, etc.
                 if !extra_channels.is_empty() {
                     ui.separator();
                     for (label, ch, init_val) in &extra_channels {
@@ -860,6 +890,10 @@ fn render_fixture_properties(
             }
             app.virtual_intensity.set_color(patch.id, cv);
         }
+    }
+    if let Some((np, nt)) = apply_pan_tilt {
+        if let Some(ch) = pan_ch  { let _ = universe.set_channel(ch, np); }
+        if let Some(ch) = tilt_ch { let _ = universe.set_channel(ch, nt); }
     }
     if !apply_channels.is_empty() {
         let needs_vi = !has_int;
@@ -1055,6 +1089,8 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         amber_ch: Option<u16>,
         white_ch: Option<u16>,
         uv_ch: Option<u16>,
+        pan_ch: Option<u16>,
+        tilt_ch: Option<u16>,
     }
 
     let fix_infos: Vec<FxInfo> = sorted_ids
@@ -1073,7 +1109,9 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
             let b_ch = profile.get_parameter_offset(&FixtureParameter::Blue).map(|off| addr + off);
             let amber_ch = profile.get_parameter_offset(&FixtureParameter::Amber).map(|off| addr + off);
             let white_ch = profile.get_parameter_offset(&FixtureParameter::White).map(|off| addr + off);
-            let uv_ch = profile.get_parameter_offset(&FixtureParameter::Uv).map(|off| addr + off);
+            let uv_ch    = profile.get_parameter_offset(&FixtureParameter::Uv   ).map(|off| addr + off);
+            let pan_ch   = profile.get_parameter_offset(&FixtureParameter::Pan  ).map(|off| addr + off);
+            let tilt_ch  = profile.get_parameter_offset(&FixtureParameter::Tilt ).map(|off| addr + off);
             let is_rgb_only = profile.is_rgb() && !has_intensity;
             Some(FxInfo {
                 id,
@@ -1090,6 +1128,8 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                 amber_ch,
                 white_ch,
                 uv_ch,
+                pan_ch,
+                tilt_ch,
             })
         })
         .collect();
@@ -1099,8 +1139,15 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         return;
     }
 
+    // Determine if all selected fixtures share pan and/or tilt (show gizmo if both).
+    let all_pan      = fix_infos.iter().all(|fi| fi.pan_ch.is_some());
+    let all_tilt     = fix_infos.iter().all(|fi| fi.tilt_ch.is_some());
+    let all_position = all_pan && all_tilt;
+
     // Parameters present in every selected fixture that aren't Intensity or standard
-    // colour channels (those are handled above).  Vec of (label, per-fixture channel).
+    // colour channels (those are handled above).  Pan/Tilt coarse are shown in the
+    // gizmo when all_position; fine channels remain here.
+    // Vec of (label, per-fixture channel).
     let extra_common: Vec<(String, Vec<u16>)> = fix_infos[0].profile.parameters.iter()
         .filter(|pm| {
             !matches!(
@@ -1112,7 +1159,9 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     | FixtureParameter::Amber
                     | FixtureParameter::White
                     | FixtureParameter::Uv
-            ) && fix_infos[1..].iter().all(|fi| fi.profile.has_parameter(&pm.parameter))
+            )
+            && !(all_position && matches!(pm.parameter, FixtureParameter::Pan | FixtureParameter::Tilt))
+            && fix_infos[1..].iter().all(|fi| fi.profile.has_parameter(&pm.parameter))
         })
         .map(|pm| {
             let channels: Vec<u16> = fix_infos.iter()
@@ -1133,6 +1182,8 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     let ambers: Vec<u8>;
     let whites: Vec<u8>;
     let uvs: Vec<u8>;
+    let pan_vals: Vec<u8>;
+    let tilt_vals: Vec<u8>;
     let all_rgb: bool;
     let all_amber: bool;
     let all_white: bool;
@@ -1196,6 +1247,14 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     .collect()
             })
             .collect();
+
+        if all_position {
+            pan_vals  = fix_infos.iter().map(|fi| fi.pan_ch .map(get).unwrap_or(0)).collect();
+            tilt_vals = fix_infos.iter().map(|fi| fi.tilt_ch.map(get).unwrap_or(0)).collect();
+        } else {
+            pan_vals  = vec![];
+            tilt_vals = vec![];
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1211,15 +1270,16 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     };
 
     // ── Changes to apply after rendering ─────────────────────────────────────
-    let mut apply_intensity: Option<u8> = None;
-    let mut apply_wheel_color: bool = false;
-    let mut apply_r: Option<u8> = None;
-    let mut apply_g: Option<u8> = None;
-    let mut apply_b: Option<u8> = None;
-    let mut apply_amber: Option<u8> = None;
-    let mut apply_white: Option<u8> = None;
-    let mut apply_uv: Option<u8> = None;
-    let mut apply_extra: Vec<Option<u8>> = vec![None; extra_common.len()];
+    let mut apply_intensity : Option<u8>       = None;
+    let mut apply_wheel_color: bool            = false;
+    let mut apply_pan_tilt  : Option<(u8, u8)> = None;
+    let mut apply_r         : Option<u8>       = None;
+    let mut apply_g         : Option<u8>       = None;
+    let mut apply_b         : Option<u8>       = None;
+    let mut apply_amber     : Option<u8>       = None;
+    let mut apply_white     : Option<u8>       = None;
+    let mut apply_uv        : Option<u8>       = None;
+    let mut apply_extra     : Vec<Option<u8>>  = vec![None; extra_common.len()];
 
     // ── Render header ─────────────────────────────────────────────────────────
     ui.label(egui::RichText::new(format!("{} Fixtures Selected", fix_infos.len())).strong());
@@ -1330,7 +1390,32 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     if all_uv    { ch_slider!("UV", uvs,    apply_uv   ); }
                 }
 
-                // Extra channels shared by all fixtures (Strobe, Pan, Tilt, Gobo, etc.)
+                // Pan/Tilt gizmo (when every selected fixture has both channels)
+                if all_position {
+                    ui.separator();
+                    let gizmo_size = wheel_size;
+                    let pos_uniform = is_uniform(&pan_vals) && is_uniform(&tilt_vals);
+                    let pan_v  = pan_vals[0];
+                    let tilt_v = tilt_vals[0];
+                    ui.vertical(|ui| {
+                        ui.label("Pos");
+                        if let Some(result) = crate::ui::PanTiltGizmo::new().show(
+                            ui, pan_v, tilt_v, gizmo_size,
+                        ) {
+                            apply_pan_tilt = Some(result);
+                        }
+                        if pos_uniform {
+                            ui.label(
+                                egui::RichText::new(format!("P:{} T:{}", pan_v, tilt_v))
+                                    .small(),
+                            );
+                        } else {
+                            ui.colored_label(mixed_col, "≠");
+                        }
+                    });
+                }
+
+                // Extra channels shared by all fixtures (Strobe, PanFine, TiltFine, Gobo, etc.)
                 if !extra_common.is_empty() {
                     ui.separator();
                     for (i, (label, _)) in extra_common.iter().enumerate() {
@@ -1445,7 +1530,17 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         }
     }
 
-    // Extra channels (Strobe, Pan, Tilt, etc.) — applied to each fixture's channel
+    // Pan/Tilt gizmo — applied to each fixture's pan and tilt channel
+    if let Some((np, nt)) = apply_pan_tilt {
+        if let Some(u) = app.universes.first_mut() {
+            for fi in &fix_infos {
+                if let Some(ch) = fi.pan_ch  { let _ = u.set_channel(ch, np); }
+                if let Some(ch) = fi.tilt_ch { let _ = u.set_channel(ch, nt); }
+            }
+        }
+    }
+
+    // Extra channels (Strobe, PanFine, TiltFine, etc.) — applied to each fixture's channel
     for (i, (_, channels)) in extra_common.iter().enumerate() {
         if let Some(v) = apply_extra[i] {
             if let Some(u) = app.universes.first_mut() {
