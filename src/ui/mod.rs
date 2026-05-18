@@ -7,6 +7,7 @@ mod color_wheel;
 mod cues;
 mod fixture_editor;
 mod magic_sheet;
+mod pan_tilt_gizmo;
 mod properties;
 mod patching;
 
@@ -15,6 +16,7 @@ use crate::app::{EasyCueApp, TabKind};
 use egui_phosphor::regular as ph;
 
 pub use color_wheel::ColorWheel;
+pub use pan_tilt_gizmo::PanTiltGizmo;
 pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
