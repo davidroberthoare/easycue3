@@ -20,6 +20,7 @@ pub enum TabKind {
     Channels,
     Cues,       // unified lighting + audio cue list
     Patching,
+    Groups,
     Properties,
     InstrumentProperties,
     MagicSheet,
@@ -34,6 +35,7 @@ impl std::fmt::Display for TabKind {
             TabKind::Channels => write!(f, "Channels"),
             TabKind::Cues => write!(f, "Cues"),
             TabKind::Patching => write!(f, "Patching"),
+            TabKind::Groups => write!(f, "Groups"),
             TabKind::Properties => write!(f, "Cue Properties"),
             TabKind::InstrumentProperties => write!(f, "Instrument Properties"),
             TabKind::MagicSheet => write!(f, "Magic Sheet"),
@@ -227,9 +229,12 @@ pub struct EasyCueApp {
     pub media: MediaManager,
     pub fixtures: FixtureLibrary,
     pub virtual_intensity: crate::fixtures::VirtualIntensity,
+    /// Lighting groups — fixture selection shortcuts.
+    pub groups: crate::groups::GroupList,
     pub ui_state: UiState,
     pub fixture_editor: crate::ui::FixtureEditorState,
     pub patching_state: crate::ui::PatchingPanelState,
+    pub groups_state: crate::ui::GroupsPanelState,
     /// Serialised magic sheet layout (saved with the show file).
     pub magic_sheet: crate::magic_sheet::MagicSheet,
     /// Ephemeral magic sheet panel state (not saved).
@@ -561,9 +566,11 @@ impl EasyCueApp {
             media: MediaManager::new(),
             fixtures: FixtureLibrary::new(),
             virtual_intensity: crate::fixtures::VirtualIntensity::new(),
+            groups: crate::groups::GroupList::default(),
             ui_state: UiState::default(),
             fixture_editor: crate::ui::FixtureEditorState::default(),
             patching_state: crate::ui::PatchingPanelState::default(),
+            groups_state: crate::ui::GroupsPanelState::default(),
             magic_sheet: crate::magic_sheet::MagicSheet::default(),
             magic_sheet_state: MagicSheetState::default(),
             show_title: "Example Show".to_string(),
@@ -697,6 +704,7 @@ impl EasyCueApp {
             }
         }
 
+        self.groups = show.groups;
         self.magic_sheet = show.magic_sheet;
         self.cue_colors = show.cue_colors;
         self.magic_sheet_state = MagicSheetState {
@@ -736,6 +744,7 @@ impl EasyCueApp {
         show.next_cue_id = self.cue_list.next_id();
         show.cues = self.cue_list.cues().to_vec();
         show.patch = self.fixtures.patch_list().patches().to_vec();
+        show.groups = self.groups.clone();
         show.magic_sheet = self.magic_sheet.clone();
         show.cue_colors = self.cue_colors.clone();
 

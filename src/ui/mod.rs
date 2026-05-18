@@ -6,6 +6,7 @@ mod channels;
 mod color_wheel;
 mod cues;
 mod fixture_editor;
+mod groups;
 mod magic_sheet;
 mod properties;
 mod patching;
@@ -18,6 +19,7 @@ pub use color_wheel::ColorWheel;
 pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
+pub use groups::{render_groups_panel, GroupsPanelState};
 pub use magic_sheet::render_magic_sheet_panel;
 pub use properties::{render_cue_properties_panel, render_instrument_properties_panel};
 pub use patching::{render_patching_panel, PatchingPanelState};
@@ -232,6 +234,7 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
                            ch == 'a' || ch == '@' ||  // "at" operator
                            ch == '+' || ch == ',' ||  // addition
                            ch == '-' ||               // range or subtraction
+                           ch == 'g' ||               // group prefix
                            ch == 't' || ch == 'h' || ch == 'r' || ch == 'u' || // "thru"
                            ch == 'f' || ch == 'l' || ch == 'o' // "full", "out"
                         {
@@ -306,6 +309,11 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
                 let mut patching_state = std::mem::take(&mut self.app.patching_state);
                 render_patching_panel(ui, self.app, &mut patching_state);
                 self.app.patching_state = patching_state;
+            }
+            TabKind::Groups => {
+                let mut groups_state = std::mem::take(&mut self.app.groups_state);
+                render_groups_panel(ui, self.app, &mut groups_state);
+                self.app.groups_state = groups_state;
             }
             TabKind::Properties => render_cue_properties_panel(ui, self.app),
             TabKind::InstrumentProperties => render_instrument_properties_panel(ui, self.app),
@@ -444,6 +452,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 if ui.button("Patching").clicked() {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Patching);
+                    ui.close_menu();
+                }
+                if ui.button("Groups").clicked() {
+                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Groups);
                     ui.close_menu();
                 }
                 if ui.button("Cue Properties").clicked() {

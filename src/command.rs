@@ -33,6 +33,9 @@ pub enum Command {
     SetFixtureIntensity { fixtures: Vec<usize>, intensity: f32 },
     /// Select fixtures (for subsequent operations)
     SelectFixtures { fixtures: Vec<usize> },
+    /// Group command: select or set level on fixtures from one or more groups.
+    /// `level` is 0–100 percent; None means select only.
+    GroupFixtures { group_ids: Vec<u32>, level: Option<u8> },
     /// Clear command line
     Clear,
     /// Invalid/unparseable command
@@ -65,7 +68,12 @@ pub fn parse_lighting_command_with_context(input: &str, context: CommandContext)
     if input.is_empty() {
         return Ok(Command::Clear);
     }
-    
+
+    // Group command: starts with "g" followed by a digit (e.g. "g1", "g1@50", "g1+g2@75")
+    if input.starts_with('g') && input.chars().nth(1).map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        return parse_group_command(&input);
+    }
+
     // Split on "a" or "@" to separate selection from level
     let parts: Vec<&str> = if input.contains('a') {
         input.splitn(2, 'a').collect()
@@ -330,6 +338,46 @@ fn parse_fixture_selection(input: &str) -> Result<Vec<usize>> {
     Ok(result)
 }
 
+/// Parse a group command like "g1", "g1@50", "g1+g2@75".
+/// Groups are separated by `+`; the optional level follows `@` or `a`.
+fn parse_group_command(input: &str) -> Result<Command> {
+    // Split off the level part: first `@`, or an `a` that immediately follows a digit.
+    let split_pos = input.find('@').or_else(|| {
+        input.char_indices().find(|(i, c)| {
+            *c == 'a'
+                && *i > 0
+                && input[..*i].ends_with(|p: char| p.is_ascii_digit())
+        })
+        .map(|(i, _)| i)
+    });
+
+    let (sel_part, level_part) = match split_pos {
+        Some(pos) => (&input[..pos], Some(&input[pos + 1..])),
+        None => (input, None),
+    };
+
+    let group_ids: Vec<u32> = sel_part
+        .split('+')
+        .filter_map(|part| {
+            part.trim()
+                .strip_prefix('g')
+                .and_then(|s| s.parse::<u32>().ok())
+                .filter(|&id| id >= 1)
+        })
+        .collect();
+
+    if group_ids.is_empty() {
+        bail!("No valid group IDs in: {}", input);
+    }
+
+    let level = match level_part {
+        Some(s) => Some(parse_level(s)?),
+        None => None,
+    };
+
+    Ok(Command::GroupFixtures { group_ids, level })
+}
+
 /// Execute a parsed command
 pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
     match cmd {
@@ -401,10 +449,80 @@ pub fn execute_command(cmd: Command, app: &mut crate::app::EasyCueApp) {
             for &fixture_id in &fixtures {
                 app.ui_state.selected_fixtures.insert(fixture_id);
             }
-            
+
             let fixture_list = format_fixture_list(&fixtures);
             app.ui_state.status_message = format!("Selected fixture: {}", fixture_list);
             log::info!("Selected fixtures: {}", fixture_list);
+        }
+        Command::GroupFixtures { group_ids, level } => {
+            // Resolve all group IDs to a deduplicated, sorted fixture list.
+            let mut all_fixtures: Vec<usize> = Vec::new();
+            for &gid in &group_ids {
+                for fid in app.groups.resolve_fixtures(gid) {
+                    if !all_fixtures.contains(&fid) {
+                        all_fixtures.push(fid);
+                    }
+                }
+            }
+            all_fixtures.sort_unstable();
+
+            let glist = group_ids.iter().map(|g| format!("G{}", g)).collect::<Vec<_>>().join("+");
+
+            if all_fixtures.is_empty() {
+                app.ui_state.status_message = format!("{}: no fixtures", glist);
+                return;
+            }
+
+            // Always select the resolved fixtures.
+            app.ui_state.selected_fixtures.clear();
+            for &fid in &all_fixtures {
+                app.ui_state.selected_fixtures.insert(fid);
+            }
+
+            if let Some(pct) = level {
+                // Set intensity on each resolved fixture.
+                let intensity = pct as f32 / 100.0;
+                let mut error_count = 0usize;
+                for &fixture_id in &all_fixtures {
+                    if let Some(patch) = app.fixtures.patch_list().get_patch(fixture_id) {
+                        let patch_clone = patch.clone();
+                        if let Some(profile) = app.fixtures.get_profile(&patch.profile_id) {
+                            let profile_clone = profile.clone();
+                            if let Some(universe) = app.universes.first_mut() {
+                                if profile.has_intensity() {
+                                    if let Some(intensity_param) = profile.parameters.iter()
+                                        .find(|p| p.parameter == crate::fixtures::profiles::FixtureParameter::Intensity)
+                                    {
+                                        let channel = patch.start_address + intensity_param.channel_offset;
+                                        let dmx_value = (intensity * 100.0).round() as u8;
+                                        if let Err(e) = universe.set_channel(channel, dmx_value) {
+                                            log::error!("Failed to set fixture {} intensity channel {}: {}", fixture_id, channel, e);
+                                            error_count += 1;
+                                        }
+                                    }
+                                } else if profile.is_rgb() {
+                                    if let Err(e) = app.virtual_intensity.set_intensity(
+                                        fixture_id, intensity, universe, &patch_clone, &profile_clone,
+                                    ) {
+                                        log::error!("Failed to set fixture {} virtual intensity: {}", fixture_id, e);
+                                        error_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        error_count += 1;
+                    }
+                }
+                if error_count == 0 {
+                    app.ui_state.status_message = format!("{} @ {}%", glist, pct);
+                } else {
+                    app.ui_state.status_message = format!("{} @ {}% ({} errors)", glist, pct, error_count);
+                }
+            } else {
+                let fixture_list = format_fixture_list(&all_fixtures);
+                app.ui_state.status_message = format!("Selected {} → {}", glist, fixture_list);
+            }
         }
         Command::SetChannelLevel { channels, level } => {
             if let Some(universe) = app.universes.first_mut() {

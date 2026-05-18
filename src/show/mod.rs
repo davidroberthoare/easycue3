@@ -7,6 +7,7 @@
 use anyhow::Result;
 use crate::cue::Cue;
 use crate::fixtures::Patch;
+use crate::groups::GroupList;
 use crate::magic_sheet::MagicSheet;
 use serde::{Deserialize, Serialize};
 
@@ -74,6 +75,10 @@ pub struct ShowFile {
     #[serde(default)]
     pub patch: Vec<Patch>,
 
+    /// Lighting groups (fixture selection shortcuts)
+    #[serde(default)]
+    pub groups: GroupList,
+
     /// Magic sheet canvas layout
     #[serde(default)]
     pub magic_sheet: MagicSheet,
@@ -104,6 +109,7 @@ impl ShowFile {
             next_cue_id: 1,
             cues: Vec::new(),
             patch: Vec::new(),
+            groups: GroupList::default(),
             magic_sheet: MagicSheet::default(),
             cue_colors: CueColorSettings::default(),
             #[cfg(feature = "audio")]

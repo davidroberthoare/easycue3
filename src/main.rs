@@ -4,6 +4,7 @@
 //! combining ETC EOS-style lighting control with QLab-style media playback.
 
 mod app;
+mod groups;
 mod magic_sheet;
 mod media;
 mod ui;

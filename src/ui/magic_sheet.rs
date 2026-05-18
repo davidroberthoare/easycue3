@@ -171,6 +171,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Shapes ───────────────────────────────────────────────────────────────
     let shapes_snapshot: Vec<_> = app.magic_sheet.shapes.iter().map(|s| {
         let fixture_id = s.fixture_id;
+        let group_id = s.group_id;
         let kind = s.kind.clone();
         let pos = s.pos;
         let scale = s.scale;
@@ -179,12 +180,12 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let id = s.id;
         let link_color = s.link_color;
         let link_intensity = s.link_intensity;
-        (id, kind, pos, scale, bg, outline, fixture_id, link_color, link_intensity)
+        (id, kind, pos, scale, bg, outline, fixture_id, group_id, link_color, link_intensity)
     }).collect();
 
     let mut drag_started_on_shape = false;
 
-    for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id, link_color, link_intensity)
+    for (shape_id, kind, pos, scale, bg_color, outline_color, fixture_id, group_id, link_color, link_intensity)
         in &shapes_snapshot
     {
         let shape_id = *shape_id;
@@ -194,9 +195,16 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
         let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
 
-        let (label, fix_num, intensity, rgb) = fixture_info(app, *fixture_id);
+        // Determine whether this is a group shape or a fixture shape.
+        let is_group_shape = group_id.is_some() && fixture_id.is_none();
 
-        // ── Live linking: compute effective fill from fixture state ───────────
+        let (label, fix_num, intensity, rgb) = if is_group_shape {
+            group_shape_info(app, *group_id)
+        } else {
+            fixture_info(app, *fixture_id)
+        };
+
+        // ── Live linking: only applies to fixture shapes ───────────────────────
         let effective_bg = if !edit_mode && fixture_id.is_some() && (*link_color || *link_intensity) {
             let base = if *link_color { rgb.unwrap_or(*bg_color) } else { *bg_color };
             if *link_intensity {
@@ -216,9 +224,17 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
         let is_selected_shape = edit_mode
             && app.magic_sheet_state.selected_shape_ids.contains(&shape_id);
-        let is_selected_fixture = !edit_mode && fixture_id
-            .map(|fid| app.ui_state.selected_fixtures.contains(&fid))
-            .unwrap_or(false);
+        // A fixture shape is highlighted when its fixture is selected.
+        // A group shape is highlighted when any of its fixtures is selected.
+        let is_selected_fixture = !edit_mode && if let Some(fid) = fixture_id {
+            app.ui_state.selected_fixtures.contains(fid)
+        } else if let Some(gid) = group_id {
+            app.groups.resolve_fixtures(*gid)
+                .iter()
+                .any(|fid| app.ui_state.selected_fixtures.contains(fid))
+        } else {
+            false
+        };
 
         let shape_rect = Rect::from_center_size(screen_center, egui::vec2(w, h));
         let resp = ui.allocate_rect(shape_rect, Sense::click_and_drag());
@@ -253,11 +269,14 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 }
             }
         } else if !edit_mode && !shift_held {
-            // ── Live mode: click to select fixture ────────────────────────────
+            // ── Live mode: click to select fixture / group ────────────────────
             if resp.clicked() {
+                let modifiers = ui.input(|i| i.modifiers);
+                let additive = modifiers.command || modifiers.ctrl;
+
                 if let Some(fid) = fixture_id {
-                    let modifiers = ui.input(|i| i.modifiers);
-                    if modifiers.command || modifiers.ctrl {
+                    // Single-fixture shape
+                    if additive {
                         if app.ui_state.selected_fixtures.contains(fid) {
                             app.ui_state.selected_fixtures.remove(fid);
                         } else {
@@ -269,11 +288,25 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     }
                     app.ui_state.last_selected_fixture = *fixture_id;
                     update_command_from_fixture_selection(app);
+                } else if let Some(gid) = group_id {
+                    // Group shape — select all fixtures belonging to the group
+                    let group_fixtures = app.groups.resolve_fixtures(*gid);
+                    if !group_fixtures.is_empty() {
+                        if !additive {
+                            app.ui_state.selected_fixtures.clear();
+                        }
+                        for fid in &group_fixtures {
+                            app.ui_state.selected_fixtures.insert(*fid);
+                        }
+                        app.ui_state.last_selected_fixture = group_fixtures.last().copied();
+                        update_command_from_fixture_selection(app);
+                    }
                 }
             }
 
             // ── Live mode: drag adjusts intensity on all selected fixtures ────
             if resp.dragged() && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
+                // Only fixture shapes support drag-intensity (not group shapes)
                 if let Some(fid) = fixture_id {
                     let dy = resp.drag_delta().y;
                     if dy.abs() > 0.5 {
@@ -295,7 +328,11 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let border_width = if highlight { 2.5 } else { 1.5 };
 
         draw_shape(&painter, kind, screen_center, w, h, effective_bg, Stroke::new(border_width, border_color));
-        draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb, app.magic_sheet_state.canvas_zoom);
+        if is_group_shape {
+            draw_group_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity as usize, app.magic_sheet_state.canvas_zoom);
+        } else {
+            draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb, app.magic_sheet_state.canvas_zoom);
+        }
     }
 
     // ── Rubber-band selection (edit mode, no shift, drag on empty canvas) ────
@@ -430,34 +467,98 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
     };
 
     let mut fixture_id = shape.fixture_id;
+    let mut group_id = shape.group_id;
     let mut scale = shape.scale;
     let mut bg = Color32::from_rgba_unmultiplied(shape.bg_color[0], shape.bg_color[1], shape.bg_color[2], shape.bg_color[3]);
     let mut outline = Color32::from_rgba_unmultiplied(shape.outline_color[0], shape.outline_color[1], shape.outline_color[2], shape.outline_color[3]);
     let mut link_color = shape.link_color;
     let mut link_intensity = shape.link_intensity;
 
+    // Determine link mode: None / Fixture / Group
+    #[derive(PartialEq)]
+    enum LinkMode { None, Fixture, Group }
+    let mut link_mode = if fixture_id.is_some() {
+        LinkMode::Fixture
+    } else if group_id.is_some() {
+        LinkMode::Group
+    } else {
+        LinkMode::None
+    };
+
     egui::Grid::new("shape_props_grid")
         .num_columns(2)
         .spacing([8.0, 6.0])
         .show(ui, |ui| {
-            ui.label("Fixture:");
-            let patches: Vec<_> = app.fixtures.patch_list().patches().to_vec();
-            let selected_label = fixture_id
-                .and_then(|fid| patches.iter().find(|p| p.id == fid))
-                .map(|p| format!("#{} {}", p.id, p.label))
-                .unwrap_or_else(|| "(none)".to_string());
-
-            egui::ComboBox::from_id_salt("shape_fixture_combo")
-                .selected_text(&selected_label)
-                .width(130.0)
-                .show_ui(ui, |ui| {
-                    if ui.selectable_value(&mut fixture_id, None, "(none)").clicked() {}
-                    for patch in &patches {
-                        let item_label = format!("#{} {}", patch.id, patch.label);
-                        ui.selectable_value(&mut fixture_id, Some(patch.id), item_label);
-                    }
-                });
+            // ── Link mode selector ─────────────────────────────────────────────
+            ui.label("Links to:");
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut link_mode, LinkMode::None, "None");
+                ui.selectable_value(&mut link_mode, LinkMode::Fixture, "Fixture");
+                ui.selectable_value(&mut link_mode, LinkMode::Group, "Group");
+            });
             ui.end_row();
+
+            match link_mode {
+                LinkMode::None => {
+                    // Clear both IDs when user picks None
+                    fixture_id = None;
+                    group_id = None;
+                }
+                LinkMode::Fixture => {
+                    group_id = None; // clear group if switching mode
+                    let patches: Vec<_> = app.fixtures.patch_list().patches().to_vec();
+                    let selected_label = fixture_id
+                        .and_then(|fid| patches.iter().find(|p| p.id == fid))
+                        .map(|p| format!("#{} {}", p.id, p.label))
+                        .unwrap_or_else(|| "(none)".to_string());
+
+                    ui.label("Fixture:");
+                    egui::ComboBox::from_id_salt("shape_fixture_combo")
+                        .selected_text(&selected_label)
+                        .width(130.0)
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_value(&mut fixture_id, None, "(none)").clicked() {}
+                            for patch in &patches {
+                                let item_label = format!("#{} {}", patch.id, patch.label);
+                                ui.selectable_value(&mut fixture_id, Some(patch.id), item_label);
+                            }
+                        });
+                    ui.end_row();
+                }
+                LinkMode::Group => {
+                    fixture_id = None; // clear fixture if switching mode
+                    link_color = false;
+                    link_intensity = false;
+                    let groups: Vec<_> = app.groups.groups.clone();
+                    let selected_label = group_id
+                        .and_then(|gid| groups.iter().find(|g| g.id == gid))
+                        .map(|g| {
+                            if g.label.is_empty() {
+                                format!("G{}", g.id)
+                            } else {
+                                format!("G{} {}", g.id, g.label)
+                            }
+                        })
+                        .unwrap_or_else(|| "(none)".to_string());
+
+                    ui.label("Group:");
+                    egui::ComboBox::from_id_salt("shape_group_combo")
+                        .selected_text(&selected_label)
+                        .width(130.0)
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_value(&mut group_id, None, "(none)").clicked() {}
+                            for group in &groups {
+                                let item_label = if group.label.is_empty() {
+                                    format!("G{} ({} fx)", group.id, group.fixture_ids.len())
+                                } else {
+                                    format!("G{} {} ({} fx)", group.id, group.label, group.fixture_ids.len())
+                                };
+                                ui.selectable_value(&mut group_id, Some(group.id), item_label);
+                            }
+                        });
+                    ui.end_row();
+                }
+            }
 
             ui.label("Scale:");
             ui.add(egui::DragValue::new(&mut scale)
@@ -478,20 +579,24 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
             );
             ui.end_row();
 
-            ui.separator(); ui.separator(); ui.end_row();
-            ui.strong("Live Linking"); ui.end_row();
+            // Live linking only makes sense for fixture shapes
+            if link_mode == LinkMode::Fixture {
+                ui.separator(); ui.separator(); ui.end_row();
+                ui.strong("Live Linking"); ui.end_row();
 
-            ui.label("Link fill → color:");
-            ui.checkbox(&mut link_color, "");
-            ui.end_row();
+                ui.label("Link fill → color:");
+                ui.checkbox(&mut link_color, "");
+                ui.end_row();
 
-            ui.label("Link fill → intensity:");
-            ui.checkbox(&mut link_intensity, "");
-            ui.end_row();
+                ui.label("Link fill → intensity:");
+                ui.checkbox(&mut link_intensity, "");
+                ui.end_row();
+            }
         });
 
     if let Some(s) = app.magic_sheet.get_shape_mut(shape_id) {
         s.fixture_id = fixture_id;
+        s.group_id = group_id;
         s.scale = scale;
         let [r, g, b, a] = bg.to_srgba_unmultiplied();
         s.bg_color = [r, g, b, a];
@@ -718,6 +823,50 @@ fn draw_shape(
     }
 }
 
+fn draw_group_shape_label(
+    painter: &egui::Painter,
+    center: Pos2,
+    w: f32,
+    h: f32,
+    label: &str,
+    group_id: Option<usize>,
+    fixture_count: usize,
+    zoom: f32,
+) {
+    let text_color = Color32::from_rgb(200, 220, 255);
+    let small_color = Color32::from_gray(160);
+    let font_sm = egui::FontId::proportional(10.0 * zoom);
+    let font_md = egui::FontId::proportional(13.0 * zoom);
+
+    if let Some(gid) = group_id {
+        painter.text(
+            Pos2::new(center.x - w / 2.0 + 4.0, center.y - h / 2.0 + 3.0),
+            egui::Align2::LEFT_TOP,
+            format!("G{}", gid),
+            font_sm.clone(),
+            small_color,
+        );
+    }
+
+    let label_display = if label.len() > 12 { &label[..12] } else { label };
+    painter.text(
+        Pos2::new(center.x, center.y - 5.0),
+        egui::Align2::CENTER_CENTER,
+        label_display,
+        font_md,
+        text_color,
+    );
+
+    let count_str = format!("{} fx", fixture_count);
+    painter.text(
+        Pos2::new(center.x, center.y + h / 2.0 - 10.0),
+        egui::Align2::CENTER_BOTTOM,
+        count_str,
+        font_sm,
+        Color32::from_gray(160),
+    );
+}
+
 fn draw_shape_label(
     painter: &egui::Painter,
     center: Pos2,
@@ -777,6 +926,31 @@ fn draw_shape_label(
         font_sm,
         int_color,
     );
+}
+
+/// Return display info for a group shape.
+/// We reuse the same tuple shape as `fixture_info`; `fix_num` carries the group ID
+/// so the top-left corner shows "G#<id>" via the caller's "G" prefix logic.
+fn group_shape_info(
+    app: &EasyCueApp,
+    group_id: Option<u32>,
+) -> (String, Option<usize>, f32, Option<Color32>) {
+    let gid = match group_id {
+        Some(id) => id,
+        None => return ("(unassigned)".to_string(), None, 0.0, None),
+    };
+    let group = match app.groups.get_group(gid) {
+        Some(g) => g,
+        None => return (format!("G{}", gid), None, 0.0, None),
+    };
+    let count = group.fixture_ids.len();
+    let label = if group.label.is_empty() {
+        format!("G{}", gid)
+    } else {
+        group.label.clone()
+    };
+    // intensity field carries fixture count (displayed differently by the caller)
+    (label, Some(gid as usize), count as f32, None)
 }
 
 fn fixture_info(

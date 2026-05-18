@@ -48,6 +48,10 @@ pub struct MagicSheetShape {
     pub outline_color: [u8; 4],
     /// Linked fixture (matches `Patch::id`). `None` = unassigned.
     pub fixture_id: Option<usize>,
+    /// Linked group (matches `Group::id`). Mutually exclusive with `fixture_id`.
+    /// When set, clicking this shape in live mode selects all fixtures in the group.
+    #[serde(default)]
+    pub group_id: Option<u32>,
     /// In live mode, mirror the linked fixture's RGB colour into the fill.
     #[serde(default)]
     pub link_color: bool,
@@ -66,6 +70,7 @@ impl MagicSheetShape {
             bg_color: [30, 50, 75, 255],
             outline_color: [100, 150, 200, 255],
             fixture_id: None,
+            group_id: None,
             link_color: false,
             link_intensity: false,
         }
@@ -80,7 +85,7 @@ impl MagicSheetShape {
         outline_color: [u8; 4],
         fixture_id: Option<usize>,
     ) -> Self {
-        Self { id, kind, pos, scale, bg_color, outline_color, fixture_id, link_color: false, link_intensity: false }
+        Self { id, kind, pos, scale, bg_color, outline_color, fixture_id, group_id: None, link_color: false, link_intensity: false }
     }
 }
 
