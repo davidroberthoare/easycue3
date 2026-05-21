@@ -32,7 +32,18 @@
       "WebFetch(domain:www.fullcompass.com)",
       "WebFetch(domain:www.erwinrol.com)",
       "WebFetch(domain:robertoostenveld.nl)",
-      "WebFetch(domain:docs.qlcplus.org)"
+      "WebFetch(domain:docs.qlcplus.org)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 log --oneline v0.3.1..HEAD)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 log --oneline -10)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 diff --stat HEAD)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 tag --list)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 log --oneline -5)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 remote -v)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 add Cargo.toml Cargo.lock)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 tag v0.3.2)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 push origin master)",
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 push origin v0.3.2)",
+      "Bash(gh release create v0.3.2 --repo davidroberthoare/easycue3 --title 'v0.3.2 — Enttec Open DMX USB support' --notes ' *)"
     ]
   }
 }
