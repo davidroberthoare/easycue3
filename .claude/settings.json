@@ -25,7 +25,14 @@
       "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 commit -m ' *)",
       "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 tag -a v0.3.1 -m ' *)",
       "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 tag -v v0.3.1)",
-      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 show v0.3.1 --no-patch)"
+      "Bash(git -C /mnt/data/david/Documents/Local_Projects/easycue3 show v0.3.1 --no-patch)",
+      "WebSearch",
+      "WebFetch(domain:cdn.enttec.com)",
+      "WebFetch(domain:wiki.openlighting.org)",
+      "WebFetch(domain:www.fullcompass.com)",
+      "WebFetch(domain:www.erwinrol.com)",
+      "WebFetch(domain:robertoostenveld.nl)",
+      "WebFetch(domain:docs.qlcplus.org)"
     ]
   }
 }

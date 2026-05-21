@@ -140,6 +140,7 @@ pub struct UiState {
     pub show_autosave_prompt: bool,
     pub autosave_path: Option<std::path::PathBuf>,
     pub selected_usb_port: String,
+    pub selected_open_dmx_port: String,
 
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
     pub go_cue_input: String,
@@ -196,6 +197,7 @@ impl Default for UiState {
             show_autosave_prompt: false,
             autosave_path: None,
             selected_usb_port: String::new(),
+            selected_open_dmx_port: String::new(),
             go_cue_input: String::new(),
             goto_mode: false,
             artnet_target_ip: "255.255.255.255".to_string(),
@@ -795,6 +797,15 @@ impl EasyCueApp {
         let backend = EnttecUsbProBackend::new(port)?;
         self.dmx_backend = Box::new(backend);
         log::info!("Switched to Enttec USB Pro at {}", port);
+        Ok(())
+    }
+
+    #[cfg(feature = "usb")]
+    pub fn switch_to_open_dmx(&mut self, port: &str) -> anyhow::Result<()> {
+        use crate::dmx::backends::EnttecOpenDmxBackend;
+        let backend = EnttecOpenDmxBackend::new(port)?;
+        self.dmx_backend = Box::new(backend);
+        log::info!("Switched to Enttec Open DMX USB at {}", port);
         Ok(())
     }
 

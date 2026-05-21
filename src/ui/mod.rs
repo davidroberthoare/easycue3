@@ -784,9 +784,73 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                         ui.label(egui::RichText::new("(build with --features usb)").small().italics());
                     });
                 }
-                
+
                 ui.add_space(5.0);
-                
+
+                // Enttec Open DMX USB (if feature enabled)
+                #[cfg(feature = "usb")]
+                {
+                    use crate::dmx::backends::EnttecOpenDmxBackend;
+
+                    ui.horizontal(|ui| {
+                        ui.label("🔌 Enttec Open DMX USB:");
+                    });
+
+                    ui.indent("open_dmx_ports", |ui| {
+                        match EnttecOpenDmxBackend::list_recommended_ports() {
+                            Ok(ports) if !ports.is_empty() => {
+                                if app.ui_state.selected_open_dmx_port.is_empty() {
+                                    app.ui_state.selected_open_dmx_port = ports[0].clone();
+                                }
+                                if !ports.contains(&app.ui_state.selected_open_dmx_port) {
+                                    app.ui_state.selected_open_dmx_port = ports[0].clone();
+                                }
+
+                                egui::ComboBox::from_id_salt("open_dmx_port_selector")
+                                    .selected_text(&app.ui_state.selected_open_dmx_port)
+                                    .show_ui(ui, |ui| {
+                                        for port in &ports {
+                                            ui.selectable_value(&mut app.ui_state.selected_open_dmx_port, port.clone(), port);
+                                        }
+                                    });
+
+                                ui.add_space(5.0);
+
+                                if ui.button("Connect").clicked() {
+                                    let port = app.ui_state.selected_open_dmx_port.clone();
+                                    match app.switch_to_open_dmx(&port) {
+                                        Ok(_) => {
+                                            app.ui_state.status_message = format!("✓ Connected to Open DMX USB at {}", port);
+                                            log::info!("✓ Switched to Enttec Open DMX USB at {}", port);
+                                            app.ui_state.show_device_selector = false;
+                                        }
+                                        Err(e) => {
+                                            app.ui_state.status_message = format!("✗ Error: {}", e);
+                                            log::error!("Failed to switch to Open DMX USB: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(_) => {
+                                ui.label(egui::RichText::new("No devices found").italics().color(egui::Color32::GRAY));
+                            }
+                            Err(e) => {
+                                ui.label(egui::RichText::new(format!("Error: {}", e)).color(egui::Color32::RED));
+                            }
+                        }
+                    });
+                }
+
+                #[cfg(not(feature = "usb"))]
+                {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("🔌 Enttec Open DMX USB").strikethrough());
+                        ui.label(egui::RichText::new("(build with --features usb)").small().italics());
+                    });
+                }
+
+                ui.add_space(5.0);
+
                 // Art-Net over Ethernet
                 ui.horizontal(|ui| {
                     ui.label("🌐 Art-Net (UDP):");
