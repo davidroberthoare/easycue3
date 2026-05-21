@@ -25,12 +25,11 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 
 ## What it doesn't do (yet)
 
-- Groups and presets
+- Palettes or presets
 - Video playback — planned, not started
-- Art-Net DMX over ethernet
-- Support more than 1 universe
+- Art-Net DMX over ethernet (in the works)
 - Effects/chases
-- Anything resembling a moving light programmer
+- Moving light features (can do basic pan/tilt, and other straight DMX channels, but that's it)
 
 ---
 ## Download
