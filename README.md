@@ -29,7 +29,7 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 ---
 ## Download
 
-- Just visit the [releases page](https://github.com/davidroberthoare//releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
+- Just visit the [releases page](https://github.com/davidroberthoare/releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
 
 ---
 ## Building
