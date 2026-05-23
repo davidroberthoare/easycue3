@@ -10,17 +10,13 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 
 ## What it does
 
-- Cue list with GO / BACK / STOP and smooth crossfades
-- Record cues from current channel state
-- Edit cue labels, fade times, and notes inline
-- EOS-style command line (`1 Thru 10 At 50`)
-- Fixture patching with parameter-based control (color pickers, intensity sliders)
-- Virtual intensity — scale brightness of RGB fixtures without losing color hue
-- Channel grid and fixture instrument list for live control
-- Audio cues with fade in/out and cross-triggering to/from lighting cues
-- Save and load show files (JSON, human-readable)
-- Virtual DMX backend for working without hardware
-- USB DMX output (Enttec USB Pro)
+- Integrated Light/Sound/Adjust Cue list
+- Edit cue labels, fade times, and auto-follows
+- Basic EOS-style command line (1 Thru 10 At 50) but also mouse-friendly channel selection & level-setting
+- Basic support for simple LED or moving lights (colour, pan/tilt), allowing for custom fixture profiles
+- Simple magic-sheet
+- Easy patching & group assignment
+- Currently works with Enttec USB Pro and Open, but I'm working on adding ART-NET...
 
 
 ## What it doesn't do (yet)
