@@ -1,8 +1,8 @@
 # EasyCue
 
-A simple theatrical lighting console I've been building for myself. After years of running lights for amateur theatre productions — mostly with whatever aging console came with the venue — I wanted something small, fast, and easy to hand off to a board op who's never touched a lighting console before.
+A simple theatrical lighting console I've been building for myself. After years of running lights for amateur theatre productions on various older consoles, I wanted something small, fast, and easy to hand off to students or volunteers who were new to the concept.
 
-It's a hobby project. The scope is deliberately narrow: small venues, simple shows, a cue list that just works.
+It's a hobby project. The scope is deliberately narrow: small venues, simple shows, with a minimal easy-to-learn feature-set.
 
 ![EasyCue3 screenshot](docs/screenshot.png)
 
@@ -23,7 +23,6 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 
 - Palettes or presets
 - Video playback — planned, not started
-- Art-Net DMX over ethernet (in the works)
 - Effects/chases
 - Moving light features (can do basic pan/tilt, and other straight DMX channels, but that's it)
 
