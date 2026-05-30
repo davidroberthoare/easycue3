@@ -23,12 +23,12 @@ A simple theatrical lighting console I've been building for my school and my com
 - Video playback — planned, not started
 - Support more than 1 universe
 - Effects/chases
-- Anything resembling a moving light programmer
+- Moving light features (can do basic pan/tilt, and other straight DMX channels, but that's it)
 
 ---
 ## Download
 
-- Just visit the [releases page](https://github.com/davidroberthoare//releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
+- Just visit the [releases page](https://github.com/davidroberthoare/easycue3/releases) to download an executable for Windows, Mac or Linux. (note: Windows drivers for ENTTEC DMXUSB Pro will need to be downloaded [from the source](https://www.enttec.com/product/dmx-usb-interfaces/dmx-usb-pro-professional-1u-usb-to-dmx512-converter/)
 
 ---
 ## Building
