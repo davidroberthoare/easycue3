@@ -1,8 +1,6 @@
 # EasyCue
 
-A simple theatrical lighting console I've been building for myself. After years of running lights for amateur theatre productions — mostly with whatever aging console came with the venue — I wanted something small, fast, and easy to hand off to a board op who's never touched a lighting console before.
-
-It's a hobby project. The scope is deliberately narrow: small venues, simple shows, a cue list that just works.
+A simple theatrical lighting console I've been building for my school and my community theatre group. I wanted something small, fast, and easy enough that students and amateur operators could pick it up easily, but also useful enough that I could run my own shows. It's a hobby project. The scope is deliberately narrow: small venues, simple shows, and a user-friendly interface.
 
 ![EasyCue3 screenshot](docs/screenshot.png)
 
@@ -10,24 +8,19 @@ It's a hobby project. The scope is deliberately narrow: small venues, simple sho
 
 ## What it does
 
-- Cue list with GO / BACK / STOP and smooth crossfades
-- Record cues from current channel state
-- Edit cue labels, fade times, and notes inline
-- EOS-style command line (`1 Thru 10 At 50`)
+- Combined Lighting & Audio cue list with simple navigation, timing and auto-follows
+- Record & update cues from current channel state
+- EOS-style command line (`1 Thru 10 At 50`) and mouse-friendly adjustments 
 - Fixture patching with parameter-based control (color pickers, intensity sliders)
-- Virtual intensity — scale brightness of RGB fixtures without losing color hue
-- Channel grid and fixture instrument list for live control
-- Audio cues with fade in/out and cross-triggering to/from lighting cues
+- Channel grid, fixture list and magic sheet for live control
 - Save and load show files (JSON, human-readable)
-- Virtual DMX backend for working without hardware
-- USB DMX output (Enttec USB Pro)
+- USB DMX output (Enttec USB Pro, Enttec Open DMX USB)
 
 
 ## What it doesn't do (yet)
 
-- Groups and presets
+- Pallettes or presets
 - Video playback — planned, not started
-- Art-Net DMX over ethernet
 - Support more than 1 universe
 - Effects/chases
 - Anything resembling a moving light programmer
@@ -81,6 +74,8 @@ On Linux, you'll also need to be in the `dialout` group for USB DMX:
 ```bash
 sudo usermod -a -G dialout $USER
 ```
+
+Open DMX USB support on Linux also depends on getting exclusive access to the FTDI serial port. If another service probes the adapter at startup, wait a moment and reconnect, or disable that service.
 
 ---
 
@@ -152,23 +147,6 @@ JSON format, lives in `shows/`. Human-readable and git-friendly — you can diff
 
 ---
 
-## Status
-
-Core cue engine, fixture patching, audio playback, and USB DMX have all been tested. The UI is functional but not polished, and a few corners are rough.
-
-**Working:**
-- Lighting cues with smooth crossfades
-- Fixture patching (add/delete, color picker, individual channel sliders)
-- Virtual intensity for RGB fixtures (preserves hue when scaling brightness)
-- Audio cues with cross-triggering
-- EOS-style command line
-- USB DMX (Enttec USB Pro, tested)
-
-**Still rough or missing:**
-- No groups, presets, or effects
-- Art-Net planned, not implemented
-
----
 
 ## Disclaimer
 

@@ -222,6 +222,20 @@ impl UiState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum PersistedDmxBackend {
+    Virtual,
+    UsbPro { port: String },
+    OpenDmx { port: String },
+    ArtNet { target: String, universe: u16 },
+}
+
+impl Default for PersistedDmxBackend {
+    fn default() -> Self {
+        Self::Virtual
+    }
+}
+
 /// Main application state
 pub struct EasyCueApp {
     pub universes: Vec<Universe>,
@@ -266,6 +280,12 @@ pub struct EasyCueApp {
 
     /// Last saved file path to persistent storage (avoid redundant saves).
     last_persisted_file_path: Option<std::path::PathBuf>,
+    /// Operator-selected DMX backend to restore on the next launch.
+    preferred_dmx_backend: PersistedDmxBackend,
+    /// Last DMX preference written to persistent storage.
+    last_persisted_dmx_backend: PersistedDmxBackend,
+    /// Whether a DMX backend preference existed in persistent storage at startup.
+    startup_had_saved_dmx_backend: bool,
 }
 
 /// Tracks a timed fade of the sound master, driven by an Adjust cue.
@@ -426,102 +446,12 @@ impl EasyCueApp {
         let universes: Vec<Universe> = (1..=8).map(Universe::new).collect();
         log::info!("[startup] Universes created in {:.2}ms", universe_start.elapsed().as_secs_f64() * 1000.0);
 
+        let saved_dmx_backend = cc.storage
+            .and_then(|storage| eframe::get_value(storage, "preferred_dmx_backend"));
+        let had_saved_dmx_backend = saved_dmx_backend.is_some();
+
         let dmx_init_start = std::time::Instant::now();
-        let dmx_backend: Box<dyn DmxBackend> = {
-            #[cfg(feature = "usb")]
-            {
-                // Run enumeration + open on a background thread with a 3-second timeout.
-                // On macOS, serialport::available_ports() can hang indefinitely when
-                // Bluetooth virtual serial ports (e.g. Bluetooth-Incoming-Port) are
-                // present and the Bluetooth stack is slow to respond — blocking the
-                // main thread and preventing the window from ever appearing.
-                let (tx, rx) = std::sync::mpsc::channel::<Option<EnttecUsbProBackend>>();
-                std::thread::spawn(move || {
-                    let scan_thread_start = std::time::Instant::now();
-                    log::info!("[startup][dmx] USB scan thread started");
-
-                    let result = match EnttecUsbProBackend::list_recommended_ports() {
-                        Ok(ports) => {
-                            log::info!(
-                                "[startup][dmx] USB port enumeration completed in {:.2}ms ({} ports)",
-                                scan_thread_start.elapsed().as_secs_f64() * 1000.0,
-                                ports.len()
-                            );
-                            if let Some(port) = ports.into_iter().next() {
-                                let connect_start = std::time::Instant::now();
-                                log::info!("[startup][dmx] Attempting Enttec open on {}", port);
-                                match EnttecUsbProBackend::new(&port) {
-                                    Ok(backend) => {
-                                        log::info!(
-                                            "[startup][dmx] Enttec open succeeded in {:.2}ms",
-                                            connect_start.elapsed().as_secs_f64() * 1000.0
-                                        );
-                                        Some(backend)
-                                    }
-                                    Err(e) => {
-                                        log::warn!(
-                                            "[startup][dmx] Enttec open failed in {:.2}ms: {}",
-                                            connect_start.elapsed().as_secs_f64() * 1000.0,
-                                            e
-                                        );
-                                        None
-                                    }
-                                }
-                            } else {
-                                log::info!("[startup][dmx] No USB serial devices detected; skipping Enttec probe and using Virtual DMX");
-                                None
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[startup][dmx] USB port enumeration failed in {:.2}ms: {}",
-                                scan_thread_start.elapsed().as_secs_f64() * 1000.0,
-                                e
-                            );
-                            None
-                        }
-                    };
-
-                    log::info!(
-                        "[startup][dmx] USB scan thread finished in {:.2}ms",
-                        scan_thread_start.elapsed().as_secs_f64() * 1000.0
-                    );
-                    let _ = tx.send(result);
-                });
-
-                let wait_start = std::time::Instant::now();
-                log::info!("[startup][dmx] Waiting up to 3s for USB scan thread");
-                match rx.recv_timeout(std::time::Duration::from_secs(3)) {
-                    Ok(Some(backend)) => {
-                        log::info!(
-                            "[startup][dmx] Connected to Enttec DMXUSB Pro after {:.2}ms: {}",
-                            wait_start.elapsed().as_secs_f64() * 1000.0,
-                            backend.name()
-                        );
-                        Box::new(backend) as Box<dyn DmxBackend>
-                    }
-                    Ok(None) => {
-                        log::info!(
-                            "[startup][dmx] No Enttec USB device found after {:.2}ms, using Virtual DMX",
-                            wait_start.elapsed().as_secs_f64() * 1000.0
-                        );
-                        Box::new(VirtualBackend::new(true))
-                    }
-                    Err(_) => {
-                        log::warn!(
-                            "[startup][dmx] USB scan wait timed out at {:.2}ms (Bluetooth stall suspected) — using Virtual DMX",
-                            wait_start.elapsed().as_secs_f64() * 1000.0
-                        );
-                        Box::new(VirtualBackend::new(true))
-                    }
-                }
-            }
-            #[cfg(not(feature = "usb"))]
-            {
-                log::info!("USB support not enabled, using Virtual DMX");
-                Box::new(VirtualBackend::new(true))
-            }
-        };
+        let dmx_backend: Box<dyn DmxBackend> = Box::new(VirtualBackend::new(true));
         log::info!("[startup] DMX backend selected in {:.2}ms", dmx_init_start.elapsed().as_secs_f64() * 1000.0);
 
         log::info!("EasyCue3 application initialized");
@@ -587,7 +517,12 @@ impl EasyCueApp {
             #[cfg(feature = "audio")]
             sound_fade: None,
             last_persisted_file_path: None,
+            preferred_dmx_backend: saved_dmx_backend.clone().unwrap_or_default(),
+            last_persisted_dmx_backend: saved_dmx_backend.unwrap_or_default(),
+            startup_had_saved_dmx_backend: had_saved_dmx_backend,
         };
+
+        app.restore_startup_dmx_backend();
 
         let startup_show_load_start = std::time::Instant::now();
         let last_file = cc.storage
@@ -788,23 +723,33 @@ impl EasyCueApp {
     }
 
     pub fn switch_to_virtual(&mut self) {
-        self.dmx_backend = Box::new(VirtualBackend::new(true));
+        self.activate_virtual_backend();
+        self.preferred_dmx_backend = PersistedDmxBackend::Virtual;
         log::info!("Switched to Virtual DMX backend");
     }
 
     #[cfg(feature = "usb")]
     pub fn switch_to_enttec(&mut self, port: &str) -> anyhow::Result<()> {
+        self.activate_virtual_backend();
         let backend = EnttecUsbProBackend::new(port)?;
         self.dmx_backend = Box::new(backend);
+        self.ui_state.selected_usb_port = port.to_string();
+        self.preferred_dmx_backend = PersistedDmxBackend::UsbPro { port: port.to_string() };
         log::info!("Switched to Enttec USB Pro at {}", port);
         Ok(())
     }
 
     #[cfg(feature = "usb")]
     pub fn switch_to_open_dmx(&mut self, port: &str) -> anyhow::Result<()> {
-        use crate::dmx::backends::EnttecOpenDmxBackend;
+        use crate::dmx::backends::{EnttecOpenDmxBackend, VirtualBackend};
+        // Drop the current backend before opening the new port. If the current backend
+        // is an Open DMX (or Pro), its Drop impl joins the output thread, which releases
+        // the serial port FD — otherwise the open() below would fail with EBUSY.
+        self.dmx_backend = Box::new(VirtualBackend::default());
         let backend = EnttecOpenDmxBackend::new(port)?;
         self.dmx_backend = Box::new(backend);
+        self.ui_state.selected_open_dmx_port = port.to_string();
+        self.preferred_dmx_backend = PersistedDmxBackend::OpenDmx { port: port.to_string() };
         log::info!("Switched to Enttec Open DMX USB at {}", port);
         Ok(())
     }
@@ -815,8 +760,168 @@ impl EasyCueApp {
         use crate::dmx::backends::ArtNetBackend;
         let backend = ArtNetBackend::new(target, universe)?;
         self.dmx_backend = Box::new(backend);
+        self.ui_state.artnet_target_ip = target.to_string();
+        self.ui_state.artnet_universe = universe;
+        self.preferred_dmx_backend = PersistedDmxBackend::ArtNet {
+            target: target.to_string(),
+            universe,
+        };
         log::info!("Switched to Art-Net → {} universe {}", target, universe);
         Ok(())
+    }
+
+    fn activate_virtual_backend(&mut self) {
+        self.dmx_backend = Box::new(VirtualBackend::new(true));
+    }
+
+    fn sync_ui_dmx_selection_from_preference(&mut self) {
+        match &self.preferred_dmx_backend {
+            PersistedDmxBackend::Virtual => {}
+            PersistedDmxBackend::UsbPro { port } => {
+                self.ui_state.selected_usb_port = port.clone();
+            }
+            PersistedDmxBackend::OpenDmx { port } => {
+                self.ui_state.selected_open_dmx_port = port.clone();
+            }
+            PersistedDmxBackend::ArtNet { target, universe } => {
+                self.ui_state.artnet_target_ip = target.clone();
+                self.ui_state.artnet_universe = *universe;
+            }
+        }
+    }
+
+    fn restore_startup_dmx_backend(&mut self) {
+        self.sync_ui_dmx_selection_from_preference();
+
+        let preferred = self.preferred_dmx_backend.clone();
+        let restore_result = match &preferred {
+            PersistedDmxBackend::Virtual => {
+                self.activate_virtual_backend();
+                Ok(())
+            }
+            #[cfg(feature = "usb")]
+            PersistedDmxBackend::UsbPro { port } => self.switch_to_enttec(port),
+            #[cfg(not(feature = "usb"))]
+            PersistedDmxBackend::UsbPro { .. } => anyhow::bail!("USB support not enabled"),
+            #[cfg(feature = "usb")]
+            PersistedDmxBackend::OpenDmx { port } => self.switch_to_open_dmx(port),
+            #[cfg(not(feature = "usb"))]
+            PersistedDmxBackend::OpenDmx { .. } => anyhow::bail!("USB support not enabled"),
+            PersistedDmxBackend::ArtNet { target, universe } => self.switch_to_artnet(target, *universe),
+        };
+
+        if let Err(error) = restore_result {
+            log::warn!(
+                "[startup][dmx] Could not restore saved DMX backend {:?}: {}. Falling back to Virtual DMX",
+                self.preferred_dmx_backend,
+                error
+            );
+            self.activate_virtual_backend();
+            self.ui_state.status_message = format!(
+                "Saved DMX device unavailable — using Virtual DMX instead"
+            );
+            return;
+        }
+
+        if !self.startup_had_saved_dmx_backend
+            && matches!(self.preferred_dmx_backend, PersistedDmxBackend::Virtual)
+        {
+            #[cfg(feature = "usb")]
+            {
+                let (tx, rx) = std::sync::mpsc::channel::<Option<EnttecUsbProBackend>>();
+                std::thread::spawn(move || {
+                    let scan_thread_start = std::time::Instant::now();
+                    log::info!("[startup][dmx] USB scan thread started");
+
+                    let result = match EnttecUsbProBackend::list_recommended_ports() {
+                        Ok(ports) => {
+                            log::info!(
+                                "[startup][dmx] USB port enumeration completed in {:.2}ms ({} ports)",
+                                scan_thread_start.elapsed().as_secs_f64() * 1000.0,
+                                ports.len()
+                            );
+                            if let Some(port) = ports.into_iter().next() {
+                                let connect_start = std::time::Instant::now();
+                                log::info!("[startup][dmx] Attempting Enttec open on {}", port);
+                                match EnttecUsbProBackend::new(&port) {
+                                    Ok(backend) => {
+                                        log::info!(
+                                            "[startup][dmx] Enttec open succeeded in {:.2}ms",
+                                            connect_start.elapsed().as_secs_f64() * 1000.0
+                                        );
+                                        Some(backend)
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "[startup][dmx] Enttec open failed in {:.2}ms: {}",
+                                            connect_start.elapsed().as_secs_f64() * 1000.0,
+                                            e
+                                        );
+                                        None
+                                    }
+                                }
+                            } else {
+                                log::info!("[startup][dmx] No USB serial devices detected; skipping Enttec probe and using Virtual DMX");
+                                None
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[startup][dmx] USB port enumeration failed in {:.2}ms: {}",
+                                scan_thread_start.elapsed().as_secs_f64() * 1000.0,
+                                e
+                            );
+                            None
+                        }
+                    };
+
+                    log::info!(
+                        "[startup][dmx] USB scan thread finished in {:.2}ms",
+                        scan_thread_start.elapsed().as_secs_f64() * 1000.0
+                    );
+                    let _ = tx.send(result);
+                });
+
+                let wait_start = std::time::Instant::now();
+                log::info!("[startup][dmx] Waiting up to 3s for USB scan thread");
+                match rx.recv_timeout(std::time::Duration::from_secs(3)) {
+                    Ok(Some(backend)) => {
+                        let port_name = backend.name().to_string();
+                        log::info!(
+                            "[startup][dmx] Connected to Enttec DMXUSB Pro after {:.2}ms: {}",
+                            wait_start.elapsed().as_secs_f64() * 1000.0,
+                            port_name
+                        );
+                        self.dmx_backend = Box::new(backend);
+                        if let Some(port) = Self::extract_port_from_backend_name(&port_name) {
+                            self.ui_state.selected_usb_port = port.clone();
+                            self.preferred_dmx_backend = PersistedDmxBackend::UsbPro { port };
+                        }
+                    }
+                    Ok(None) => {
+                        log::info!(
+                            "[startup][dmx] No Enttec USB device found after {:.2}ms, using Virtual DMX",
+                            wait_start.elapsed().as_secs_f64() * 1000.0
+                        );
+                    }
+                    Err(_) => {
+                        log::warn!(
+                            "[startup][dmx] USB scan wait timed out at {:.2}ms (Bluetooth stall suspected) — using Virtual DMX",
+                            wait_start.elapsed().as_secs_f64() * 1000.0
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn extract_port_from_backend_name(name: &str) -> Option<String> {
+        let start = name.find('(')? + 1;
+        let end = name.rfind(')')?;
+        if start >= end {
+            return None;
+        }
+        Some(name[start..end].to_string())
     }
 
     // --- Navigation helpers (all UI panels call these instead of engines directly) ---
@@ -1327,7 +1432,7 @@ impl eframe::App for EasyCueApp {
                 "DMX device lost — switched to Virtual (was: {})",
                 self.dmx_backend.name()
             );
-            self.switch_to_virtual();
+            self.activate_virtual_backend();
         }
 
         let dmx_send_start = std::time::Instant::now();
@@ -1383,16 +1488,20 @@ impl eframe::App for EasyCueApp {
         }
 
         // Persist file path only if it changed (avoid redundant saves every frame)
-        if self.current_file_path != self.last_persisted_file_path {
+        if self.current_file_path != self.last_persisted_file_path
+            || self.preferred_dmx_backend != self.last_persisted_dmx_backend
+        {
             if let Some(storage) = frame.storage_mut() {
                 self.save(storage);
                 self.last_persisted_file_path = self.current_file_path.clone();
+                self.last_persisted_dmx_backend = self.preferred_dmx_backend.clone();
             }
         }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "dock_state", &self.dock_state);
+        eframe::set_value(storage, "preferred_dmx_backend", &self.preferred_dmx_backend);
         if let Some(path) = &self.current_file_path {
             storage.set_string("last_file", path.to_string_lossy().to_string());
         }

@@ -825,8 +825,8 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                                             app.ui_state.show_device_selector = false;
                                         }
                                         Err(e) => {
-                                            app.ui_state.status_message = format!("✗ Error: {}", e);
-                                            log::error!("Failed to switch to Open DMX USB: {}", e);
+                                            app.ui_state.status_message = format!("✗ Error: {:#}", e);
+                                            log::error!("Failed to switch to Open DMX USB: {:#}", e);
                                         }
                                     }
                                 }

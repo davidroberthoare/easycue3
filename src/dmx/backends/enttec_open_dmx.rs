@@ -5,7 +5,7 @@
 //! then write the raw DMX frame at 250,000 baud — no 0x7E/0xE7 framing.
 //!
 //! Protocol per frame:
-//!   1. Assert BREAK via set_break() — USB round-trip gives ~1ms, well above 88µs minimum
+//!   1. Assert BREAK via set_break()
 //!   2. Clear BREAK (Mark After Break) via clear_break()
 //!   3. Write: 0x00 (start code) + 512 channel bytes at 250 kbaud
 //!
@@ -19,16 +19,27 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "usb")]
-use serialport::SerialPort;
+use serialport::{ClearBuffer, DataBits, FlowControl, Parity, SerialPort, StopBits};
 #[cfg(feature = "usb")]
 use serialport::{SerialPortInfo, SerialPortType};
 
 /// Enttec Open DMX USB backend with threaded sending
 pub struct EnttecOpenDmxBackend {
-    tx: Sender<[u8; 512]>,
+    tx: Option<Sender<[u8; 512]>>,
     port_name: String,
-    _thread_handle: Option<thread::JoinHandle<()>>,
+    thread_handle: Option<thread::JoinHandle<()>>,
     connected: Arc<AtomicBool>,
+}
+
+impl Drop for EnttecOpenDmxBackend {
+    fn drop(&mut self) {
+        // Drop tx first: disconnects the channel so the output thread exits its loop.
+        // Then join the thread so the serial port FD is released before we return.
+        drop(self.tx.take());
+        if let Some(handle) = self.thread_handle.take() {
+            handle.join().ok();
+        }
+    }
 }
 
 impl EnttecOpenDmxBackend {
@@ -40,10 +51,32 @@ impl EnttecOpenDmxBackend {
 
     #[cfg(feature = "usb")]
     pub fn new(port_path: &str) -> Result<Self> {
-        let port = serialport::new(port_path, 250_000)
+        let mut port = serialport::new(port_path, 250_000)
+            .data_bits(DataBits::Eight)
+            .flow_control(FlowControl::None)
+            .parity(Parity::None)
+            .stop_bits(StopBits::Two)
             .timeout(Duration::from_millis(100))
             .open()
-            .context(format!("Failed to open serial port {}", port_path))?;
+            .map_err(|e| {
+                let hint = if e.to_string().contains("busy") || e.to_string().contains("Permission") {
+                    " (ModemManager may be probing it — wait a few seconds and try again)"
+                } else {
+                    ""
+                };
+                anyhow::anyhow!("Failed to open {}: {}{}", port_path, e, hint)
+            })?;
+
+        // Open DMX on Linux can inherit stale FTDI control-line state from the
+        // previous client. Clearing RTS/DTR and purging buffers before the
+        // send loop makes the adapter start driving the DMX line reliably.
+        port.write_request_to_send(false)
+            .context("Failed to clear RTS on Open DMX port")?;
+        port.write_data_terminal_ready(false)
+            .context("Failed to clear DTR on Open DMX port")?;
+        port.clear(ClearBuffer::All)
+            .context("Failed to clear Open DMX serial buffers")?;
+        thread::sleep(Duration::from_millis(1));
 
         log::info!("Enttec Open DMX USB initialized on {} at 250000 baud", port_path);
 
@@ -81,10 +114,12 @@ impl EnttecOpenDmxBackend {
                 }
 
                 match Self::send_dmx_frame(&mut port, &last_dmx) {
-                    Ok(()) => { consecutive_errors = 0; }
+                    Ok(()) => {
+                        consecutive_errors = 0;
+                    }
                     Err(e) => {
                         consecutive_errors += 1;
-                        log::error!("Open DMX send error on {} ({}): {}", thread_port_name, consecutive_errors, e);
+                        log::error!("Open DMX send error on {} ({}): {:#}", thread_port_name, consecutive_errors, e);
                         if consecutive_errors >= 5 {
                             log::warn!("Device lost on {} — marking disconnected", thread_port_name);
                             thread_connected.store(false, Ordering::Relaxed);
@@ -103,9 +138,9 @@ impl EnttecOpenDmxBackend {
         });
 
         Ok(Self {
-            tx,
+            tx: Some(tx),
             port_name,
-            _thread_handle: Some(thread_handle),
+            thread_handle: Some(thread_handle),
             connected,
         })
     }
@@ -117,27 +152,26 @@ impl EnttecOpenDmxBackend {
 
     /// Send one raw DMX frame: BREAK → MAB → start code + 512 channel bytes.
     ///
-    /// USB round-trip latency (~1ms per call) naturally satisfies the DMX break
-    /// minimum (88µs) and MAB minimum (8µs) without any explicit sleeps.
+    /// Uses TIOCSBRK/TIOCCBRK with explicit timing. QLC+ uses the same approach
+    /// on Linux and it works reliably with the FTDI ftdi_sio driver.
     #[cfg(feature = "usb")]
     fn send_dmx_frame(port: &mut Box<dyn SerialPort>, dmx_data: &[u8; 512]) -> Result<()> {
-        // Assert BREAK — held for one USB round-trip (~1ms) before the next call returns
         port.set_break()
             .context("Failed to assert serial BREAK")?;
+        std::thread::sleep(Duration::from_micros(110));
 
-        // De-assert BREAK — MAB begins; USB latency again covers the 8µs minimum
         port.clear_break()
             .context("Failed to clear serial BREAK")?;
+        std::thread::sleep(Duration::from_micros(40));
 
-        // Raw frame: start code (0x00) + 512 channel bytes, no wrapper
         let mut frame = [0u8; 513];
-        frame[0] = 0x00; // DMX512 null start code
+        frame[0] = 0x00;
         frame[1..].copy_from_slice(dmx_data);
 
         port.write_all(&frame)
-            .context("Failed to write DMX frame to serial port")?;
+            .context("Failed to write DMX frame")?;
         port.flush()
-            .context("Failed to flush serial port")?;
+            .context("Failed to flush DMX frame")?;
 
         Ok(())
     }
@@ -234,8 +268,10 @@ impl EnttecOpenDmxBackend {
 impl DmxBackend for EnttecOpenDmxBackend {
     fn send_universe(&mut self, universe: &Universe) -> Result<()> {
         let dmx_data = universe_to_dmx(universe);
-        self.tx.send(dmx_data)
-            .context("Failed to send DMX data to background thread")?;
+        if let Some(tx) = &self.tx {
+            tx.send(dmx_data)
+                .context("Failed to send DMX data to background thread")?;
+        }
         Ok(())
     }
 

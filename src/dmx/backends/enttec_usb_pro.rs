@@ -23,14 +23,19 @@ use serialport::{SerialPortInfo, SerialPortType};
 
 /// Enttec DMXUSB Pro backend with threaded sending
 pub struct EnttecUsbProBackend {
-    /// Channel to send universe data to background thread
-    tx: Sender<[u8; 512]>,
-    /// Port name for identification
+    tx: Option<Sender<[u8; 512]>>,
     port_name: String,
-    /// Handle to background thread (for cleanup)
-    _thread_handle: Option<thread::JoinHandle<()>>,
-    /// Set to false by the background thread when the device is lost.
+    thread_handle: Option<thread::JoinHandle<()>>,
     connected: Arc<AtomicBool>,
+}
+
+impl Drop for EnttecUsbProBackend {
+    fn drop(&mut self) {
+        drop(self.tx.take());
+        if let Some(handle) = self.thread_handle.take() {
+            handle.join().ok();
+        }
+    }
 }
 
 impl EnttecUsbProBackend {
@@ -119,9 +124,9 @@ impl EnttecUsbProBackend {
         });
 
         Ok(Self {
-            tx,
+            tx: Some(tx),
             port_name,
-            _thread_handle: Some(thread_handle),
+            thread_handle: Some(thread_handle),
             connected,
         })
     }
@@ -295,9 +300,10 @@ impl DmxBackend for EnttecUsbProBackend {
         // Send to background thread (non-blocking)
         // If the channel is full, this will block briefly, but in practice
         // the background thread consumes at 40 Hz so the channel rarely fills
-        self.tx.send(dmx_data)
-            .context("Failed to send DMX data to background thread")?;
-        
+        if let Some(tx) = &self.tx {
+            tx.send(dmx_data)
+                .context("Failed to send DMX data to background thread")?;
+        }
         Ok(())
     }
     
