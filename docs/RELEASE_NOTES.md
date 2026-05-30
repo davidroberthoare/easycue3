@@ -1,31 +1,7 @@
-Pick the next minor version
-Current crate version is 0.1.1 in Cargo.toml:3, so the next minor is 0.2.0.
+# Release Notes
 
-Bump the crate version
-Edit Cargo.toml:3:
-eg. version = "0.2.0"
+## v0.3.3
 
-Verify locally before tagging
-Run:
-cargo check
-cargo build --release
-
-Commit the release bump
-Example:
-git add Cargo.toml
-git commit -m "release: v0.2.0 (magic sheet)"
-
-Create a tag that matches the workflow trigger
-Your workflow listens to tags matching v* in release.yml:5.
-Use an annotated tag:
-git tag -a v0.2.0 -m "EasyCue3 v0.2.0 - Magic Sheet"
-
-Push branch and tag
-git push origin master
-git push origin v0.2.0
-
-Let GitHub Actions build and publish
-The release workflow in release.yml:1 will:
-build Linux, Windows, macOS artifacts
-create a GitHub Release with generated notes
-attach packaged binaries
+- Fixed Enttec Open DMX USB output on Linux by using explicit DMX serial framing and resetting FTDI control-line state on startup.
+- Added persistence for the selected DMX backend so the app restores the last chosen device on launch and falls back to Virtual DMX if it is unavailable.
+- Updated documentation to reflect Open DMX USB support and Linux serial-access requirements.
