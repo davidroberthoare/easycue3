@@ -1332,11 +1332,15 @@ impl eframe::App for EasyCueApp {
         // Suppress hotkeys while any text field (label editors, property boxes, etc.) has focus.
         // Ctrl+R (record) is safe to allow regardless.
         let text_focused = ctx.memory(|m| m.focused().is_some());
-        let (go, stop, record, ctrl_g) = ctx.input(|i| (
-            i.key_pressed(egui::Key::Space) && !i.modifiers.any() && !text_focused,
-            i.key_pressed(egui::Key::S)     && !i.modifiers.any() && !text_focused,
-            i.key_pressed(egui::Key::R)     && i.modifiers.ctrl,
-            i.key_pressed(egui::Key::G)     && i.modifiers.ctrl && !text_focused,
+        let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down) = ctx.input(|i| (
+            i.key_pressed(egui::Key::Space)     && !i.modifiers.any() && !text_focused,
+            i.key_pressed(egui::Key::S)         && !i.modifiers.any() && !text_focused,
+            i.key_pressed(egui::Key::R)         && i.modifiers.ctrl,
+            i.key_pressed(egui::Key::G)         && i.modifiers.ctrl && !text_focused,
+            // Escape is a safety/pause key — works even when a text field has focus.
+            i.key_pressed(egui::Key::Escape),
+            i.key_pressed(egui::Key::ArrowUp)   && !text_focused,
+            i.key_pressed(egui::Key::ArrowDown) && !text_focused,
         ));
 
         if stop {
@@ -1352,7 +1356,52 @@ impl eframe::App for EasyCueApp {
         }
         if ctrl_g {
             self.ui_state.goto_mode = true;
-            self.ui_state.command_input = "g".to_string();
+            // Prefix with "go" so execute_goto can strip it and parse the number.
+            self.ui_state.command_input = "go".to_string();
+        }
+        // Escape while playing: freeze lighting at current levels, fade out audio.
+        // Skip if goto_mode is active — Escape should cancel that instead.
+        if escape && self.playback.is_playing() && !self.ui_state.goto_mode {
+            self.playback.freeze();
+            #[cfg(feature = "audio")]
+            self.audio_playback.stop_all_with_fade(1.0);
+            self.autofollow_timer = None;
+            self.ui_state.status_message = "Paused".to_string();
+        }
+        // Up/Down arrows: navigate the cue selection and set on-deck.
+        if arrow_up || arrow_down {
+            let cue_count = self.cue_list.len();
+            if cue_count > 0 {
+                // Prefer the currently selected cue as the movement origin; fall back to
+                // the current on-deck cue so arrows always move relative to what's next.
+                let current_sel = self.ui_state.selected_cue_id
+                    .and_then(|id| self.cue_list.cues().iter().position(|c| c.id == id))
+                    .or_else(|| self.cue_list.next_any_index());
+                let new_idx = if arrow_up {
+                    current_sel.map(|i| i.saturating_sub(1)).unwrap_or(0)
+                } else {
+                    current_sel.map(|i| (i + 1).min(cue_count - 1)).unwrap_or(0)
+                };
+                if let Some(cue) = self.cue_list.get_cue(new_idx) {
+                    let num = cue.number;
+                    let id  = cue.id;
+                    let is_lighting = cue.is_lighting();
+                    // Move play head to just before this cue so next_any_index() points here.
+                    let prev_idx = if new_idx > 0 { Some(new_idx - 1) } else { None };
+                    drop(cue);
+                    self.cue_list.set_current_index(prev_idx);
+                    self.ui_state.selected_cue_id = Some(id);
+                    if is_lighting {
+                        self.ui_state.selected_lighting_cue_id = Some(id);
+                        self.ui_state.selected_audio_cue_id = None;
+                    } else {
+                        self.ui_state.selected_audio_cue_id = Some(id);
+                        self.ui_state.selected_lighting_cue_id = None;
+                    }
+                    self.ui_state.go_cue_input = format!("{:.1}", num);
+                    self.ui_state.status_message = format!("On deck: Q{:.1}", num);
+                }
+            }
         }
         if go {
             let pending_idx = {

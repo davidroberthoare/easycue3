@@ -83,12 +83,23 @@ Open DMX USB support on Linux also depends on getting exclusive access to the FT
 
 | Key | Action |
 |-----|--------|
-| Space | GO |
+| Space | GO (fire next cue) |
 | B | BACK |
 | S | STOP |
+| Escape | Pause — freeze lighting in place, fade out audio |
+| ↑ / ↓ | Move selection and set on-deck cue (cue list) |
+| Ctrl+G | Open goto prompt — type a number then Enter to fire |
 | Ctrl+R | Record cue |
 | Ctrl+S | Save show |
 | Ctrl+O | Open show |
+
+### Command-line cue navigation
+
+| Command | Action |
+|---------|--------|
+| `go12` / `goto12` | Go to and fire cue 12 |
+| `q12` | Arm cue 12 as on-deck without firing it |
+| `g1` | Select group 1 (existing group command, unchanged) |
 
 ---
 

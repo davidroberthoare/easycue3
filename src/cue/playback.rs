@@ -110,6 +110,25 @@ impl PlaybackEngine {
         self.fade_start = None;
     }
 
+    /// Freeze the current cue in place.
+    /// * If fading: halts the fade at the current interpolated values (already written
+    ///   to the universe on the last `update()` frame) and transitions to Active.
+    /// * If already Active: channels are static; this is a no-op for lighting
+    ///   (the caller still fades out audio).
+    pub fn freeze(&mut self) {
+        match self.state {
+            CueState::Fading { .. } => {
+                self.fade_start = None;
+                self.state = CueState::Active;
+                log::debug!("Lighting: fade frozen in place");
+            }
+            CueState::Active => {
+                log::debug!("Lighting: pause — cue already active, channels hold");
+            }
+            CueState::Stopped => {}
+        }
+    }
+
     /// Fade all DMX channels across all universes to zero over `fade_seconds`.
     pub fn start_fade_to_black(&mut self, universes: &[Universe], fade_seconds: f32) {
         self.ensure_capacity(universes.len());

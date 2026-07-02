@@ -206,11 +206,7 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
         return;
     }
 
-    // Only process regular lighting commands if we're in a command context
-    if !matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting | crate::command::CommandContext::Sound) {
-        return;
-    }
-
+    // Only process commands when no text field is focused.
     if is_text_focused {
         return;
     }
@@ -226,22 +222,39 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
             execute_command_line(app);
         }
 
-        // Handle character input in lighting context
-        if matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting) {
-            for event in &i.events {
-                if let egui::Event::Text(text) = event {
-                    // Only accept valid command characters
-                    for ch in text.chars() {
-                        if ch.is_ascii_digit() ||
-                           ch == 'a' || ch == '@' ||  // "at" operator
-                           ch == '+' || ch == ',' ||  // addition
-                           ch == '-' ||               // range or subtraction
-                           ch == 'g' ||               // group prefix
-                           ch == 't' || ch == 'h' || ch == 'r' || ch == 'u' || // "thru"
-                           ch == 'f' || ch == 'l' || ch == 'o' // "full", "out"
-                        {
-                            app.ui_state.command_input.push(ch);
-                        }
+        for event in &i.events {
+            if let egui::Event::Text(text) = event {
+                for ch in text.chars().map(|c| c.to_ascii_lowercase()) {
+                    // Cue navigation commands (q<num>, go<num>, goto<num>) work from
+                    // any context so they're usable from every panel.
+                    let is_cue_cmd = {
+                        let cmd = &app.ui_state.command_input;
+                        // Start a new cue command.
+                        (cmd.is_empty() && (ch == 'q' || ch == 'g'))
+                        // Continue a q<num> command.
+                        || (!cmd.is_empty() && cmd.starts_with('q')
+                            && (ch.is_ascii_digit() || ch == '.'))
+                        // Continue a go/goto<num> command ('o','t' build "goto").
+                        || (!cmd.is_empty() && cmd.starts_with('g')
+                            && (ch.is_ascii_digit() || ch == '.' || ch == 'o' || ch == 't'))
+                    };
+                    if is_cue_cmd {
+                        app.ui_state.command_input.push(ch);
+                        continue;
+                    }
+
+                    // Lighting channel commands — Lighting context only.
+                    if matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting)
+                        && (ch.is_ascii_digit()
+                            || ch == 'a' || ch == '@'  // "at" operator
+                            || ch == '+' || ch == ','  // addition
+                            || ch == '-'               // range
+                            || ch == 'g'               // group prefix
+                            || ch == 'q'               // on-deck prefix
+                            || ch == 't' || ch == 'h' || ch == 'r' || ch == 'u' // "thru"
+                            || ch == 'f' || ch == 'l' || ch == 'o') // "full", "out"
+                    {
+                        app.ui_state.command_input.push(ch);
                     }
                 }
             }
@@ -253,7 +266,11 @@ fn execute_goto(app: &mut EasyCueApp) {
     let input = app.ui_state.command_input.trim().to_string();
     app.ui_state.goto_mode = false;
     app.ui_state.command_input.clear();
-    let num_str = input.strip_prefix("go").unwrap_or(&input);
+    // Strip any leading prefix that may have been added by Ctrl+G or typed by the user.
+    let num_str = input.strip_prefix("goto")
+        .or_else(|| input.strip_prefix("go"))
+        .or_else(|| input.strip_prefix('g'))
+        .unwrap_or(&input);
     if num_str.is_empty() {
         return;
     }
@@ -544,18 +561,29 @@ fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
         .show(ctx, |ui| {
             ui.vertical(|ui| {
                 ui.label(egui::RichText::new("Transport").strong());
-                ui.label("Space - GO");
-                ui.label("B - BACK");
-                ui.label("S - STOP");
+                ui.label("Space — GO (next cue)");
+                ui.label("B — BACK");
+                ui.label("S — STOP");
+                ui.label("Escape — Pause: freeze lighting, fade out audio");
+                ui.add_space(8.0);
+
+                ui.label(egui::RichText::new("Cue Navigation (cue list focused)").strong());
+                ui.label(format!("{}/{} — Move selection & set on-deck cue", ph::ARROW_UP, ph::ARROW_DOWN));
+                ui.add_space(8.0);
+
+                ui.label(egui::RichText::new("Command Line").strong());
+                ui.label("go12 / goto12 — Go to and fire cue 12");
+                ui.label("q12 — Arm cue 12 as on-deck (no fire)");
+                ui.label("Ctrl+G — Open goto prompt, then type number + Enter");
                 ui.add_space(8.0);
 
                 ui.label(egui::RichText::new("Show File").strong());
-                ui.label("Ctrl+R - Record cue");
-                ui.label("Ctrl+S - Save");
-                ui.label("Ctrl+O - Open");
+                ui.label("Ctrl+R — Record cue");
+                ui.label("Ctrl+S — Save");
+                ui.label("Ctrl+O — Open");
                 ui.add_space(10.0);
 
-                ui.label(egui::RichText::new("Tip: click a panel before typing command-line input.").small());
+                ui.label(egui::RichText::new("Tip: hotkeys are suppressed while a text field is focused.").small());
                 ui.add_space(10.0);
 
                 ui.horizontal(|ui| {
@@ -1069,11 +1097,50 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
         return;
     }
 
-    // Goto command: go<number> — works from any context
-    if let Some(num_str) = input.strip_prefix("go") {
+    // Goto-and-play command: go<number> or goto<number> — works from any context.
+    // "goto" is checked first so "goto12".strip_prefix("go") = "to12" doesn't misfire.
+    let goto_num = input.strip_prefix("goto")
+        .or_else(|| input.strip_prefix("go"));
+    if let Some(num_str) = goto_num {
         if !num_str.is_empty() {
             if let Ok(num) = num_str.parse::<f32>() {
                 app.goto_cue_by_number(num);
+                app.ui_state.command_input.clear();
+                return;
+            }
+        }
+    }
+
+    // On-deck command: q<number> — arm a standby cue without firing it.
+    // Sets the play head to just before the target so next_any_index() points to it,
+    // which drives the on-deck arrow and yellow highlight in the cue table.
+    if let Some(num_str) = input.strip_prefix('q') {
+        if !num_str.is_empty() {
+            if let Ok(num) = num_str.parse::<f32>() {
+                let abs_idx = app.cue_list.cues().iter()
+                    .position(|c| (c.number - num).abs() < 0.005);
+                if let Some(abs_idx) = abs_idx {
+                    // Move play head to just before this cue.
+                    let prev_idx = if abs_idx > 0 { Some(abs_idx - 1) } else { None };
+                    app.cue_list.set_current_index(prev_idx);
+                    app.ui_state.go_cue_input = format!("{:.1}", num);
+                    // Select the cue and keep legacy fields in sync.
+                    let id = app.cue_list.get_cue(abs_idx).map(|c| c.id);
+                    let is_lx = app.cue_list.get_cue(abs_idx).map(|c| c.is_lighting()).unwrap_or(false);
+                    if let Some(id) = id {
+                        app.ui_state.selected_cue_id = Some(id);
+                        if is_lx {
+                            app.ui_state.selected_lighting_cue_id = Some(id);
+                            app.ui_state.selected_audio_cue_id = None;
+                        } else {
+                            app.ui_state.selected_audio_cue_id = Some(id);
+                            app.ui_state.selected_lighting_cue_id = None;
+                        }
+                    }
+                    app.ui_state.status_message = format!("On deck: Q{:.1}", num);
+                } else {
+                    app.ui_state.status_message = format!("Cue {:.1} not found", num);
+                }
                 app.ui_state.command_input.clear();
                 return;
             }

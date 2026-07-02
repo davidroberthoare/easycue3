@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-07-02T13:37:03.609287503+00:00",
+  "created": "2026-07-02T15:32:35.994126126+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -265,6 +265,90 @@
       "label": "Blackout",
       "number": 10.0,
       "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "audio_path": "/mnt/data/david/Music/coin.wav",
+        "fade_in": 0.0,
+        "fade_out": 0.0,
+        "length": null,
+        "notes": "",
+        "output_routes": [
+          {
+            "device_name": "",
+            "pan": 0.0,
+            "volume": 1.0
+          }
+        ]
+      },
+      "id": 18,
+      "label": "coin",
+      "number": 11.0,
+      "type": "Audio"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "audio_path": "/mnt/data/david/Music/Journey - Don’t Stop Believin’ (Official Studio Instrumental).mp3",
+        "fade_in": 0.0,
+        "fade_out": 0.0,
+        "length": null,
+        "notes": "",
+        "output_routes": [
+          {
+            "device_name": "",
+            "pan": 0.0,
+            "volume": 1.0
+          }
+        ]
+      },
+      "id": 19,
+      "label": "Journey - Don’t Stop Believin’ (Official Studio Instrumental)",
+      "number": 12.0,
+      "type": "Audio"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "audio_path": "/mnt/data/david/Music/Rick Astley - Never Gonna Give You Up (Official Music Video).mp3",
+        "fade_in": 0.0,
+        "fade_out": 0.0,
+        "length": null,
+        "notes": "",
+        "output_routes": [
+          {
+            "device_name": "",
+            "pan": 0.0,
+            "volume": 1.0
+          }
+        ]
+      },
+      "id": 20,
+      "label": "Rick Astley - Never Gonna Give You Up (Official Music Video)",
+      "number": 13.0,
+      "type": "Audio"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "audio_path": "/mnt/data/david/Music/Sound 60-glued.wav",
+        "fade_in": 0.0,
+        "fade_out": 0.0,
+        "length": null,
+        "notes": "",
+        "output_routes": [
+          {
+            "device_name": "",
+            "pan": 0.0,
+            "volume": 1.0
+          }
+        ]
+      },
+      "id": 21,
+      "label": "Sound 60-glued",
+      "number": 14.0,
+      "type": "Audio"
     }
   ],
   "description": "",
@@ -782,8 +866,8 @@
       }
     ]
   },
-  "modified": "2026-07-02T13:37:03.609567865+00:00",
-  "next_cue_id": 18,
+  "modified": "2026-07-02T15:32:35.994320627+00:00",
+  "next_cue_id": 22,
   "patch": [
     {
       "id": 1,

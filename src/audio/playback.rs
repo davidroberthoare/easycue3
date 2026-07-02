@@ -226,6 +226,28 @@ impl AudioPlaybackEngine {
         log::debug!("Audio: all streams stopped");
     }
 
+    /// Begin fading out all playing or fading-in streams.
+    /// Uses each stream's own `fade_out_duration`; falls back to `default_fade_secs`
+    /// for streams that have no configured fade-out.
+    pub fn stop_all_with_fade(&mut self, default_fade_secs: f32) {
+        for stream in &mut self.streams {
+            if matches!(
+                stream.state,
+                AudioCueState::Playing | AudioCueState::FadingIn { .. }
+            ) {
+                let fade = if stream.fade_out_duration > 0.0 {
+                    stream.fade_out_duration
+                } else {
+                    default_fade_secs
+                };
+                stream.fade_out_duration = fade;
+                stream.fade_start = Some(Instant::now());
+                stream.state = AudioCueState::FadingOut { progress: 0.0 };
+                log::debug!("Audio: cue {} fading out over {:.1}s", stream.cue_id, fade);
+            }
+        }
+    }
+
     /// Advance fade state and apply sound_master each frame.
     pub fn update(&mut self, sound_master: f32) {
         self.streams.retain_mut(|stream| {

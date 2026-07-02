@@ -368,7 +368,7 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
         .unwrap_or_default();
 
     ui.add_space(6.0);
-    ui.label(egui::RichText::new("Output Routing").strong());
+    ui.label(egui::RichText::new("Output Volume & Pan").strong());
 
     let mut changed = false;
     let mut new_routes = routes.clone();
