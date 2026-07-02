@@ -5,8 +5,159 @@ use egui_extras::{TableBuilder, Column};
 use crate::app::EasyCueApp;
 use egui_phosphor::regular as ph;
 
+// ── Drag-and-drop file classification ─────────────────────────────────────────
+
+/// Recognised cue type that can be created by dropping a file onto the cue list.
+/// Extend with new variants as media support is added.
+#[derive(Debug)]
+enum DroppedFileKind {
+    #[cfg(feature = "audio")]
+    Audio,
+    // Future: Image, Video — add variants here and handle them in `classify_dropped_file`
+    /// Extension (lowercased) or empty string if there was none.
+    Unknown(String),
+}
+
+/// Classify a dropped file path into a `DroppedFileKind` based on its extension.
+fn classify_dropped_file(path: &std::path::Path) -> DroppedFileKind {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    #[cfg(feature = "audio")]
+    if matches!(ext.as_str(), "mp3" | "wav" | "flac" | "ogg" | "aac" | "m4a" | "opus") {
+        return DroppedFileKind::Audio;
+    }
+
+    // Future: check image / video extensions here
+
+    DroppedFileKind::Unknown(ext)
+}
+
+/// Process a list of dropped files and add appropriate cues to the list.
+///
+/// Files are processed in their original drop order.  Unknown or unsupported
+/// file types are skipped with a warning rather than aborting the whole batch.
+/// Returns a human-readable status string suitable for the status bar.
+fn handle_dropped_files(app: &mut EasyCueApp, files: Vec<egui::DroppedFile>) -> String {
+    let mut added: u32 = 0;
+    let mut skipped: Vec<String> = Vec::new();
+
+    for file in files {
+        // `path` is None on platforms that don't expose the real FS path (e.g. WASM).
+        let path = match file.path {
+            Some(p) => p,
+            None => {
+                let name = file.name.clone();
+                skipped.push(format!(
+                    "'{}': file path unavailable on this platform",
+                    if name.is_empty() { "(unknown)" } else { &name }
+                ));
+                continue;
+            }
+        };
+
+        let next_number = app
+            .cue_list
+            .cues()
+            .iter()
+            .last()
+            .map(|c| c.number.floor() + 1.0)
+            .unwrap_or(1.0);
+
+        match classify_dropped_file(&path) {
+            #[cfg(feature = "audio")]
+            DroppedFileKind::Audio => {
+                let label = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Audio")
+                    .to_string();
+                let id = app.cue_list.next_id();
+                let mut cue = crate::cue::Cue::new_audio(next_number, path);
+                cue.label = label;
+                app.cue_list.add_cue(cue);
+                app.ui_state.selected_cue_id = Some(id);
+                app.ui_state.selected_audio_cue_id = Some(id);
+                app.ui_state.selected_lighting_cue_id = None;
+                #[cfg(feature = "audio")]
+                app.ui_state.audio_file_cache.clear();
+                added += 1;
+            }
+
+            DroppedFileKind::Unknown(ext) => {
+                let display_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("(unknown)")
+                    .to_string();
+                if ext.is_empty() {
+                    skipped.push(format!(
+                        "'{}': no extension — could not determine cue type",
+                        display_name
+                    ));
+                } else {
+                    skipped.push(format!(
+                        "'{}': .{} files are not supported",
+                        display_name, ext
+                    ));
+                }
+            }
+        }
+    }
+
+    // Log every skipped file for diagnostics, regardless of how many succeeded.
+    for msg in &skipped {
+        log::warn!("drag-and-drop: {}", msg);
+    }
+
+    match (added, skipped.len()) {
+        (0, 0) => String::new(),
+        (0, s) => format!("Could not add {} file{}", s, if s == 1 { "" } else { "s" }),
+        (a, 0) => format!("Added {} cue{}", a, if a == 1 { "" } else { "s" }),
+        (a, s) => format!(
+            "Added {} cue{} ({} skipped — see log)",
+            a,
+            if a == 1 { "" } else { "s" },
+            s
+        ),
+    }
+}
+
 
 pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
+    // ── Drag-and-drop overlay ─────────────────────────────────────────────────
+    // Paint a highlighted border + hint text whenever files are being dragged
+    // over the window, so the user knows the panel is a valid drop target.
+    let panel_rect = ui.max_rect();
+    let hovered_files = ui.ctx().input(|i| i.raw.hovered_files.clone());
+    if !hovered_files.is_empty() {
+        let overlay_painter = ui.ctx().layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("cue_drop_overlay"),
+        ));
+        overlay_painter.rect_filled(
+            panel_rect,
+            6.0,
+            egui::Color32::from_rgba_unmultiplied(20, 90, 200, 60),
+        );
+        overlay_painter.rect_stroke(
+            panel_rect.shrink(3.0),
+            6.0,
+            egui::Stroke::new(2.5, egui::Color32::from_rgb(100, 170, 255)),
+            egui::epaint::StrokeKind::Inside,
+        );
+        overlay_painter.text(
+            panel_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Drop files to add cues",
+            egui::FontId::proportional(22.0),
+            egui::Color32::WHITE,
+        );
+    }
+
     // ── Toolbar ──────────────────────────────────────────────────────────────
     ui.horizontal(|ui| {
         // ── Transport ───────────────────────────────────────────────────────
@@ -597,6 +748,16 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
         if cancelled {
             app.ui_state.pending_delete_cue_id = None;
+        }
+    }
+
+    // ── Drag-and-drop file processing ─────────────────────────────────────────
+    // Consume any files dropped onto the window this frame, preserving their order.
+    let dropped_files = ui.ctx().input(|i| i.raw.dropped_files.clone());
+    if !dropped_files.is_empty() {
+        let status = handle_dropped_files(app, dropped_files);
+        if !status.is_empty() {
+            app.ui_state.status_message = status;
         }
     }
 
