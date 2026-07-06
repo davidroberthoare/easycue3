@@ -1,21 +1,21 @@
-//! Audio device ownership — holds output streams alive and vends new Sinks.
+//! Audio device ownership — holds output streams alive and vends new Players.
 //!
 //! `AudioPlayer` enumerates all available output devices at startup and keeps
-//! an `OutputStream` open for each one.  Audio cues can then route to any
+//! a `MixerDeviceSink` open for each one.  Audio cues can then route to any
 //! combination of devices simultaneously at independent volume levels.
 
 use anyhow::{Context, Result};
 use crate::cue::AudioOutputRoute;
-use rodio::{OutputStream, OutputStreamHandle, Sink};
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
+use rodio::cpal::traits::{DeviceTrait, HostTrait};
 
 /// One physical (or virtual) audio output device held open.
 pub struct NamedOutput {
     pub name: String,
-    _stream: OutputStream,
-    handle: OutputStreamHandle,
+    _sink: MixerDeviceSink,
 }
 
-/// Owns all audio output streams and creates per-cue Sinks.
+/// Owns all audio output streams and creates per-cue Players.
 pub struct AudioPlayer {
     /// [0] is always the default device; additional devices follow.
     outputs: Vec<NamedOutput>,
@@ -25,62 +25,54 @@ impl AudioPlayer {
     /// Open the default output only.  Call `open_all_outputs()` after
     /// construction if you want access to secondary devices.
     pub fn new() -> Result<Self> {
-        let (stream, handle) = OutputStream::try_default()
+        let device_sink = DeviceSinkBuilder::open_default_sink()
             .context("Failed to open default audio output device")?;
 
         let name = {
-            #[cfg(feature = "audio")]
-            {
-                use cpal::traits::{DeviceTrait, HostTrait};
-                cpal::default_host()
-                    .default_output_device()
-                    .and_then(|d| d.name().ok())
-                    .unwrap_or_else(|| "Default".to_string())
-            }
-            #[cfg(not(feature = "audio"))]
-            "Default".to_string()
+            let host = rodio::cpal::default_host();
+            host.default_output_device()
+                .and_then(|d| d.description().ok())
+                .map(|desc| desc.name().to_string())
+                .unwrap_or_else(|| "Default".to_string())
         };
 
         log::info!("Audio player: default device = '{}'", name);
         Ok(Self {
-            outputs: vec![NamedOutput { name, _stream: stream, handle }],
+            outputs: vec![NamedOutput { name, _sink: device_sink }],
         })
     }
 
     /// Enumerate all output devices and open a stream for each one that isn't
     /// already open.  Silently skips devices that fail to open.
     pub fn open_all_outputs(&mut self) {
-        #[cfg(feature = "audio")]
-        {
-            use cpal::traits::{DeviceTrait, HostTrait};
-            let host = cpal::default_host();
-            let already: Vec<String> = self.outputs.iter().map(|o| o.name.clone()).collect();
+        let host = rodio::cpal::default_host();
+        let already: Vec<String> = self.outputs.iter().map(|o| o.name.clone()).collect();
 
-            let devices = match host.output_devices() {
-                Ok(d) => d,
-                Err(e) => { log::warn!("Audio: could not enumerate devices: {}", e); return; }
+        let devices = match host.output_devices() {
+            Ok(d) => d,
+            Err(e) => { log::warn!("Audio: could not enumerate devices: {}", e); return; }
+        };
+
+        for device in devices {
+            let name = match device.description() {
+                Ok(desc) => desc.name().to_string(),
+                Err(_) => continue,
             };
-
-            for device in devices {
-                let name = match device.name() {
-                    Ok(n) => n,
-                    Err(_) => continue,
-                };
-                // "default" is an ALSA virtual device that aliases the actual
-                // default output; skip it to avoid a duplicate entry.
-                if name.to_ascii_lowercase() == "default" {
-                    continue;
-                }
-                if already.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
-                    continue;
-                }
-                match OutputStream::try_from_device(&device) {
-                    Ok((stream, handle)) => {
+            if name.to_ascii_lowercase() == "default" {
+                continue;
+            }
+            if already.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
+                continue;
+            }
+            match DeviceSinkBuilder::from_device(device) {
+                Ok(builder) => match builder.open_sink_or_fallback() {
+                    Ok(sink) => {
                         log::info!("Audio: opened secondary device '{}'", name);
-                        self.outputs.push(NamedOutput { name, _stream: stream, handle });
+                        self.outputs.push(NamedOutput { name, _sink: sink });
                     }
                     Err(e) => log::warn!("Audio: skipping '{}': {}", name, e),
-                }
+                },
+                Err(e) => log::warn!("Audio: skipping '{}': {}", name, e),
             }
         }
     }
@@ -95,9 +87,9 @@ impl AudioPlayer {
         self.outputs.first().map(|o| o.name.as_str()).unwrap_or("Default")
     }
 
-    /// Create a Sink on the named device.  Falls back to the default device
+    /// Create a Player on the named device.  Falls back to the default device
     /// if `device_name` is empty or not found.
-    pub fn new_sink(&self, device_name: &str) -> Result<Sink> {
+    pub fn new_player(&self, device_name: &str) -> Result<Player> {
         let output = if device_name.is_empty() {
             self.outputs.first()
         } else {
@@ -106,24 +98,23 @@ impl AudioPlayer {
                 .find(|o| o.name == device_name)
                 .or_else(|| self.outputs.first())
         };
-        let handle = &output
-            .ok_or_else(|| anyhow::anyhow!("No audio output available"))?
-            .handle;
-        Sink::try_new(handle).context("Failed to create audio sink")
+        let sink = output
+            .ok_or_else(|| anyhow::anyhow!("No audio output available"))?;
+        Ok(Player::connect_new(sink._sink.mixer()))
     }
 
-    /// Create sinks for all routes in `routes`.  If `routes` is empty, returns
-    /// a single sink on the default device with volume 1.0 and pan 0.0.
-    /// Each element is `(device_name, Sink, per_route_volume, pan)`.
-    pub fn new_sinks_for_routes(
+    /// Create players for all routes in `routes`.  If `routes` is empty, returns
+    /// a single player on the default device with volume 1.0 and pan 0.0.
+    /// Each element is `(device_name, Player, per_route_volume, pan)`.
+    pub fn new_players_for_routes(
         &self,
         routes: &[AudioOutputRoute],
-    ) -> Vec<(String, Sink, f32, f32)> {
+    ) -> Vec<(String, Player, f32, f32)> {
         if routes.is_empty() {
-            match self.new_sink("") {
-                Ok(sink) => vec![(self.default_name().to_string(), sink, 1.0, 0.0)],
+            match self.new_player("") {
+                Ok(player) => vec![(self.default_name().to_string(), player, 1.0, 0.0)],
                 Err(e) => {
-                    log::error!("Audio: failed to create default sink: {}", e);
+                    log::error!("Audio: failed to create default player: {}", e);
                     vec![]
                 }
             }
@@ -131,14 +122,14 @@ impl AudioPlayer {
             routes
                 .iter()
                 .filter_map(|route| {
-                    match self.new_sink(&route.device_name) {
-                        Ok(sink) => {
+                    match self.new_player(&route.device_name) {
+                        Ok(player) => {
                             let name = if route.device_name.is_empty() {
                                 self.default_name().to_string()
                             } else {
                                 route.device_name.clone()
                             };
-                            Some((name, sink, route.volume, route.pan))
+                            Some((name, player, route.volume, route.pan))
                         }
                         Err(e) => {
                             log::warn!(

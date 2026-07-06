@@ -9,9 +9,8 @@
 
 use crate::audio::{pan_source::PanSource, AudioCueState, AudioPlayer};
 use crate::cue::Cue;
-use rodio::{Decoder, Source};
+use rodio::{Decoder, Player};
 use std::fs::File;
-use std::io::BufReader;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -36,7 +35,7 @@ struct RoutePanAdjust {
 /// One device sink with its own per-route volume/pan and optional in-progress fades.
 struct DeviceSink {
     device_name: String,
-    sink: rodio::Sink,
+    sink: Player,
     /// Current per-route volume scale (0.0–1.0).
     volume: f32,
     /// Ongoing route-level volume fade (from an Adjust cue).
@@ -90,7 +89,7 @@ impl AudioPlaybackEngine {
         let resolved = crate::paths::resolve_media_path(&data.audio_path);
 
         // Create one sink per output route (or default if routes is empty).
-        let route_sinks = player.new_sinks_for_routes(&data.output_routes);
+        let route_sinks = player.new_players_for_routes(&data.output_routes);
         if route_sinks.is_empty() {
             log::error!("Audio: no sinks created for cue {:.2}", cue.number);
             return false;
@@ -112,14 +111,14 @@ impl AudioPlaybackEngine {
                     continue;
                 }
             };
-            let raw = match Decoder::new(BufReader::new(file)) {
+            let raw = match Decoder::try_from(file) {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("Audio: decode error on '{}': {}", device_name, e);
                     continue;
                 }
             };
-            let (panned, pan_ctrl) = PanSource::new(raw.convert_samples::<f32>(), route_pan);
+            let (panned, pan_ctrl) = PanSource::new(raw, route_pan);
             sink.set_volume(initial_volume * route_vol);
             sink.append(panned);
             device_sinks.push(DeviceSink {

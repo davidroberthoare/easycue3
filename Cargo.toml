@@ -15,8 +15,8 @@ egui_extras = "0.31"  # Extra widgets including Table
 
 # Media Playback
 lumina-video = { git = "https://github.com/lumina-video/lumina-video", rev = "cb0d543", optional = true }
-rodio = { version = "0.19", optional = true }
-cpal = { version = "0.15", optional = true }
+rodio = { version = "0.22", optional = true }
+cpal = { version = "0.17", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

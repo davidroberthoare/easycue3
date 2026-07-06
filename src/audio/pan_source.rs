@@ -6,6 +6,7 @@
 //! reads them lock-free on each stereo frame.
 
 use rodio::Source;
+use std::num::NonZero;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc,
@@ -30,7 +31,7 @@ impl<S: Source<Item = f32>> PanSource<S> {
     /// Write new f32 bits to the handle to update pan while playing.
     pub fn new(inner: S, initial_pan: f32) -> (Self, Arc<AtomicU32>) {
         let ctrl = Arc::new(AtomicU32::new(initial_pan.to_bits()));
-        let num_channels = (inner.channels() as usize).max(1);
+        let num_channels = usize::from(inner.channels().get()).max(1);
         let s = Self {
             inner,
             pan_ctrl: Arc::clone(&ctrl),
@@ -76,13 +77,13 @@ impl<S: Source<Item = f32>> Iterator for PanSource<S> {
 }
 
 impl<S: Source<Item = f32>> Source for PanSource<S> {
-    fn current_frame_len(&self) -> Option<usize> {
-        self.inner.current_frame_len()
+    fn current_span_len(&self) -> Option<usize> {
+        self.inner.current_span_len()
     }
-    fn channels(&self) -> u16 {
+    fn channels(&self) -> NonZero<u16> {
         self.inner.channels()
     }
-    fn sample_rate(&self) -> u32 {
+    fn sample_rate(&self) -> NonZero<u32> {
         self.inner.sample_rate()
     }
     fn total_duration(&self) -> Option<Duration> {
