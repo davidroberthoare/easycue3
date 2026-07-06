@@ -1359,10 +1359,12 @@ impl eframe::App for EasyCueApp {
             // Prefix with "go" so execute_goto can strip it and parse the number.
             self.ui_state.command_input = "go".to_string();
         }
-        // Escape while playing: freeze lighting at current levels, fade out audio.
+        // Escape: always fade out audio (safety stop). Freeze lighting only if playing.
         // Skip if goto_mode is active — Escape should cancel that instead.
-        if escape && self.playback.is_playing() && !self.ui_state.goto_mode {
-            self.playback.freeze();
+        if escape && !self.ui_state.goto_mode {
+            if self.playback.is_playing() {
+                self.playback.freeze();
+            }
             #[cfg(feature = "audio")]
             self.audio_playback.stop_all_with_fade(1.0);
             self.autofollow_timer = None;
