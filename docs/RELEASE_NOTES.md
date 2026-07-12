@@ -1,5 +1,10 @@
 # Release Notes
 
+## v0.3.6
+
+- Added support for generic FTDI-based USB-to-DMX512 cables (e.g. DSD TECH) via the Enttec Open DMX USB backend — these have no onboard microcontroller and speak the same host-timed DMX protocol as the genuine Enttec Open DMX USB.
+- Improved port-recommendation heuristics to recognize bare FTDI chip product strings (FT232/FT231/USB Serial) so these cables surface correctly in the device picker.
+
 ## v0.3.4
 
 - Added `goto12` / `go12` command to jump to and fire a cue by number from the command line.
