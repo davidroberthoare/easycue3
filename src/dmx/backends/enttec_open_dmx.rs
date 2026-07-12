@@ -256,6 +256,11 @@ impl EnttecOpenDmxBackend {
                     score += 100;
                 } else if p.contains("dmx") || p.contains("enttec") {
                     score += 40;
+                } else if p.contains("ft232") || p.contains("ft231") || p.contains("usb serial") || p.contains("usb-serial") {
+                    // Bare FTDI cables (e.g. DSD TECH's USB-to-DMX512) have no onboard
+                    // microcontroller and report a generic chip product string instead
+                    // of naming the device — same wiring/protocol as Open DMX USB.
+                    score += 20;
                 }
             }
         }

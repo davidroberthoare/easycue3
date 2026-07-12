@@ -14,7 +14,7 @@ A simple theatrical lighting console I've been building for my school and my com
 - Fixture patching with parameter-based control (color pickers, intensity sliders)
 - Channel grid, fixture list and magic sheet for live control
 - Save and load show files (JSON, human-readable)
-- USB DMX output (Enttec USB Pro, Enttec Open DMX USB)
+- USB DMX output (Enttec USB Pro, Enttec Open DMX USB, and generic FTDI-based Open DMX clones e.g. DSD TECH USB-to-DMX512)
 
 
 ## What it doesn't do (yet)
@@ -76,6 +76,8 @@ sudo usermod -a -G dialout $USER
 ```
 
 Open DMX USB support on Linux also depends on getting exclusive access to the FTDI serial port. If another service probes the adapter at startup, wait a moment and reconnect, or disable that service.
+
+Cheap FTDI-chip "USB to DMX512" cables (e.g. DSD TECH's) have no onboard microcontroller — same as the genuine Enttec Open DMX USB — so pick **Enttec Open DMX USB** in Settings, not Enttec USB Pro (which expects Enttec's framed protocol and firmware). Select the device's serial port from the dropdown; it'll show up even if its product string doesn't say "Enttec" since any USB-serial port is listed.
 
 ---
 
