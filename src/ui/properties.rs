@@ -230,6 +230,8 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
         }
     }
 
+    render_cue_effect_actions(ui, app, cue, idx);
+
     // Non-zero channel values (compact list)
     if let Some(data) = cue.lighting_data() {
         if !data.channel_values.is_empty() {
@@ -246,6 +248,122 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             });
         }
     }
+}
+
+/// Effect actions attached to a lighting cue: list existing Start/Stop actions
+/// with remove buttons, plus controls to add new ones. Effects start on the
+/// cue's fade-up and stop on its fade-down; a started effect tracks through
+/// later cues until one stops it.
+fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, idx: usize) {
+    use crate::effects::EffectAction;
+
+    let actions = cue.lighting_data().map(|d| d.effect_actions.clone()).unwrap_or_default();
+    let effect_name = |app: &EasyCueApp, id: u32| -> String {
+        match app.effect_list.find(id) {
+            Some(e) if !e.label.is_empty() => e.label.clone(),
+            Some(_) => format!("Effect {}", id),
+            None => format!("(missing effect {})", id),
+        }
+    };
+
+    ui.add_space(6.0);
+    ui.collapsing(format!("Effects ({})", actions.len()), |ui| {
+        let mut remove_at: Option<usize> = None;
+        for (i, action) in actions.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.small_button(ph::X).on_hover_text("Remove this action").clicked() {
+                    remove_at = Some(i);
+                }
+                let text = match action {
+                    EffectAction::Start { effect_id, fixtures } => format!(
+                        "{} Start \"{}\" on {} fixture{}",
+                        ph::PLAY,
+                        effect_name(app, *effect_id),
+                        fixtures.len(),
+                        if fixtures.len() == 1 { "" } else { "s" },
+                    ),
+                    EffectAction::Stop { effect_id } =>
+                        format!("{} Stop \"{}\"", ph::STOP, effect_name(app, *effect_id)),
+                    EffectAction::StopAll => format!("{} Stop all effects", ph::STOP),
+                };
+                ui.label(text);
+            });
+        }
+        if let Some(i) = remove_at {
+            if let Some(d) = app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()) {
+                if i < d.effect_actions.len() {
+                    d.effect_actions.remove(i);
+                }
+            }
+        }
+
+        if app.effect_list.is_empty() {
+            ui.label(
+                egui::RichText::new("Create effects in the Effects panel first (View → Effects).")
+                    .small()
+                    .color(egui::Color32::GRAY),
+            );
+            return;
+        }
+
+        // Keep the cached combo choice valid.
+        if app.ui_state.cue_props_effect_choice
+            .is_none_or(|id| app.effect_list.find(id).is_none())
+        {
+            app.ui_state.cue_props_effect_choice = app.effect_list.effects().first().map(|e| e.id);
+        }
+        let chosen = app.ui_state.cue_props_effect_choice;
+
+        ui.horizontal(|ui| {
+            let chosen_text = chosen.map(|id| effect_name(app, id)).unwrap_or_default();
+            egui::ComboBox::from_id_salt("cue_effect_choice")
+                .selected_text(chosen_text)
+                .show_ui(ui, |ui| {
+                    let options: Vec<(u32, String)> = app.effect_list.effects()
+                        .iter()
+                        .map(|e| (e.id, effect_name(app, e.id)))
+                        .collect();
+                    for (id, name) in options {
+                        ui.selectable_value(&mut app.ui_state.cue_props_effect_choice, Some(id), name);
+                    }
+                });
+
+            let sel_count = app.ui_state.selected_fixtures.len();
+            if ui
+                .add_enabled(
+                    chosen.is_some() && sel_count > 0,
+                    egui::Button::new(format!("+ Start on selection ({})", sel_count)),
+                )
+                .on_hover_text("Adds a Start action for the fixtures currently selected in the Channels panel")
+                .clicked()
+            {
+                if let (Some(effect_id), Some(d)) = (
+                    chosen,
+                    app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()),
+                ) {
+                    let mut fixtures: Vec<usize> =
+                        app.ui_state.selected_fixtures.iter().copied().collect();
+                    fixtures.sort_unstable();
+                    d.effect_actions.push(EffectAction::Start { effect_id, fixtures });
+                }
+            }
+
+            if ui.add_enabled(chosen.is_some(), egui::Button::new("+ Stop")).clicked() {
+                if let (Some(effect_id), Some(d)) = (
+                    chosen,
+                    app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()),
+                ) {
+                    d.effect_actions.push(EffectAction::Stop { effect_id });
+                }
+            }
+
+            if ui.button("+ Stop All").clicked() {
+                if let Some(d) = app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()) {
+                    d.effect_actions.push(EffectAction::StopAll);
+                }
+            }
+        });
+    });
 }
 
 #[cfg(feature = "audio")]

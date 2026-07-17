@@ -15,7 +15,7 @@ cargo fmt                              # format code
 cargo clippy                           # lint
 ```
 
-There is no test suite currently.
+Unit tests exist for `effects`, `cue` serde compatibility, `fixtures`, and `show` (`cargo test`). One pre-existing failure in `enttec_usb_pro::tests::test_protocol_message_format` is unrelated to app logic.
 
 ## Feature Flags
 
@@ -43,6 +43,7 @@ EasyCue3 is a theatrical lighting and media console combining ETC EOS-style ligh
 | `src/app.rs` | `EasyCueApp` — central state, egui `update()` loop, all subsystem coordination |
 | `src/dmx/` | 512-channel `Universe` struct + pluggable `DmxBackend` trait (Virtual, USB/Enttec) |
 | `src/cue/` | Lighting cue recording/playback with linear crossfades |
+| `src/effects/` | Waveform effects (sine/square/saw/random) applied at the output stage; cue-triggered, tracking-style |
 | `src/audio/` | Parallel audio cue system; cross-triggering into lighting cues (feature-gated) |
 | `src/fixtures/` | Fixture profiles (JSON), patching (fixture→DMX address), `intensity.rs` for virtual intensity |
 | `src/ui/` | egui immediate-mode panels (dockable via `egui_dock`): cue list, audio cues, channels (dual-mode), patching, properties |
@@ -87,6 +88,10 @@ RGB-only fixtures (no dedicated intensity channel) get a virtual intensity layer
 
 **RGBAWUV gotcha:** when storing color ratios, all non-RGB channels (Amber, White, UV) must be read from the universe explicitly — otherwise they default to 0.0 and snap to black when intensity is adjusted. See `src/ui/properties.rs`.
 
+## Effects
+
+Waveform effects (sine, square, sawtooth, random with smoothing) modulate fixture parameters (intensity, color, pan/tilt/position) *relative to the base look*. Because there are no HTP/LTP layers, the `EffectEngine` never writes into the stored universes — it modulates a per-frame clone in the output path (`app.rs`, just before `apply_masters`), so recording, tracking, and channel readouts never see effect values. Cues carry `effect_actions` (start/stop, tracking-style); `CueList::effect_state_up_to` replays them for GOTO/BACK. While any effect runs, `update()` must keep requesting repaints. See `docs/EFFECTS.md`.
+
 ## Channels Panel — Dual Mode
 
 `src/ui/channels.rs` has two display modes toggled by the user:
@@ -102,3 +107,4 @@ Audio file paths in show files are stored as bare filenames when the file lives 
 ## Documentation
 
 - `docs/VIRTUAL_INTENSITY.md` — virtual intensity concept, algorithm, key files
+- `docs/EFFECTS.md` — effects concept, output-stage overlay architecture, key files

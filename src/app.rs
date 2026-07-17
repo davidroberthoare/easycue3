@@ -24,6 +24,7 @@ pub enum TabKind {
     Properties,
     InstrumentProperties,
     MagicSheet,
+    Effects,
     // Legacy variants kept for saved dock state deserialization — never shown
     #[serde(other)]
     Unknown,
@@ -39,6 +40,7 @@ impl std::fmt::Display for TabKind {
             TabKind::Properties => write!(f, "Cue Properties"),
             TabKind::InstrumentProperties => write!(f, "Instrument Properties"),
             TabKind::MagicSheet => write!(f, "Magic Sheet"),
+            TabKind::Effects => write!(f, "Effects"),
             TabKind::Unknown => write!(f, "?"),
         }
     }
@@ -160,6 +162,11 @@ pub struct UiState {
     pub color_wheel: crate::ui::ColorWheel,
     /// Which single fixture the wheel was last synced from; None when multi-select was active.
     pub last_wheel_fixture_id: Option<usize>,
+
+    /// Effect selected in the Effects panel.
+    pub selected_effect_id: Option<u32>,
+    /// Effect chosen in the Cue Properties "add effect action" combo.
+    pub cue_props_effect_choice: Option<u32>,
 }
 
 impl Default for UiState {
@@ -209,6 +216,8 @@ impl Default for UiState {
             show_debug_ui: false,
             color_wheel: crate::ui::ColorWheel::new(),
             last_wheel_fixture_id: None,
+            selected_effect_id: None,
+            cue_props_effect_choice: None,
         }
     }
 }
@@ -243,6 +252,10 @@ pub struct EasyCueApp {
     /// Unified cue list — contains both lighting and audio cues
     pub cue_list: CueList,
     pub playback: PlaybackEngine,
+    /// Show-level effect library (saved with the show file).
+    pub effect_list: crate::effects::EffectList,
+    /// Runtime state of currently running effects (never persisted).
+    pub effect_engine: crate::effects::EffectEngine,
     #[allow(dead_code)]
     pub media: MediaManager,
     pub fixtures: FixtureLibrary,
@@ -497,6 +510,8 @@ impl EasyCueApp {
             dmx_backend,
             cue_list: CueList::new(),
             playback: PlaybackEngine::new(),
+            effect_list: crate::effects::EffectList::new(),
+            effect_engine: crate::effects::EffectEngine::new(),
             media: MediaManager::new(),
             fixtures: FixtureLibrary::new(),
             virtual_intensity: crate::fixtures::VirtualIntensity::new(),
@@ -598,7 +613,7 @@ impl EasyCueApp {
         let [_, _] = tree.split_right(
             bottom,
             0.607_848_4,
-            vec![TabKind::Properties, TabKind::MagicSheet],
+            vec![TabKind::Properties, TabKind::MagicSheet, TabKind::Effects],
         );
 
         dock_state
@@ -643,6 +658,11 @@ impl EasyCueApp {
             }
         }
 
+        self.effect_engine.clear();
+        self.effect_list = crate::effects::EffectList::from_parts(show.effects, show.next_effect_id);
+        self.ui_state.selected_effect_id = None;
+        self.ui_state.cue_props_effect_choice = None;
+
         self.groups = show.groups;
         self.magic_sheet = show.magic_sheet;
         self.cue_colors = show.cue_colors;
@@ -686,6 +706,8 @@ impl EasyCueApp {
         show.groups = self.groups.clone();
         show.magic_sheet = self.magic_sheet.clone();
         show.cue_colors = self.cue_colors.clone();
+        show.effects = self.effect_list.effects().to_vec();
+        show.next_effect_id = self.effect_list.next_id();
 
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -924,6 +946,90 @@ impl EasyCueApp {
         Some(name[start..end].to_string())
     }
 
+    // --- Effects ---
+
+    /// Resolve fixture (patch) IDs into plain channel data for the effect engine.
+    /// Unknown fixtures are skipped with a warning. Called at effect start / cue
+    /// fire / jump sync — never per frame, so repatching mid-effect uses stale
+    /// addresses until the effect is restarted (acceptable).
+    pub fn resolve_effect_fixtures(&self, ids: &[usize]) -> Vec<crate::effects::EffectFixture> {
+        use crate::fixtures::profiles::FixtureParameter;
+        let mut resolved = Vec::with_capacity(ids.len());
+        for &id in ids {
+            let Some(patch) = self.fixtures.patch_list().get_patch(id) else {
+                log::warn!("Effect fixture #{} not found in patch — skipping", id);
+                continue;
+            };
+            let Some(profile) = self.fixtures.get_profile(&patch.profile_id) else {
+                log::warn!("Effect fixture #{}: profile '{}' missing — skipping", id, patch.profile_id);
+                continue;
+            };
+            let universe_idx = (patch.universe as usize).saturating_sub(1);
+            if universe_idx >= self.universes.len() {
+                log::warn!("Effect fixture #{}: universe {} not available — skipping", id, patch.universe);
+                continue;
+            }
+            let abs = |offset: u16| patch.start_address + offset;
+            resolved.push(crate::effects::EffectFixture {
+                fixture_id: id,
+                universe_idx,
+                intensity_ch: profile.get_parameter_offset(&FixtureParameter::Intensity).map(abs),
+                color_chs: profile.color_parameters().iter().map(|p| abs(p.channel_offset)).collect(),
+                pan_ch: profile.get_parameter_offset(&FixtureParameter::Pan).map(abs),
+                tilt_ch: profile.get_parameter_offset(&FixtureParameter::Tilt).map(abs),
+            });
+        }
+        resolved
+    }
+
+    /// Run a cue's effect actions: starts ramp in over the cue's fade-up,
+    /// stops ramp out over its fade-down.
+    fn execute_effect_actions(&mut self, actions: &[crate::effects::EffectAction], fade_up: f32, fade_down: f32) {
+        use crate::effects::EffectAction;
+        for action in actions {
+            match action {
+                EffectAction::Start { effect_id, fixtures } => {
+                    if self.effect_list.find(*effect_id).is_none() {
+                        log::warn!("Cue references missing effect {} — skipping", effect_id);
+                        continue;
+                    }
+                    let resolved = self.resolve_effect_fixtures(fixtures);
+                    self.effect_engine.start(*effect_id, fixtures.clone(), resolved, fade_up);
+                }
+                EffectAction::Stop { effect_id } => self.effect_engine.stop(*effect_id, fade_down),
+                EffectAction::StopAll => self.effect_engine.stop_all(fade_down),
+            }
+        }
+    }
+
+    /// Reconcile running effects with the tracked effect state at cue index
+    /// `idx` — the effect analogue of `tracked_state_up_to`, used by BACK and
+    /// GOTO so jumps land with the correct effects running. Retargets keep the
+    /// effect clock, so surviving effects never phase-snap.
+    fn sync_effects_to_index(&mut self, idx: usize, fade: f32) {
+        let desired = self.cue_list.effect_state_up_to(idx);
+        let running_ids: Vec<u32> = self.effect_engine.running().iter().map(|r| r.effect_id()).collect();
+        for id in running_ids {
+            if !desired.iter().any(|(d, _)| *d == id) {
+                self.effect_engine.stop(id, fade);
+            }
+        }
+        for (id, fixture_ids) in desired {
+            if self.effect_list.find(id).is_none() {
+                log::warn!("Tracked effect {} missing from library — skipping", id);
+                continue;
+            }
+            let needs_start = match self.effect_engine.running().iter().find(|r| r.effect_id() == id) {
+                Some(r) => r.is_stopping() || r.fixture_ids() != fixture_ids.as_slice(),
+                None => true,
+            };
+            if needs_start {
+                let resolved = self.resolve_effect_fixtures(&fixture_ids);
+                self.effect_engine.start(id, fixture_ids, resolved, fade);
+            }
+        }
+    }
+
     // --- Navigation helpers (all UI panels call these instead of engines directly) ---
 
     /// Advance to the next cue of any kind (unified GO). Returns true if a cue fired.
@@ -933,8 +1039,9 @@ impl EasyCueApp {
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
-            crate::cue::CueKind::Lighting(_) => {
+            crate::cue::CueKind::Lighting(data) => {
                 self.playback.start(&cue, &self.universes);
+                self.execute_effect_actions(&data.effect_actions, data.fade_up, data.fade_down);
                 true
             }
             #[cfg(feature = "audio")]
@@ -971,6 +1078,7 @@ impl EasyCueApp {
                 let tracked = self.cue_list.tracked_state_up_to(prev_idx);
                 let fade_time = data.fade_up;
                 self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
+                self.sync_effects_to_index(prev_idx, fade_time);
                 true
             }
             #[cfg(feature = "audio")]
@@ -1055,6 +1163,7 @@ impl EasyCueApp {
                 let tracked = self.cue_list.tracked_state_up_to(abs_idx);
                 let fade_time = data.fade_up;
                 self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
+                self.sync_effects_to_index(abs_idx, fade_time);
                 true
             }
             #[cfg(feature = "audio")]
@@ -1101,6 +1210,9 @@ impl EasyCueApp {
     /// and stop all audio immediately.
     pub fn fade_to_black(&mut self, fade_seconds: f32) {
         self.playback.start_fade_to_black(&self.universes, fade_seconds);
+        // With the base fading to 0, a running intensity effect would keep
+        // flashing 0→size in the black — Cue 0 stops effects with the fade.
+        self.effect_engine.stop_all(fade_seconds);
         #[cfg(feature = "audio")]
         self.audio_playback.stop_all();
         self.autofollow_timer = None;
@@ -1487,7 +1599,16 @@ impl eframe::App for EasyCueApp {
         }
 
         let dmx_send_start = std::time::Instant::now();
-        let output_universes = self.apply_masters(&self.universes);
+        // Effects modulate a clone of the base look at output time only, then
+        // masters scale the result — blackout and grand master govern effect
+        // output, and the stored universes never see effect values.
+        let output_universes = if self.effect_engine.is_active() {
+            let mut staged = self.universes.clone();
+            self.effect_engine.apply(&mut staged, &self.effect_list);
+            self.apply_masters(&staged)
+        } else {
+            self.apply_masters(&self.universes)
+        };
         if let Err(e) = self.dmx_backend.send_universes(&output_universes) {
             log::error!("DMX output error: {}", e);
         }
@@ -1528,6 +1649,11 @@ impl eframe::App for EasyCueApp {
         }
 
         if self.playback.is_playing() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+        // Effects animate the DMX output every frame; without this the app
+        // idles and a running effect freezes between input events.
+        if self.effect_engine.is_active() {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
         #[cfg(feature = "audio")]

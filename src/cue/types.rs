@@ -31,6 +31,10 @@ pub struct LightingData {
     /// keys are identical to raw channel numbers (backwards compatible).
     #[serde(deserialize_with = "crate::serde_helpers::deserialize_channel_map")]
     pub channel_values: HashMap<u16, u8>,
+    /// Effect actions executed when this cue fires. Tracking-style: a started
+    /// effect keeps running through later cues until one stops it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effect_actions: Vec<crate::effects::EffectAction>,
 }
 
 impl Default for LightingData {
@@ -39,6 +43,7 @@ impl Default for LightingData {
             fade_up: 3.0,
             fade_down: 3.0,
             channel_values: HashMap::new(),
+            effect_actions: Vec::new(),
         }
     }
 }
@@ -456,5 +461,44 @@ pub enum CueState {
 impl Default for CueState {
     fn default() -> Self {
         Self::Stopped
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lighting_data_loads_from_pre_effects_show_files() {
+        // A cue exactly as older versions saved it — no effect_actions field.
+        let json = r#"{"fade_up": 3.0, "fade_down": 2.0, "channel_values": {"10": 59}}"#;
+        let data: LightingData = serde_json::from_str(json).unwrap();
+        assert!(data.effect_actions.is_empty());
+        assert_eq!(data.get_channel(10), 59);
+    }
+
+    #[test]
+    fn lighting_data_without_effects_serializes_without_the_field() {
+        // Keeps untouched show files byte-identical (and autosave comparison stable).
+        let json = serde_json::to_string(&LightingData::default()).unwrap();
+        assert!(!json.contains("effect_actions"));
+    }
+
+    #[test]
+    fn cue_round_trips_effect_actions() {
+        let mut cue = Cue::new_lighting(1.0);
+        if let Some(d) = cue.lighting_data_mut() {
+            d.effect_actions.push(crate::effects::EffectAction::Start {
+                effect_id: 2,
+                fixtures: vec![1, 3],
+            });
+            d.effect_actions.push(crate::effects::EffectAction::StopAll);
+        }
+        let json = serde_json::to_string(&cue).unwrap();
+        let back: Cue = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.lighting_data().unwrap().effect_actions,
+            cue.lighting_data().unwrap().effect_actions
+        );
     }
 }

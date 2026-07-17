@@ -6,6 +6,7 @@
 pub mod dmx;
 pub mod cue;
 pub mod audio;
+pub mod effects;
 pub mod fixtures;
 pub mod paths;
 pub mod serde_helpers;

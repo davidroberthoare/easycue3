@@ -87,6 +87,14 @@ pub struct ShowFile {
     #[serde(default)]
     pub cue_colors: CueColorSettings,
 
+    /// Show-level effect library (waveform patterns applied via cues).
+    #[serde(default)]
+    pub effects: Vec<crate::effects::Effect>,
+
+    /// Next effect ID to assign — same never-reuse rule as `next_cue_id`.
+    #[serde(default)]
+    pub next_effect_id: u32,
+
     /// Legacy audio cues field — only populated in old (pre-Phase B) show files.
     /// load() migrates these into `cues` and this field is always empty on save.
     #[cfg(feature = "audio")]
@@ -112,6 +120,8 @@ impl ShowFile {
             groups: GroupList::default(),
             magic_sheet: MagicSheet::default(),
             cue_colors: CueColorSettings::default(),
+            effects: Vec::new(),
+            next_effect_id: 1,
             #[cfg(feature = "audio")]
             audio_cues: Vec::new(),
             #[cfg(not(feature = "audio"))]
@@ -155,6 +165,20 @@ impl ShowFile {
             }
         }
         self.next_cue_id = next;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pre_effects_show_files_load_with_empty_effect_library() {
+        let json = r#"{"description":"","created":"x","modified":"x","cues":[]}"#;
+        let show: ShowFile = serde_json::from_str(json).unwrap();
+        assert!(show.effects.is_empty());
+        // EffectList::from_parts clamps a defaulted 0 back to a valid next ID.
+        assert_eq!(show.next_effect_id, 0);
     }
 }
 

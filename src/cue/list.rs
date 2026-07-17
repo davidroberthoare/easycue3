@@ -209,6 +209,34 @@ impl CueList {
         state
     }
 
+    /// Replay effect actions of lighting cues 0..=idx to produce the set of
+    /// effects that should be running at that point: (effect_id, fixture IDs),
+    /// in first-start order. The effect-state analogue of `tracked_state_up_to`.
+    pub fn effect_state_up_to(&self, idx: usize) -> Vec<(u32, Vec<usize>)> {
+        use crate::effects::EffectAction;
+        let mut state: Vec<(u32, Vec<usize>)> = Vec::new();
+        for cue in self.cues.iter().take(idx + 1) {
+            if let CueKind::Lighting(data) = &cue.kind {
+                for action in &data.effect_actions {
+                    match action {
+                        EffectAction::Start { effect_id, fixtures } => {
+                            if let Some(entry) = state.iter_mut().find(|(id, _)| id == effect_id) {
+                                entry.1 = fixtures.clone();
+                            } else {
+                                state.push((*effect_id, fixtures.clone()));
+                            }
+                        }
+                        EffectAction::Stop { effect_id } => {
+                            state.retain(|(id, _)| id != effect_id);
+                        }
+                        EffectAction::StopAll => state.clear(),
+                    }
+                }
+            }
+        }
+        state
+    }
+
     // --- Utility ---
 
     pub fn clear(&mut self) {

@@ -5,6 +5,7 @@
 mod channels;
 mod color_wheel;
 mod cues;
+mod effects;
 mod fixture_editor;
 mod groups;
 mod magic_sheet;
@@ -20,6 +21,7 @@ pub use color_wheel::ColorWheel;
 pub use pan_tilt_gizmo::PanTiltGizmo;
 pub use channels::render_channels_panel;
 pub use cues::render_cues_panel;
+pub use effects::render_effects_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
 pub use groups::{render_groups_panel, GroupsPanelState};
 pub use magic_sheet::render_magic_sheet_panel;
@@ -337,6 +339,7 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             TabKind::Properties => render_cue_properties_panel(ui, self.app),
             TabKind::InstrumentProperties => render_instrument_properties_panel(ui, self.app),
             TabKind::MagicSheet => render_magic_sheet_panel(ui, self.app),
+            TabKind::Effects => render_effects_panel(ui, self.app),
             TabKind::Unknown => { ui.label("(unknown tab)"); }
         }
     }
@@ -360,6 +363,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 if ui.button("New Show").clicked() {
                     app.cue_list.clear();
                     app.playback.stop();
+                    app.effect_engine.clear();
+                    app.effect_list.clear();
+                    app.ui_state.selected_effect_id = None;
+                    app.ui_state.cue_props_effect_choice = None;
                     app.show_title = "New Show".to_string();
                     app.current_file_path = None;
                     app.reset_cue_colors_to_defaults();
@@ -487,6 +494,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 if ui.button("Magic Sheet").clicked() {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::MagicSheet);
+                    ui.close_menu();
+                }
+                if ui.button("Effects").clicked() {
+                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Effects);
                     ui.close_menu();
                 }
                 
@@ -1044,6 +1055,7 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                 if ui.add(panic_button).clicked() {
                     // Stop all playback
                     app.playback.stop();
+                    app.effect_engine.stop_all(0.0);
                     #[cfg(feature = "audio")]
                     app.audio_playback.stop_all();
                     
@@ -1071,6 +1083,7 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                 
                 if ui.add(all_stop_button).clicked() {
                     app.playback.stop();
+                    app.effect_engine.stop_all(0.0);
                     #[cfg(feature = "audio")]
                     app.audio_playback.stop_all();
                     app.ui_state.status_message = "ALL STOP".to_string();
