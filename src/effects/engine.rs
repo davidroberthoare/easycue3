@@ -8,7 +8,19 @@
 
 use super::{sample, EffectFixture, EffectList, EffectTarget};
 use crate::dmx::Universe;
+use std::collections::HashSet;
 use std::time::Instant;
+
+/// Per-frame record of what the effects touched, so the UI can highlight
+/// modulated fixtures/channels with a steady indicator (membership doesn't
+/// flicker when a wave crosses zero, unlike comparing values).
+#[derive(Debug, Clone, Default)]
+pub struct EffectFootprint {
+    /// Fixture (patch) IDs with at least one modulated channel this frame.
+    pub fixtures: HashSet<usize>,
+    /// (universe_idx, 1-based channel) pairs modulated this frame.
+    pub channels: HashSet<(usize, u16)>,
+}
 
 /// Entry/exit envelope for a running effect. `from` is the scale the ramp
 /// started at, so retargeting mid-ramp never snaps.
@@ -163,8 +175,10 @@ impl EffectEngine {
     /// Modulate `universes` in place (a per-frame clone of the base look).
     /// Effect parameters are looked up live in `effects` so panel edits are
     /// audible immediately; instances whose effect was deleted, or whose
-    /// ramp-out has finished, are removed.
-    pub fn apply(&mut self, universes: &mut [Universe], effects: &EffectList) {
+    /// ramp-out has finished, are removed. Returns which fixtures/channels
+    /// were modulated, for UI display.
+    pub fn apply(&mut self, universes: &mut [Universe], effects: &EffectList) -> EffectFootprint {
+        let mut footprint = EffectFootprint::default();
         self.running.retain_mut(|inst| {
             let Some(effect) = effects.find(inst.effect_id) else {
                 log::warn!(
@@ -192,63 +206,91 @@ impl EffectEngine {
                     continue;
                 };
                 let delta = sample(effect, t, i, n, fx.fixture_id, false) * effect.size * scale;
+                let touched = |channels: &[u16], footprint: &mut EffectFootprint| {
+                    footprint.fixtures.insert(fx.fixture_id);
+                    for &ch in channels {
+                        footprint.channels.insert((fx.universe_idx, ch));
+                    }
+                };
                 match effect.target {
                     EffectTarget::Intensity => {
                         if let Some(ch) = fx.intensity_ch {
-                            add_delta(universe, ch, delta);
+                            if add_delta(universe, ch, delta) {
+                                touched(&[ch], &mut footprint);
+                            }
                         } else {
                             // RGB-only fixture: hue-preserving scale of the color
                             // engine, matching the VirtualIntensity model.
-                            scale_colors(universe, &fx.color_chs, delta);
+                            if scale_colors(universe, &fx.color_chs, delta) {
+                                touched(&fx.color_chs, &mut footprint);
+                            }
                         }
                     }
-                    EffectTarget::Color => scale_colors(universe, &fx.color_chs, delta),
+                    EffectTarget::Color => {
+                        if scale_colors(universe, &fx.color_chs, delta) {
+                            touched(&fx.color_chs, &mut footprint);
+                        }
+                    }
                     EffectTarget::Pan => {
                         if let Some(ch) = fx.pan_ch {
-                            add_delta(universe, ch, delta);
+                            if add_delta(universe, ch, delta) {
+                                touched(&[ch], &mut footprint);
+                            }
                         }
                     }
                     EffectTarget::Tilt => {
                         if let Some(ch) = fx.tilt_ch {
-                            add_delta(universe, ch, delta);
+                            if add_delta(universe, ch, delta) {
+                                touched(&[ch], &mut footprint);
+                            }
                         }
                     }
                     EffectTarget::Position => {
                         if let Some(ch) = fx.pan_ch {
-                            add_delta(universe, ch, delta);
+                            if add_delta(universe, ch, delta) {
+                                touched(&[ch], &mut footprint);
+                            }
                         }
                         if let Some(ch) = fx.tilt_ch {
                             let tilt_delta =
                                 sample(effect, t, i, n, fx.fixture_id, true) * effect.size * scale;
-                            add_delta(universe, ch, tilt_delta);
+                            if add_delta(universe, ch, tilt_delta) {
+                                touched(&[ch], &mut footprint);
+                            }
                         }
                     }
                 }
             }
             true
         });
+        footprint
     }
 }
 
 /// Offset one channel by `delta` around its base value, clamped to 0–100.
-fn add_delta(universe: &mut Universe, channel: u16, delta: f32) {
+/// Returns true if the channel exists (i.e. this fixture is under the effect,
+/// even at a zero-crossing where the value happens to be unchanged).
+fn add_delta(universe: &mut Universe, channel: u16, delta: f32) -> bool {
     if let Ok(base) = universe.get_channel(channel) {
         let new = (base as f32 + delta).clamp(0.0, 100.0).round() as u8;
         let _ = universe.set_channel(channel, new);
+        true
+    } else {
+        false
     }
 }
 
 /// Scale all color channels so their maximum moves by `delta`, preserving the
 /// ratios between them (hue). A fixture at base black stays black — an effect
-/// cannot invent a color.
-fn scale_colors(universe: &mut Universe, channels: &[u16], delta: f32) {
+/// cannot invent a color. Returns true if the fixture had color to modulate.
+fn scale_colors(universe: &mut Universe, channels: &[u16], delta: f32) -> bool {
     let max = channels
         .iter()
         .filter_map(|&ch| universe.get_channel(ch).ok())
         .max()
         .unwrap_or(0);
     if max == 0 {
-        return;
+        return false;
     }
     let factor = (max as f32 + delta).clamp(0.0, 100.0) / max as f32;
     for &ch in channels {
@@ -257,6 +299,7 @@ fn scale_colors(universe: &mut Universe, channels: &[u16], delta: f32) {
             let _ = universe.set_channel(ch, new);
         }
     }
+    true
 }
 
 #[cfg(test)]
@@ -360,6 +403,51 @@ mod tests {
         let mut universes = vec![Universe::new(1)];
         engine.apply(&mut universes, &effects);
         assert!(!engine.is_active());
+    }
+
+    #[test]
+    fn footprint_reports_modulated_fixtures_and_channels() {
+        let mut effects = EffectList::new();
+        let id = effects.add(Effect {
+            size: 30.0,
+            ..Effect::new()
+        });
+        let mut engine = EffectEngine::new();
+        engine.start(
+            id,
+            vec![1, 2],
+            vec![dimmer_fixture(1), rgb_fixture(10)],
+            0.0,
+        );
+
+        let mut universes = vec![Universe::new(1)];
+        universes[0].set_channel(1, 50).unwrap();
+        universes[0].set_channel(10, 80).unwrap();
+        let footprint = engine.apply(&mut universes, &effects);
+        assert!(footprint.fixtures.contains(&1));
+        assert!(footprint.fixtures.contains(&2));
+        assert!(footprint.channels.contains(&(0, 1)));
+        // All color channels of the RGB fixture count as modulated.
+        for ch in 10..=12 {
+            assert!(footprint.channels.contains(&(0, ch)));
+        }
+    }
+
+    #[test]
+    fn footprint_excludes_fixture_at_base_black() {
+        let mut effects = EffectList::new();
+        let id = effects.add(Effect {
+            size: 30.0,
+            ..Effect::new()
+        });
+        let mut engine = EffectEngine::new();
+        engine.start(id, vec![2], vec![rgb_fixture(10)], 0.0);
+
+        // RGB fixture at black: nothing to modulate, so no FX indicator either.
+        let mut universes = vec![Universe::new(1)];
+        let footprint = engine.apply(&mut universes, &effects);
+        assert!(footprint.fixtures.is_empty());
+        assert!(footprint.channels.is_empty());
     }
 
     #[test]

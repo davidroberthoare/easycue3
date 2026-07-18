@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-07-06T23:01:25.694746630+00:00",
+  "created": "2026-07-18T11:44:05.032854835+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -70,6 +70,7 @@
       "autofollow": 2.0,
       "data": {
         "channel_values": {
+          "1": 50,
           "204": 0,
           "220": 0,
           "3": 0
@@ -373,6 +374,18 @@
     }
   ],
   "description": "",
+  "effects": [
+    {
+      "id": 1,
+      "label": "wave",
+      "phase_spread": 0.0,
+      "rate": 0.05000000074505806,
+      "size": 25.0,
+      "smoothing": 50.0,
+      "target": "intensity",
+      "waveform": "sine"
+    }
+  ],
   "groups": {
     "groups": [
       {
@@ -887,8 +900,9 @@
       }
     ]
   },
-  "modified": "2026-07-06T23:01:25.695046570+00:00",
+  "modified": "2026-07-18T11:44:05.033005480+00:00",
   "next_cue_id": 23,
+  "next_effect_id": 2,
   "patch": [
     {
       "id": 1,

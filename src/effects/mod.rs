@@ -5,8 +5,9 @@
 //! with a rate, size, and per-fixture phase spread. Effects modulate *relative*
 //! to the base value the cue/manual programming put in the universe, and are
 //! applied at the output stage only (see [`engine::EffectEngine`]) — they are
-//! never written back into the stored universes, so recorded cues and channel
-//! readouts always show the un-modulated base look.
+//! never written back into the stored universes, so recorded cues always
+//! capture the un-modulated base look. The UI shows the live modulated values
+//! (in a distinct FX color) via [`EffectDisplay`], refreshed each frame.
 //!
 //! Values follow the internal 0–100 range. A fixture at base 0 with an
 //! intensity sine of size 30 swings 0–30 (the negative half clamps away);
@@ -14,9 +15,20 @@
 
 pub mod engine;
 
-pub use engine::{EffectEngine, RunningEffect};
+pub use engine::{EffectEngine, EffectFootprint, RunningEffect};
 
 use serde::{Deserialize, Serialize};
+
+/// Per-frame snapshot of the effect-modulated output for UI display: the
+/// staged universes (effects applied, masters not) plus which fixtures and
+/// channels the effects touched. Rebuilt every frame while effects run; the
+/// UI reads values from here for modulated channels and from the base
+/// universes for everything else — interactions always edit the base.
+#[derive(Debug, Clone)]
+pub struct EffectDisplay {
+    pub universes: Vec<crate::dmx::Universe>,
+    pub footprint: EffectFootprint,
+}
 
 /// Waveform shapes available to effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

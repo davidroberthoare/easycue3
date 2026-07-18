@@ -264,7 +264,7 @@ fn render_manual_controls(ui: &mut Ui, app: &mut EasyCueApp, id: u32) {
         ui.label(egui::RichText::new(format!("Running: {}", active.join(", "))).small());
         ui.label(
             egui::RichText::new(
-                "Channel readouts show base levels — the effect rides on the DMX output.",
+                "Modulated channels show live values in cyan — recording still captures the base look.",
             )
             .small()
             .italics()

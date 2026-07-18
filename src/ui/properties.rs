@@ -803,6 +803,16 @@ fn render_fixture_properties(
     // Single header line — no instrument-type subtitle.
     ui.label(egui::RichText::new(&patch.label).strong());
 
+    // Live values are shown in the Channels panel; sliders here stay on the
+    // base look so editing never fights the modulation.
+    if app.effect_display.as_ref().is_some_and(|d| d.footprint.fixtures.contains(&patch.id)) {
+        ui.label(
+            egui::RichText::new(format!("{} Effect running — these controls edit the base look", ph::WAVE_SINE))
+                .small()
+                .color(egui::Color32::from_rgb(0, 220, 255)),
+        );
+    }
+
     let Some(universe) = app.universes.first_mut() else { return };
 
     // ── Collect channel addresses + current values (immutable reads) ──────────

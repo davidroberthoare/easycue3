@@ -256,6 +256,9 @@ pub struct EasyCueApp {
     pub effect_list: crate::effects::EffectList,
     /// Runtime state of currently running effects (never persisted).
     pub effect_engine: crate::effects::EffectEngine,
+    /// This frame's effect-modulated output for UI display (None when no
+    /// effects run). Panels read modulated values from here; edits go to base.
+    pub effect_display: Option<crate::effects::EffectDisplay>,
     #[allow(dead_code)]
     pub media: MediaManager,
     pub fixtures: FixtureLibrary,
@@ -512,6 +515,7 @@ impl EasyCueApp {
             playback: PlaybackEngine::new(),
             effect_list: crate::effects::EffectList::new(),
             effect_engine: crate::effects::EffectEngine::new(),
+            effect_display: None,
             media: MediaManager::new(),
             fixtures: FixtureLibrary::new(),
             virtual_intensity: crate::fixtures::VirtualIntensity::new(),
@@ -1604,9 +1608,14 @@ impl eframe::App for EasyCueApp {
         // output, and the stored universes never see effect values.
         let output_universes = if self.effect_engine.is_active() {
             let mut staged = self.universes.clone();
-            self.effect_engine.apply(&mut staged, &self.effect_list);
-            self.apply_masters(&staged)
+            let footprint = self.effect_engine.apply(&mut staged, &self.effect_list);
+            let output = self.apply_masters(&staged);
+            // Keep the pre-master staged look for UI readouts (panels always
+            // show pre-master values, so FX display matches that convention).
+            self.effect_display = Some(crate::effects::EffectDisplay { universes: staged, footprint });
+            output
         } else {
+            self.effect_display = None;
             self.apply_masters(&self.universes)
         };
         if let Err(e) = self.dmx_backend.send_universes(&output_universes) {

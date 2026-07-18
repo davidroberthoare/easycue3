@@ -47,14 +47,20 @@ DMX:
 
 ```
 base universes ──clone──▶ + effects ──▶ + masters ──▶ DMX backend
-      │
-      └──▶ UI readouts, cue recording, tracking (never see effect values)
+      │                       │
+      │                       └──▶ EffectDisplay (live UI readouts, FX cyan)
+      └──▶ cue recording, tracking, edits (never see effect values)
 ```
 
 Consequences:
 - **Recording a cue never bakes effect output in** — `record_cue` reads the
   base universes.
-- **Channel readouts show the base look** while the DMX output modulates.
+- **Channel readouts show the live modulated values** (EOS-style, in FX cyan
+  with an FX tag): each frame the staged pre-master clone plus an
+  `EffectFootprint` (which fixtures/channels were touched) is kept on
+  `app.effect_display`. Hovering a modulated tile/box shows the base value.
+  All *interactions* (drag, click base levels, property sliders) still edit
+  the base look, so editing never chases a moving target.
 - No cross-frame feedback: every frame recomputes from the untouched base.
 
 While any effect runs, the app requests continuous ~60 fps repaints (the app

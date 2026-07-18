@@ -4,6 +4,9 @@ use egui::{Ui, Sense, Vec2, Pos2, Color32, Stroke};
 use crate::app::EasyCueApp;
 use crate::fixtures::profiles::FixtureParameter;
 
+/// Display color for values currently modulated by a running effect.
+const FX_COLOR: Color32 = Color32::from_rgb(0, 220, 255);
+
 /// Render the instrument list panel with per-fixture intensity controls
 pub fn render_channels_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // View mode controls
@@ -218,9 +221,39 @@ fn render_fixture_tile(
         }
     };
 
-    // Read RGB color for the swatch (if applicable)
+    // Live effect-modulated values for display. Interaction (drag/click) keeps
+    // using the base value above so edits never chase a moving target.
+    let fx_active = app
+        .effect_display
+        .as_ref()
+        .is_some_and(|d| d.footprint.fixtures.contains(&fixture_id));
+    let display_intensity = if fx_active {
+        app.effect_display
+            .as_ref()
+            .and_then(|d| d.universes.first())
+            .map(|u| {
+                if profile.has_intensity() {
+                    profile.get_parameter_offset(&FixtureParameter::Intensity)
+                        .map(|off| u.get_channel(patch.start_address + off).unwrap_or(0) as f32 / 100.0)
+                        .unwrap_or(0.0)
+                } else if profile.is_rgb() {
+                    app.virtual_intensity.calculate_intensity(fixture_id, u, patch, profile)
+                } else {
+                    0.0
+                }
+            })
+            .unwrap_or(current_intensity)
+    } else {
+        current_intensity
+    };
+
+    // Read RGB color for the swatch (if applicable) — from the modulated
+    // universe while an effect runs so color effects are visible live.
     let rgb_color: Option<Color32> = if profile.is_rgb() {
-        if let Some(universe) = app.universes.first() {
+        let fx_universe = app.effect_display.as_ref()
+            .filter(|_| fx_active)
+            .and_then(|d| d.universes.first());
+        if let Some(universe) = fx_universe.or_else(|| app.universes.first()) {
             let r = profile.get_parameter_offset(&FixtureParameter::Red)
                 .map(|o| universe.get_channel(patch.start_address + o).unwrap_or(0)).unwrap_or(0);
             let g = profile.get_parameter_offset(&FixtureParameter::Green)
@@ -293,14 +326,14 @@ fn render_fixture_tile(
     };
     p.rect_filled(rect, 3.0, bg);
 
-    // Intensity fill bar along the bottom edge
-    if current_intensity > 0.0 {
+    // Intensity fill bar along the bottom edge (live value while under FX)
+    if display_intensity > 0.0 {
         let bar_h = 4.0;
         let bar_rect = egui::Rect::from_min_max(
             egui::pos2(rect.min.x + 2.0, rect.max.y - bar_h - 1.0),
-            egui::pos2(rect.min.x + 2.0 + (rect.width() - 4.0) * current_intensity, rect.max.y - 1.0),
+            egui::pos2(rect.min.x + 2.0 + (rect.width() - 4.0) * display_intensity, rect.max.y - 1.0),
         );
-        let bar_color = intensity_color(current_intensity);
+        let bar_color = if fx_active { FX_COLOR } else { intensity_color(display_intensity) };
         p.rect_filled(bar_rect, 2.0, bar_color);
     }
 
@@ -331,15 +364,26 @@ fn render_fixture_tile(
         Color32::from_gray(120),
     );
 
-    // Intensity % (large, centred)
-    let pct = (current_intensity * 100.0).round() as u8;
+    // Intensity % (large, centred). FX cyan = live modulated value.
+    let pct = (display_intensity * 100.0).round() as u8;
     p.text(
         egui::pos2(rect.center().x, rect.min.y + 36.0),
         egui::Align2::CENTER_TOP,
         format!("{}%", pct),
         egui::FontId::monospace(13.0),
-        intensity_color(current_intensity),
+        if fx_active { FX_COLOR } else { intensity_color(display_intensity) },
     );
+
+    // Steady FX tag so the effect stays visible even at value coincidences
+    if fx_active {
+        p.text(
+            egui::pos2(rect.max.x - 5.0, rect.min.y + 17.0),
+            egui::Align2::RIGHT_TOP,
+            "FX",
+            egui::FontId::proportional(9.0),
+            FX_COLOR,
+        );
+    }
 
     // Color swatch (bottom-right corner, for RGB fixtures)
     if let Some(color) = rgb_color {
@@ -350,6 +394,13 @@ fn render_fixture_tile(
         );
         p.rect_filled(swatch, 2.0, color);
         p.rect_stroke(swatch, 2.0, Stroke::new(0.5, Color32::from_gray(80)), egui::epaint::StrokeKind::Inside);
+    }
+
+    if fx_active {
+        response.on_hover_text(format!(
+            "Effect running — base {}%",
+            (current_intensity * 100.0).round() as u8
+        ));
     }
 
     tile_clicked
@@ -505,8 +556,25 @@ fn render_channel_box(
     };
     
     let value = universe.get_channel(channel).unwrap_or(0);
+
+    // Live effect-modulated value for display; `value` (base) still drives
+    // all click/drag interactions and stored base levels.
+    let fx_active = app
+        .effect_display
+        .as_ref()
+        .is_some_and(|d| d.footprint.channels.contains(&(0usize, channel)));
+    let display_value = if fx_active {
+        app.effect_display
+            .as_ref()
+            .and_then(|d| d.universes.first())
+            .and_then(|u| u.get_channel(channel).ok())
+            .unwrap_or(value)
+    } else {
+        value
+    };
+
     let is_selected = app.ui_state.selected_channels.contains(&channel);
-    let is_active = value > 0;
+    let is_active = value > 0 || display_value > 0;
     
     // Box dimensions
     let box_size = Vec2::new(50.0, 55.0);
@@ -674,22 +742,25 @@ fn render_channel_box(
     );
     ui.painter().galley(ch_pos, ch_galley, Color32::GRAY);
     
-    // Draw value in center (color-coded by intensity level)
-    let value_text = if value == 100 {
+    // Draw value in center (color-coded by intensity level; FX cyan = live
+    // modulated value while an effect rides this channel)
+    let value_text = if display_value == 100 {
         "FL".to_string()
     } else {
-        format!("{}", value)
+        format!("{}", display_value)
     };
-    
-    let value_color = if value == 0 {
+
+    let value_color = if fx_active {
+        FX_COLOR
+    } else if display_value == 0 {
         Color32::from_rgb(60, 60, 60)
-    } else if value == 100 {
+    } else if display_value == 100 {
         Color32::from_rgb(255, 100, 100)
-    } else if value >= 79 {
+    } else if display_value >= 79 {
         Color32::from_rgb(255, 255, 100)
-    } else if value >= 51 {
+    } else if display_value >= 51 {
         Color32::from_rgb(150, 255, 150)
-    } else if value >= 26 {
+    } else if display_value >= 26 {
         Color32::from_rgb(100, 200, 255)
     } else {
         Color32::from_rgb(200, 150, 255)
@@ -706,6 +777,10 @@ fn render_channel_box(
         rect.center().y - value_galley.rect.height() / 2.0 + 2.0,
     );
     ui.painter().galley(value_pos, value_galley, value_color);
+
+    if fx_active {
+        response.on_hover_text(format!("Effect running — base {}", value));
+    }
 }
 
 /// Rebuild the command line from the current channel selection
