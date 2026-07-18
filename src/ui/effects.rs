@@ -214,7 +214,7 @@ fn render_manual_controls(ui: &mut Ui, app: &mut EasyCueApp, id: u32) {
     let running = app.effect_engine.is_running(id);
 
     ui.horizontal(|ui| {
-        let start_label = format!("{} Start on Selection ({})", ph::PLAY, selection_count);
+        let start_label = format!("{} Test on Selection ({})", ph::PLAY, selection_count);
         if ui
             .add_enabled(selection_count > 0, egui::Button::new(start_label))
             .on_hover_text(
@@ -231,7 +231,7 @@ fn render_manual_controls(ui: &mut Ui, app: &mut EasyCueApp, id: u32) {
         }
 
         if ui
-            .add_enabled(running, egui::Button::new(format!("{} Stop", ph::STOP)))
+            .add_enabled(running, egui::Button::new(format!("{} Stop Test", ph::STOP)))
             .clicked()
         {
             app.effect_engine.stop(id, MANUAL_RAMP);

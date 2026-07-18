@@ -199,8 +199,9 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         // Determine whether this is a group shape or a fixture shape.
         let is_group_shape = *is_group || (group_id.is_some() && fixture_id.is_none());
 
-        let (label, fix_num, intensity, rgb) = if is_group_shape {
-            group_shape_info(app, *group_id)
+        let (label, fix_num, intensity, rgb, fx_active) = if is_group_shape {
+            let (label, num, count, color) = group_shape_info(app, *group_id);
+            (label, num, count, color, false)
         } else {
             fixture_info(app, *fixture_id)
         };
@@ -336,7 +337,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         if is_group_shape {
             draw_group_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity as usize, app.magic_sheet_state.canvas_zoom);
         } else {
-            draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb, app.magic_sheet_state.canvas_zoom);
+            draw_shape_label(&painter, screen_center, w, h, &label, fix_num, intensity, rgb, fx_active, app.magic_sheet_state.canvas_zoom);
         }
     }
 
@@ -880,6 +881,7 @@ fn draw_shape_label(
     fix_num: Option<usize>,
     intensity: f32,
     rgb: Option<Color32>,
+    fx_active: bool,
     zoom: f32,
 ) {
     let text_color = Color32::from_gray(220);
@@ -918,7 +920,10 @@ fn draw_shape_label(
     } else {
         "0%".to_string()
     };
-    let int_color = if intensity > 0.0 {
+    // FX cyan = live effect-modulated value (matches the Channels panel).
+    let int_color = if fx_active {
+        Color32::from_rgb(0, 220, 255)
+    } else if intensity > 0.0 {
         Color32::from_rgb(180, 220, 120)
     } else {
         Color32::from_gray(100)
@@ -927,9 +932,19 @@ fn draw_shape_label(
         Pos2::new(center.x, center.y + h / 2.0 - 10.0),
         egui::Align2::CENTER_BOTTOM,
         int_str,
-        font_sm,
+        font_sm.clone(),
         int_color,
     );
+
+    if fx_active {
+        painter.text(
+            Pos2::new(center.x + w / 2.0 - 3.0, center.y + h / 2.0 - 3.0),
+            egui::Align2::RIGHT_BOTTOM,
+            "FX",
+            egui::FontId::proportional(8.0 * zoom),
+            Color32::from_rgb(0, 220, 255),
+        );
+    }
 }
 
 /// Return display info for a group shape.
@@ -957,26 +972,36 @@ fn group_shape_info(
     (label, Some(gid as usize), count as f32, None)
 }
 
+/// Display info for a fixture shape. While an effect modulates the fixture,
+/// values are read from the live effect-modulated snapshot (and the final bool
+/// is true) so the sheet animates; interactions elsewhere still edit the base.
 fn fixture_info(
     app: &EasyCueApp,
     fixture_id: Option<usize>,
-) -> (String, Option<usize>, f32, Option<Color32>) {
+) -> (String, Option<usize>, f32, Option<Color32>, bool) {
     let fid = match fixture_id {
         Some(id) => id,
-        None => return ("(unassigned)".to_string(), None, 0.0, None),
+        None => return ("(unassigned)".to_string(), None, 0.0, None, false),
     };
 
     let patch = match app.fixtures.patch_list().get_patch(fid) {
         Some(p) => p,
-        None => return (format!("#{}", fid), Some(fid), 0.0, None),
+        None => return (format!("#{}", fid), Some(fid), 0.0, None, false),
     };
     let profile = match app.fixtures.get_profile(&patch.profile_id) {
         Some(p) => p,
-        None => return (patch.label.clone(), Some(fid), 0.0, None),
+        None => return (patch.label.clone(), Some(fid), 0.0, None, false),
     };
-    let universe = match app.universes.first() {
+    let fx_active = app
+        .effect_display
+        .as_ref()
+        .is_some_and(|d| d.footprint.fixtures.contains(&fid));
+    let fx_universe = app.effect_display.as_ref()
+        .filter(|_| fx_active)
+        .and_then(|d| d.universes.first());
+    let universe = match fx_universe.or_else(|| app.universes.first()) {
         Some(u) => u,
-        None => return (patch.label.clone(), Some(fid), 0.0, None),
+        None => return (patch.label.clone(), Some(fid), 0.0, None, false),
     };
 
     let intensity = if profile.has_intensity() {
@@ -984,9 +1009,15 @@ fn fixture_info(
             .map(|off| universe.get_channel(patch.start_address + off).unwrap_or(0) as f32 / 100.0)
             .unwrap_or(0.0)
     } else if profile.is_rgb() {
-        app.virtual_intensity.get_intensity(fid).unwrap_or_else(|| {
+        if fx_active {
+            // The cached virtual intensity tracks the base look — derive the
+            // live value from the modulated universe instead.
             app.virtual_intensity.calculate_intensity(fid, universe, patch, profile)
-        })
+        } else {
+            app.virtual_intensity.get_intensity(fid).unwrap_or_else(|| {
+                app.virtual_intensity.calculate_intensity(fid, universe, patch, profile)
+            })
+        }
     } else {
         0.0
     };
@@ -1007,7 +1038,7 @@ fn fixture_info(
         None
     };
 
-    (patch.label.clone(), Some(fid), intensity, rgb)
+    (patch.label.clone(), Some(fid), intensity, rgb, fx_active)
 }
 
 /// Apply an additive intensity delta to every currently selected fixture.

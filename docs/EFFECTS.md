@@ -58,9 +58,11 @@ Consequences:
 - **Channel readouts show the live modulated values** (EOS-style, in FX cyan
   with an FX tag): each frame the staged pre-master clone plus an
   `EffectFootprint` (which fixtures/channels were touched) is kept on
-  `app.effect_display`. Hovering a modulated tile/box shows the base value.
-  All *interactions* (drag, click base levels, property sliders) still edit
-  the base look, so editing never chases a moving target.
+  `app.effect_display`. The Channels panel (both modes) and the Magic Sheet
+  (including color/intensity-linked shape backgrounds) read from it; hovering
+  a modulated tile/box shows the base value. All *interactions* (drag, click
+  base levels, property sliders) still edit the base look, so editing never
+  chases a moving target.
 - No cross-frame feedback: every frame recomputes from the untouched base.
 
 While any effect runs, the app requests continuous ~60 fps repaints (the app
