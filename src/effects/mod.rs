@@ -1,7 +1,7 @@
 //! Lighting effects — repeating waveforms applied on top of the base look.
 //!
 //! An [`Effect`] is a show-level library entry: one waveform (sine, square,
-//! sawtooth, random) applied to one target (intensity, color, pan/tilt/position)
+//! sawtooth, random) applied to one target (intensity, hue/saturation, pan/tilt/position)
 //! with a rate, size, and per-fixture phase spread. Effects modulate *relative*
 //! to the base value the cue/manual programming put in the universe, and are
 //! applied at the output stage only (see [`engine::EffectEngine`]) — they are
@@ -64,14 +64,22 @@ impl Waveform {
 
 /// Which fixture parameter the effect modulates.
 ///
-/// `Color` scales all color channels together (hue-preserving brightness).
-/// `Position` drives Pan at the wave phase and Tilt 90° behind it, so a sine
-/// makes circles and phase spread makes fans.
+/// `Hue` and `Saturation` work in HSV space on the R/G/B channels, holding
+/// brightness (V) constant — so a color effect changes *what* color the light
+/// is, not how bright it is. `Position` drives Pan at the wave phase and Tilt
+/// 90° behind it, so a sine makes circles and phase spread makes fans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectTarget {
     Intensity,
-    Color,
+    /// Rotates hue around the color wheel: size 100 = ±180°, so a sawtooth at
+    /// full size sweeps the whole rainbow seamlessly (−180° wraps to +180°).
+    /// The alias accepts the retired `color` target from early test shows.
+    #[serde(alias = "color")]
+    Hue,
+    /// Shifts saturation: negative half moves toward white (equal RGB),
+    /// positive half toward the pure hue. Size 100 = the full 0–1 range.
+    Saturation,
     Pan,
     Tilt,
     Position,
@@ -81,16 +89,18 @@ impl EffectTarget {
     pub fn label(&self) -> &'static str {
         match self {
             EffectTarget::Intensity => "Intensity",
-            EffectTarget::Color => "Color",
+            EffectTarget::Hue => "Hue (color cycle)",
+            EffectTarget::Saturation => "Saturation",
             EffectTarget::Pan => "Pan",
             EffectTarget::Tilt => "Tilt",
             EffectTarget::Position => "Position (circle)",
         }
     }
 
-    pub const ALL: [EffectTarget; 5] = [
+    pub const ALL: [EffectTarget; 6] = [
         EffectTarget::Intensity,
-        EffectTarget::Color,
+        EffectTarget::Hue,
+        EffectTarget::Saturation,
         EffectTarget::Pan,
         EffectTarget::Tilt,
         EffectTarget::Position,
@@ -267,6 +277,9 @@ pub struct EffectFixture {
     pub intensity_ch: Option<u16>,
     /// Absolute channels of all color parameters (R/G/B/A/W/UV present).
     pub color_chs: Vec<u16>,
+    /// Absolute (R, G, B) channels when the fixture has all three — the
+    /// working space for Hue/Saturation effects (A/W/UV are left alone).
+    pub rgb_chs: Option<(u16, u16, u16)>,
     pub pan_ch: Option<u16>,
     pub tilt_ch: Option<u16>,
 }

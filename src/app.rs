@@ -974,11 +974,20 @@ impl EasyCueApp {
                 continue;
             }
             let abs = |offset: u16| patch.start_address + offset;
+            let rgb_chs = match (
+                profile.get_parameter_offset(&FixtureParameter::Red),
+                profile.get_parameter_offset(&FixtureParameter::Green),
+                profile.get_parameter_offset(&FixtureParameter::Blue),
+            ) {
+                (Some(r), Some(g), Some(b)) => Some((abs(r), abs(g), abs(b))),
+                _ => None,
+            };
             resolved.push(crate::effects::EffectFixture {
                 fixture_id: id,
                 universe_idx,
                 intensity_ch: profile.get_parameter_offset(&FixtureParameter::Intensity).map(abs),
                 color_chs: profile.color_parameters().iter().map(|p| abs(p.channel_offset)).collect(),
+                rgb_chs,
                 pan_ch: profile.get_parameter_offset(&FixtureParameter::Pan).map(abs),
                 tilt_ch: profile.get_parameter_offset(&FixtureParameter::Tilt).map(abs),
             });

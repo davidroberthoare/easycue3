@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-07-18T11:44:05.032854835+00:00",
+  "created": "2026-07-18T12:01:35.357644798+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -371,18 +371,115 @@
       "label": "Journey - Don’t Stop Believin’ (Official Studio Instrumental)",
       "number": 15.0,
       "type": "Audio"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {
+          "1": 50,
+          "21": 0,
+          "22": 0,
+          "23": 0,
+          "24": 0,
+          "25": 0,
+          "29": 0,
+          "30": 0,
+          "31": 0,
+          "32": 0,
+          "33": 0,
+          "37": 0,
+          "38": 0,
+          "39": 0,
+          "40": 0,
+          "41": 0,
+          "45": 0,
+          "46": 0,
+          "47": 0,
+          "48": 0,
+          "49": 0,
+          "53": 0,
+          "54": 0,
+          "55": 0,
+          "56": 0,
+          "57": 0
+        },
+        "effect_actions": [
+          {
+            "action": "start",
+            "effect_id": 2,
+            "fixtures": [
+              1
+            ]
+          }
+        ],
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 23,
+      "label": "Cue 11",
+      "number": 16.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {
+          "1": 0
+        },
+        "effect_actions": [
+          {
+            "action": "start",
+            "effect_id": 1,
+            "fixtures": [
+              2,
+              3,
+              4
+            ]
+          },
+          {
+            "action": "stop",
+            "effect_id": 2
+          }
+        ],
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 24,
+      "label": "Cue 12",
+      "number": 26.299999237060547,
+      "type": "Lighting"
     }
   ],
   "description": "",
   "effects": [
     {
       "id": 1,
+      "label": "bump",
+      "phase_spread": 170.0,
+      "rate": 0.800000011920929,
+      "size": 100.0,
+      "smoothing": 50.0,
+      "target": "intensity",
+      "waveform": "square"
+    },
+    {
+      "id": 2,
       "label": "wave",
       "phase_spread": 0.0,
-      "rate": 0.05000000074505806,
+      "rate": 1.0,
       "size": 25.0,
       "smoothing": 50.0,
       "target": "intensity",
+      "waveform": "sine"
+    },
+    {
+      "id": 3,
+      "label": "colour wave",
+      "phase_spread": 0.0,
+      "rate": 1.0,
+      "size": 100.0,
+      "smoothing": 50.0,
+      "target": "color",
       "waveform": "sine"
     }
   ],
@@ -900,9 +997,9 @@
       }
     ]
   },
-  "modified": "2026-07-18T11:44:05.033005480+00:00",
-  "next_cue_id": 23,
-  "next_effect_id": 2,
+  "modified": "2026-07-18T12:01:35.357887624+00:00",
+  "next_cue_id": 25,
+  "next_effect_id": 4,
   "patch": [
     {
       "id": 1,

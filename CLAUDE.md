@@ -90,7 +90,7 @@ RGB-only fixtures (no dedicated intensity channel) get a virtual intensity layer
 
 ## Effects
 
-Waveform effects (sine, square, sawtooth, random with smoothing) modulate fixture parameters (intensity, color, pan/tilt/position) *relative to the base look*. Because there are no HTP/LTP layers, the `EffectEngine` never writes into the stored universes — it modulates a per-frame clone in the output path (`app.rs`, just before `apply_masters`), so recording and tracking never see effect values. The UI *displays* the live modulated values in FX cyan via `app.effect_display` (staged universes + `EffectFootprint`), but all interactions edit the base. Cues carry `effect_actions` (start/stop, tracking-style); `CueList::effect_state_up_to` replays them for GOTO/BACK. While any effect runs, `update()` must keep requesting repaints. See `docs/EFFECTS.md`.
+Waveform effects (sine, square, sawtooth, random with smoothing) modulate fixture parameters (intensity, hue/saturation, pan/tilt/position) *relative to the base look*. Hue/Saturation work in HSV space on the RGB channels with brightness held constant. Because there are no HTP/LTP layers, the `EffectEngine` never writes into the stored universes — it modulates a per-frame clone in the output path (`app.rs`, just before `apply_masters`), so recording and tracking never see effect values. The UI *displays* the live modulated values in FX cyan via `app.effect_display` (staged universes + `EffectFootprint`), but all interactions edit the base. Cues carry `effect_actions` (start/stop, tracking-style); `CueList::effect_state_up_to` replays them for GOTO/BACK. While any effect runs, `update()` must keep requesting repaints. See `docs/EFFECTS.md`.
 
 ## Channels Panel — Dual Mode
 

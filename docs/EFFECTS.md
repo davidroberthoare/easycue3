@@ -11,7 +11,7 @@ with a rate, size, and phase spread.
 | Control | Meaning |
 |---|---|
 | Waveform | Sine, Square, Sawtooth Up/Down, Random |
-| Target | Intensity, Color, Pan, Tilt, Position (pan+tilt in quadrature → circles) |
+| Target | Intensity, Hue, Saturation, Pan, Tilt, Position (pan+tilt in quadrature → circles) |
 | Rate | Cycles per second (Hz). For Random: new-level steps per second |
 | Size | Peak deviation from the base value, in percentage points (0–100 scale) |
 | Phase spread | Degrees (0–360) distributed across the fixture selection — offset fixtures make waves and chases |
@@ -75,7 +75,16 @@ Fixture parameters are resolved to absolute DMX channels once at effect start
 - **Intensity** on an RGB-only fixture: hue-preserving scale of all color
   channels (same model as virtual intensity). A fixture at base black stays
   black — an effect cannot invent a color.
-- **Color**: the same hue-preserving scale, regardless of intensity channel.
+- **Hue**: base RGB → HSV, rotate hue (size 100 = ±180°, wrapping — a
+  sawtooth at full size is a seamless rainbow cycle), convert back. Brightness
+  (V) is held constant, so the light never dims or flashes. Works on the R/G/B
+  channels only (A/W/UV untouched); white or black fixtures have no hue to
+  rotate and are left alone. (An early `color` target that scaled all color
+  channels was retired — it was just intensity in disguise; old files with
+  `"target": "color"` load as Hue via a serde alias.)
+- **Saturation**: same HSV path shifting S: the wave's low half desaturates
+  toward white (equal RGB), the high half pushes toward the pure hue. V held
+  constant; needs a saturated base color to work from.
 - **Pan / Tilt**: base + delta on the coarse channel (8-bit scope; fine
   channels are ignored).
 - **Position**: pan at the wave phase, tilt 90° behind it.

@@ -176,13 +176,18 @@ fn render_effect_editor(ui: &mut Ui, app: &mut EasyCueApp, id: u32) {
             ui.end_row();
 
             ui.label("Size:");
+            let size_hint = match effect.target {
+                EffectTarget::Hue => "Hue swing: 100% = ±180° — a sawtooth at 100% cycles the full rainbow",
+                EffectTarget::Saturation => "Saturation swing: toward white on the low half, toward the pure hue on the high half",
+                _ => "Peak deviation from the base level, in percentage points",
+            };
             ui.add(
                 egui::DragValue::new(&mut effect.size)
                     .speed(1.0)
                     .range(0.0..=100.0)
                     .suffix("%"),
             )
-            .on_hover_text("Peak deviation from the base level, in percentage points");
+            .on_hover_text(size_hint);
             ui.end_row();
 
             ui.label("Phase spread:");
