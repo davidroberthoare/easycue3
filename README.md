@@ -13,6 +13,7 @@ A simple theatrical lighting console I've been building for my school and my com
 - EOS-style command line (`1 Thru 10 At 50`) and mouse-friendly adjustments 
 - Fixture patching with parameter-based control (color pickers, intensity sliders)
 - Channel grid, fixture list and magic sheet for live control
+- Effects: sine/square/sawtooth/random waveforms on intensity, hue, saturation, or pan/tilt — with phase spread for chases, cue-triggered with fade in/out
 - Save and load show files (JSON, human-readable)
 - USB DMX output (Enttec USB Pro, Enttec Open DMX USB, and generic FTDI-based Open DMX clones e.g. DSD TECH USB-to-DMX512)
 
@@ -22,7 +23,6 @@ A simple theatrical lighting console I've been building for my school and my com
 - Pallettes or presets
 - Video playback — planned, not started
 - Support more than 1 universe
-- Effects/chases
 - Moving light features (can do basic pan/tilt, and other straight DMX channels, but that's it)
 
 ---

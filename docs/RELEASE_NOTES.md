@@ -1,5 +1,16 @@
 # Release Notes
 
+## v0.4.0
+
+- **New: Effects** — repeating waveform patterns (sine, square, sawtooth, random) applied to fixture parameters, ETC-style but kept deliberately simple.
+  - Targets: intensity, hue (color-wheel rotation — a sawtooth at full size cycles the whole rainbow), saturation (fade toward white and back), pan, tilt, and position (pan+tilt circles). Hue/saturation hold brightness constant.
+  - Controls: rate (Hz), size, per-fixture phase spread (offset fixtures make waves and chases), and a smoothing slider on random blending stepped flicker into smooth fire/water drift.
+  - Effects modulate *relative to the base look* and ride on top of it at the DMX output stage — recording a cue never bakes effect output in, and cue tracking is unaffected.
+  - Cue-triggered, tracking-style: lighting cues can start/stop effects (ramping with the cue's fade times); a running effect persists until a cue stops it, and BACK/GOTO land with the correct effects running. Cue 0 stops all effects.
+  - New dockable **Effects panel** (View → Effects) to build the effect library and test on the current fixture selection; effect actions are attached to cues in Cue Properties.
+  - Live FX display: modulated channels show their moving values in cyan with an "FX" tag in the Channels panel and Magic Sheet (hover for the base value); linked magic-sheet shapes animate with the effect.
+  - Show files remain backward compatible — older shows load unchanged.
+
 ## v0.3.6
 
 - Added support for generic FTDI-based USB-to-DMX512 cables (e.g. DSD TECH) via the Enttec Open DMX USB backend — these have no onboard microcontroller and speak the same host-timed DMX protocol as the genuine Enttec Open DMX USB.

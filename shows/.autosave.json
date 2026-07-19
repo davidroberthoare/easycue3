@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-07-18T12:01:35.357644798+00:00",
+  "created": "2026-07-19T17:36:54.351236586+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -459,17 +459,7 @@
       "rate": 0.800000011920929,
       "size": 100.0,
       "smoothing": 50.0,
-      "target": "intensity",
-      "waveform": "square"
-    },
-    {
-      "id": 2,
-      "label": "wave",
-      "phase_spread": 0.0,
-      "rate": 1.0,
-      "size": 25.0,
-      "smoothing": 50.0,
-      "target": "intensity",
+      "target": "position",
       "waveform": "sine"
     },
     {
@@ -479,7 +469,17 @@
       "rate": 1.0,
       "size": 100.0,
       "smoothing": 50.0,
-      "target": "color",
+      "target": "hue",
+      "waveform": "sine"
+    },
+    {
+      "id": 4,
+      "label": "wave",
+      "phase_spread": 360.0,
+      "rate": 1.0,
+      "size": 25.0,
+      "smoothing": 50.0,
+      "target": "intensity",
       "waveform": "sine"
     }
   ],
@@ -521,10 +521,10 @@
   },
   "magic_sheet": {
     "canvas_offset": [
-      201.6802978515625,
-      160.3262939453125
+      0.0,
+      0.0
     ],
-    "canvas_zoom": 0.7899296283721924,
+    "canvas_zoom": 1.0,
     "next_shape_id": 21,
     "shapes": [
       {
@@ -997,9 +997,9 @@
       }
     ]
   },
-  "modified": "2026-07-18T12:01:35.357887624+00:00",
+  "modified": "2026-07-19T17:36:54.351468400+00:00",
   "next_cue_id": 25,
-  "next_effect_id": 4,
+  "next_effect_id": 5,
   "patch": [
     {
       "id": 1,

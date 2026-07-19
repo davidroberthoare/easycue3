@@ -1,6 +1,6 @@
 [package]
 name = "easycue3"
-version = "0.3.6"
+version = "0.4.0"
 edition = "2021"
 authors = ["EasyCue3 Contributors"]
 description = "A simple theatrical lighting console with integrated audio playback"
