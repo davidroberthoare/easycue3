@@ -93,18 +93,26 @@ pub struct AudioOutputRoute {
     #[serde(default = "default_route_volume", serialize_with = "crate::serde_helpers::round_f32_2")]
     pub volume: f32,
     /// Stereo pan position: -1.0 = full left, 0.0 = center, 1.0 = full right.
-    /// Uses constant-power pan law. Only affects stereo sources.
+    /// Uses constant-power pan law.
     #[serde(default, serialize_with = "crate::serde_helpers::round_f32_2")]
     pub pan: f32,
+    /// First channel (0-based) of the target stereo pair on a multi-channel
+    /// device: 0 = outputs 1-2, 2 = outputs 3-4, ...  Always 0 for plain
+    /// stereo devices, so the field is omitted from show files in that case.
+    #[serde(default, skip_serializing_if = "channel_offset_is_zero")]
+    pub channel_offset: u16,
 }
 
 #[cfg(feature = "audio")]
 fn default_route_volume() -> f32 { 1.0 }
 
 #[cfg(feature = "audio")]
+fn channel_offset_is_zero(v: &u16) -> bool { *v == 0 }
+
+#[cfg(feature = "audio")]
 impl Default for AudioOutputRoute {
     fn default() -> Self {
-        Self { device_name: String::new(), volume: 1.0, pan: 0.0 }
+        Self { device_name: String::new(), volume: 1.0, pan: 0.0, channel_offset: 0 }
     }
 }
 
@@ -125,6 +133,10 @@ pub struct OutputFade {
     /// None = do not fade pan (volume only).
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub target_pan: Option<f32>,
+    /// First channel (0-based) of the target stereo pair — see
+    /// `AudioOutputRoute::channel_offset`.
+    #[serde(default, skip_serializing_if = "channel_offset_is_zero")]
+    pub channel_offset: u16,
 }
 
 /// Data for an audio cue: file path and playback settings
@@ -210,7 +222,19 @@ pub struct AdjustData {
 
 #[cfg(feature = "audio")]
 fn default_output_fades() -> Vec<OutputFade> {
-    vec![OutputFade { device_name: String::new(), target_volume: 1.0, target_pan: None }]
+    vec![OutputFade::default()]
+}
+
+#[cfg(feature = "audio")]
+impl Default for OutputFade {
+    fn default() -> Self {
+        Self {
+            device_name: String::new(),
+            target_volume: 1.0,
+            target_pan: None,
+            channel_offset: 0,
+        }
+    }
 }
 
 #[cfg(feature = "audio")]
@@ -220,7 +244,7 @@ impl AdjustData {
             target_audio_cue: None,
             fade_time: 2.0,
             stop_when_complete: false,
-            output_fades: vec![OutputFade { device_name: String::new(), target_volume: 1.0, target_pan: None }],
+            output_fades: vec![OutputFade::default()],
         }
     }
 }
@@ -500,5 +524,30 @@ mod tests {
             back.lighting_data().unwrap().effect_actions,
             cue.lighting_data().unwrap().effect_actions
         );
+    }
+
+    #[cfg(feature = "audio")]
+    #[test]
+    fn audio_route_loads_from_pre_multichannel_show_files() {
+        // A route exactly as older versions saved it — no channel_offset field.
+        let json = r#"{"device_name": "Rubix24", "volume": 0.8, "pan": 0.0}"#;
+        let route: AudioOutputRoute = serde_json::from_str(json).unwrap();
+        assert_eq!(route.channel_offset, 0);
+
+        let json = r#"{"device_name": "Rubix24", "target_volume": 1.0}"#;
+        let fade: OutputFade = serde_json::from_str(json).unwrap();
+        assert_eq!(fade.channel_offset, 0);
+    }
+
+    #[cfg(feature = "audio")]
+    #[test]
+    fn zero_channel_offset_is_omitted_from_show_files() {
+        // Keeps untouched show files byte-identical.
+        let json = serde_json::to_string(&AudioOutputRoute::default()).unwrap();
+        assert!(!json.contains("channel_offset"));
+
+        let route = AudioOutputRoute { channel_offset: 2, ..Default::default() };
+        let json = serde_json::to_string(&route).unwrap();
+        assert!(json.contains("\"channel_offset\":2"));
     }
 }

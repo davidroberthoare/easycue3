@@ -5,20 +5,20 @@
 //! this module provides only the playback engine and player.
 
 #[cfg(feature = "audio")]
-pub mod types;
+pub mod playback;
 #[cfg(feature = "audio")]
 pub mod player;
 #[cfg(feature = "audio")]
-pub mod playback;
+pub mod route_source;
 #[cfg(feature = "audio")]
-pub mod pan_source;
+pub mod types;
 
 #[cfg(feature = "audio")]
-pub use types::{AudioCue, AudioCueState};
-#[cfg(feature = "audio")]
-pub use player::AudioPlayer;
-#[cfg(feature = "audio")]
 pub use playback::AudioPlaybackEngine;
+#[cfg(feature = "audio")]
+pub use player::{AudioPlayer, OutputChoice};
+#[cfg(feature = "audio")]
+pub use types::{AudioCue, AudioCueState};
 
 // Stub implementations when the audio feature is disabled
 #[cfg(not(feature = "audio"))]
@@ -35,8 +35,12 @@ pub mod stub {
     #[derive(Debug)]
     pub struct AudioPlaybackEngine;
     impl AudioPlaybackEngine {
-        pub fn new() -> Self { Self }
-        pub fn is_playing(&self) -> bool { false }
+        pub fn new() -> Self {
+            Self
+        }
+        pub fn is_playing(&self) -> bool {
+            false
+        }
         pub fn stop_all(&mut self) {}
     }
 }

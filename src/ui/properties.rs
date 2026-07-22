@@ -480,7 +480,7 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
         });
 
     // ── Output routing (always visible, always at least one route) ─────────────
-    let device_names = app.audio_player.device_names();
+    let choices = app.audio_player.output_choices();
     let routes: Vec<crate::cue::AudioOutputRoute> = cue.audio_data()
         .map(|d| d.output_routes.clone())
         .unwrap_or_default();
@@ -493,11 +493,11 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
     let mut remove_idx: Option<usize> = None;
     let can_remove = new_routes.len() > 1;
 
-    let used_per_route: Vec<std::collections::HashSet<String>> = (0..new_routes.len())
+    let used_per_route: Vec<std::collections::HashSet<(String, u16)>> = (0..new_routes.len())
         .map(|i| {
             new_routes.iter().enumerate()
                 .filter(|(j, _)| *j != i)
-                .map(|(_, r)| r.device_name.clone())
+                .map(|(_, r)| (r.device_name.clone(), r.channel_offset))
                 .collect()
         })
         .collect();
@@ -506,19 +506,23 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
         let used = &used_per_route[i];
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt(("route_dev", i))
-                .selected_text(if route.device_name.is_empty() { "Default" } else { &route.device_name })
+                .selected_text(output_choice_label(&choices, &route.device_name, route.channel_offset))
                 .width(120.0)
                 .show_ui(ui, |ui| {
-                    if !used.contains("") {
+                    if !used.contains(&(String::new(), 0)) {
                         if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
                             route.device_name.clear();
+                            route.channel_offset = 0;
                             changed = true;
                         }
                     }
-                    for name in &device_names {
-                        if used.contains(name) { continue; }
-                        if ui.selectable_label(&route.device_name == name, name).clicked() {
-                            route.device_name = name.clone();
+                    for c in &choices {
+                        if used.contains(&(c.device_name.clone(), c.channel_offset)) { continue; }
+                        let selected = route.device_name == c.device_name
+                            && route.channel_offset == c.channel_offset;
+                        if ui.selectable_label(selected, &c.label).clicked() {
+                            route.device_name = c.device_name.clone();
+                            route.channel_offset = c.channel_offset;
                             changed = true;
                         }
                     }
@@ -563,6 +567,30 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             }
         }
     }
+}
+
+/// Dropdown display text for an output selection: the matching choice's label,
+/// or a reconstructed one when the device isn't currently available.
+#[cfg(feature = "audio")]
+fn output_choice_label(
+    choices: &[crate::audio::OutputChoice],
+    device_name: &str,
+    channel_offset: u16,
+) -> String {
+    if device_name.is_empty() {
+        return "Default".to_string();
+    }
+    choices
+        .iter()
+        .find(|c| c.device_name == device_name && c.channel_offset == channel_offset)
+        .map(|c| c.label.clone())
+        .unwrap_or_else(|| {
+            if channel_offset > 0 {
+                crate::audio::AudioPlayer::pair_label(device_name, channel_offset)
+            } else {
+                device_name.to_string()
+            }
+        })
 }
 
 #[cfg(feature = "audio")]
@@ -659,7 +687,7 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
         });
 
     // ── Output fades (always visible, always at least one) ────────────────────
-    let device_names = app.audio_player.device_names();
+    let choices = app.audio_player.output_choices();
     let output_fades: Vec<crate::cue::OutputFade> = cue.adjust_data()
         .map(|d| d.output_fades.clone())
         .unwrap_or_default();
@@ -675,15 +703,21 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
     for (i, fade) in new_fades.iter_mut().enumerate() {
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt(("ofade_dev", i))
-                .selected_text(if fade.device_name.is_empty() { "Default" } else { &fade.device_name })
+                .selected_text(output_choice_label(&choices, &fade.device_name, fade.channel_offset))
                 .width(120.0)
                 .show_ui(ui, |ui| {
                     if ui.selectable_label(fade.device_name.is_empty(), "Default").clicked() {
-                        fade.device_name.clear(); changed = true;
+                        fade.device_name.clear();
+                        fade.channel_offset = 0;
+                        changed = true;
                     }
-                    for name in &device_names {
-                        if ui.selectable_label(&fade.device_name == name, name).clicked() {
-                            fade.device_name = name.clone(); changed = true;
+                    for c in &choices {
+                        let selected = fade.device_name == c.device_name
+                            && fade.channel_offset == c.channel_offset;
+                        if ui.selectable_label(selected, &c.label).clicked() {
+                            fade.device_name = c.device_name.clone();
+                            fade.channel_offset = c.channel_offset;
+                            changed = true;
                         }
                     }
                 });
@@ -723,11 +757,7 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
     if let Some(i) = to_remove { new_fades.remove(i); }
 
     if ui.small_button("+ Add Device Fade").clicked() {
-        new_fades.push(crate::cue::OutputFade {
-            device_name: String::new(),
-            target_volume: 1.0,
-            target_pan: None,
-        });
+        new_fades.push(crate::cue::OutputFade::default());
         changed = true;
     }
 

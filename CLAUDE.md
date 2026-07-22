@@ -45,7 +45,7 @@ EasyCue3 is a theatrical lighting and media console combining ETC EOS-style ligh
 | `src/dmx/` | 512-channel `Universe` struct + pluggable `DmxBackend` trait (Virtual, USB/Enttec) |
 | `src/cue/` | Lighting cue recording/playback with linear crossfades |
 | `src/effects/` | Waveform effects (sine/square/saw/random) applied at the output stage; cue-triggered, tracking-style |
-| `src/audio/` | Parallel audio cue system; cross-triggering into lighting cues (feature-gated) |
+| `src/audio/` | Parallel audio cue system; cross-triggering into lighting cues (feature-gated). Outputs are device + stereo-pair (`OutputChoice`); multi-channel devices open at full width and `RouteSource` places each route on its pair |
 | `src/fixtures/` | Fixture profiles (JSON), patching (fixture→DMX address), `intensity.rs` for virtual intensity |
 | `src/ui/` | egui immediate-mode panels (dockable via `egui_dock`): cue list, audio cues, channels (dual-mode), patching, properties |
 | `src/show/` | `ShowFile` — JSON serialization of cue list + audio list + patch list + metadata |
@@ -111,4 +111,4 @@ Audio file paths in show files are stored as bare filenames when the file lives 
 - `docs/VIRTUAL_INTENSITY.md` — virtual intensity concept, algorithm, key files
 - `docs/EFFECTS.md` — effects concept, output-stage overlay architecture, key files
 - `docs/REMOTE.md` — phone remote: server/bridge architecture, protocol, client notes, testing (incl. `EASYCUE3_REMOTE` env override)
-- `docs/AUDIO_DEVICES.md` — multi-device/multi-channel audio output setup on Linux (PipeWire/ALSA), device-list filtering, known cross-platform limitations
+- `docs/AUDIO_DEVICES.md` — audio output devices: native stereo-pair routing on multi-channel interfaces, Linux/PipeWire `~/.asoundrc` setup (incl. why `channels N` must be pinned), device-list filtering, known limitations

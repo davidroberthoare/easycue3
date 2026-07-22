@@ -137,7 +137,9 @@ Put audio files in the `media/` directory next to your project. Show files refer
 
 EasyCue3 can route each audio cue to any combination of output devices (speakers, a USB interface, etc.) independently, with its own volume/pan per route, and crossfade between them with an Adjust cue — useful for multi-room or multi-speaker setups.
 
-On Linux, a multi-channel USB audio interface (e.g. an interface with separate front and rear output pairs) needs a small one-time `~/.asoundrc` setup before its extra channels are reachable — PipeWire otherwise only exposes the first stereo pair. See `docs/AUDIO_DEVICES.md` for the setup steps and known limitations (Linux/PipeWire-specific, no hot-plug).
+Multi-channel interfaces are supported natively: each stereo pair of the device (e.g. a Rubix24's front and rear output pairs) shows up as its own entry in the output dropdown — "Rubix24 · Out 1-2", "Rubix24 · Out 3-4" — and cues can play on or crossfade between pairs just like between separate devices. If you only ever use the default device, none of this appears; the dropdown stays as simple as before.
+
+On Linux, secondary devices need a small one-time `~/.asoundrc` setup (PipeWire doesn't expose them to ALSA apps by default, and multi-channel devices need their channel count pinned). See `docs/AUDIO_DEVICES.md` for the setup steps and known limitations (no hot-plug; Windows/macOS need no setup).
 
 ---
 

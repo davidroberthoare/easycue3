@@ -7,7 +7,7 @@
 //! (to move sound between speakers or sweep stereo position) or adjust the
 //! overall cue or master volume as before.
 
-use crate::audio::{pan_source::PanSource, AudioCueState, AudioPlayer};
+use crate::audio::{route_source::RouteSource, AudioCueState, AudioPlayer};
 use crate::cue::Cue;
 use rodio::{Decoder, Player};
 use std::fs::File;
@@ -35,6 +35,8 @@ struct RoutePanAdjust {
 /// One device sink with its own per-route volume/pan and optional in-progress fades.
 struct DeviceSink {
     device_name: String,
+    /// First channel (0-based) of the stereo pair this route targets.
+    channel_offset: u16,
     sink: Player,
     /// Current per-route volume scale (0.0–1.0).
     volume: f32,
@@ -82,12 +84,16 @@ pub struct AudioPlaybackEngine {
 
 impl AudioPlaybackEngine {
     pub fn new() -> Self {
-        Self { streams: Vec::new() }
+        Self {
+            streams: Vec::new(),
+        }
     }
 
     /// Start a new audio stream for `cue`.  Does NOT stop existing streams.
     pub fn start(&mut self, cue: &Cue, player: &AudioPlayer) -> bool {
-        let Some(data) = cue.audio_data() else { return false };
+        let Some(data) = cue.audio_data() else {
+            return false;
+        };
 
         let resolved = crate::paths::resolve_media_path(&data.audio_path);
 
@@ -99,13 +105,17 @@ impl AudioPlaybackEngine {
         }
 
         let (initial_volume, initial_state, fade_start) = if data.fade_in > 0.0 {
-            (0.0_f32, AudioCueState::FadingIn { progress: 0.0 }, Some(Instant::now()))
+            (
+                0.0_f32,
+                AudioCueState::FadingIn { progress: 0.0 },
+                Some(Instant::now()),
+            )
         } else {
             (1.0_f32, AudioCueState::Playing, None)
         };
 
         let mut device_sinks = Vec::with_capacity(route_sinks.len());
-        for (device_name, sink, route_vol, route_pan) in route_sinks {
+        for rp in route_sinks {
             // Each device sink needs its own decoder — re-open the file.
             let file = match File::open(&resolved) {
                 Ok(f) => f,
@@ -117,19 +127,21 @@ impl AudioPlaybackEngine {
             let raw = match Decoder::try_from(file) {
                 Ok(s) => s,
                 Err(e) => {
-                    log::error!("Audio: decode error on '{}': {}", device_name, e);
+                    log::error!("Audio: decode error on '{}': {}", rp.device_name, e);
                     continue;
                 }
             };
-            let (panned, pan_ctrl) = PanSource::new(raw, route_pan);
-            sink.set_volume(initial_volume * route_vol);
-            sink.append(panned);
+            let (routed, pan_ctrl) =
+                RouteSource::new(raw, rp.pan, rp.device_channels, rp.channel_offset);
+            rp.player.set_volume(initial_volume * rp.volume);
+            rp.player.append(routed);
             device_sinks.push(DeviceSink {
-                device_name,
-                sink,
-                volume: route_vol,
+                device_name: rp.device_name,
+                channel_offset: rp.channel_offset,
+                sink: rp.player,
+                volume: rp.volume,
                 adjust: None,
-                pan: route_pan,
+                pan: rp.pan,
                 pan_ctrl,
                 pan_adjust: None,
             });
@@ -161,29 +173,43 @@ impl AudioPlaybackEngine {
         true
     }
 
-    /// Open a new device sink on `stream` for a device it wasn't originally routed to,
-    /// starting from silence at the same playback position as the stream's other sinks —
-    /// so an Adjust cue can fade audio *onto* a device the Play cue never routed to.
+    /// Open a new device sink on `stream` for an output (device + channel pair) it
+    /// wasn't originally routed to, starting from silence at the same playback
+    /// position as the stream's other sinks — so an Adjust cue can fade audio
+    /// *onto* an output the Play cue never routed to.
     /// Returns the new sink's index, or `None` if the device doesn't exist or fails to open.
-    fn join_device(stream: &mut ActiveAudioStream, device_name: &str, player: &AudioPlayer) -> Option<usize> {
-        if !player.device_names().iter().any(|n| n == device_name) {
+    fn join_device(
+        stream: &mut ActiveAudioStream,
+        device_name: &str,
+        channel_offset: u16,
+        player: &AudioPlayer,
+    ) -> Option<usize> {
+        if !player.has_output(device_name) {
             return None;
         }
         let sink = player.new_player(device_name).ok()?;
         let file = File::open(&stream.audio_path).ok()?;
         let raw = Decoder::try_from(file).ok()?;
         let elapsed = stream.play_start.elapsed();
-        let (mut panned, pan_ctrl) = PanSource::new(raw, 0.0);
-        if let Err(e) = rodio::Source::try_seek(&mut panned, elapsed) {
+        let (mut routed, pan_ctrl) = RouteSource::new(
+            raw,
+            0.0,
+            player.device_channels(device_name),
+            channel_offset,
+        );
+        if let Err(e) = rodio::Source::try_seek(&mut routed, elapsed) {
             log::warn!(
                 "Adjust: joining '{}' couldn't seek to {:.1}s (starting from 0): {}",
-                device_name, elapsed.as_secs_f32(), e
+                device_name,
+                elapsed.as_secs_f32(),
+                e
             );
         }
         sink.set_volume(0.0);
-        sink.append(panned);
+        sink.append(routed);
         stream.device_sinks.push(DeviceSink {
             device_name: device_name.to_string(),
+            channel_offset,
             sink,
             volume: 0.0,
             adjust: None,
@@ -191,18 +217,27 @@ impl AudioPlaybackEngine {
             pan_ctrl,
             pan_adjust: None,
         });
-        log::info!("Adjust: joined device '{}' to cue {} at {:.1}s in", device_name, stream.cue_id, elapsed.as_secs_f32());
+        log::info!(
+            "Adjust: joined output '{}' (ch {}-{}) to cue {} at {:.1}s in",
+            device_name,
+            channel_offset + 1,
+            channel_offset + 2,
+            stream.cue_id,
+            elapsed.as_secs_f32()
+        );
         Some(stream.device_sinks.len() - 1)
     }
 
-    /// Fade the per-route volume and/or pan for a specific output device on a stream.
-    /// `cue_id == 0` targets all active streams.  `device_name` empty = default device.
-    /// `target_pan` of `None` leaves pan unchanged.  If the stream isn't already routed
-    /// to `device_name`, it's joined in from silence so the fade can bring it in live.
+    /// Fade the per-route volume and/or pan for a specific output (device +
+    /// channel pair) on a stream.  `cue_id == 0` targets all active streams.
+    /// `device_name` empty = default device.  `target_pan` of `None` leaves pan
+    /// unchanged.  If the stream isn't already routed to the output, it's
+    /// joined in from silence so the fade can bring it in live.
     pub fn adjust_stream_output(
         &mut self,
         cue_id: u32,
         device_name: &str,
+        channel_offset: u16,
         target_vol: f32,
         target_pan: Option<f32>,
         fade_time: f32,
@@ -216,8 +251,13 @@ impl AudioPlaybackEngine {
             let ds_idx = if device_name.is_empty() {
                 Some(0)
             } else {
-                stream.device_sinks.iter().position(|ds| ds.device_name == device_name)
-                    .or_else(|| Self::join_device(stream, device_name, player))
+                stream
+                    .device_sinks
+                    .iter()
+                    .position(|ds| {
+                        ds.device_name == device_name && ds.channel_offset == channel_offset
+                    })
+                    .or_else(|| Self::join_device(stream, device_name, channel_offset, player))
             };
             if let Some(idx) = ds_idx {
                 let ds = &mut stream.device_sinks[idx];
@@ -256,9 +296,15 @@ impl AudioPlaybackEngine {
                 }
             } else {
                 log::warn!(
-                    "Adjust: cue {} has no output device named '{}' — fade skipped",
+                    "Adjust: cue {} has no output '{}' (ch {}-{}) — fade skipped",
                     stream.cue_id,
-                    if device_name.is_empty() { "Default" } else { device_name },
+                    if device_name.is_empty() {
+                        "Default"
+                    } else {
+                        device_name
+                    },
+                    channel_offset + 1,
+                    channel_offset + 2,
                 );
             }
         }
@@ -267,7 +313,9 @@ impl AudioPlaybackEngine {
     /// Stop all active streams immediately.
     pub fn stop_all(&mut self) {
         for s in self.streams.drain(..) {
-            for ds in s.device_sinks { ds.sink.stop(); }
+            for ds in s.device_sinks {
+                ds.sink.stop();
+            }
         }
         log::debug!("Audio: all streams stopped");
     }
@@ -311,7 +359,9 @@ impl AudioPlaybackEngine {
                             stream.state = AudioCueState::FadingOut { progress: 0.0 };
                             stream.fade_start = Some(Instant::now());
                         } else {
-                            for ds in &stream.device_sinks { ds.sink.stop(); }
+                            for ds in &stream.device_sinks {
+                                ds.sink.stop();
+                            }
                             return false;
                         }
                     }
@@ -322,8 +372,8 @@ impl AudioPlaybackEngine {
             let fade_factor = match stream.state {
                 AudioCueState::FadingIn { .. } => {
                     let start = stream.fade_start.get_or_insert_with(Instant::now);
-                    let p = (start.elapsed().as_secs_f32() / stream.fade_in_duration)
-                        .clamp(0.0, 1.0);
+                    let p =
+                        (start.elapsed().as_secs_f32() / stream.fade_in_duration).clamp(0.0, 1.0);
                     if p >= 1.0 {
                         stream.state = AudioCueState::Playing;
                         stream.fade_start = None;
@@ -335,10 +385,12 @@ impl AudioPlaybackEngine {
                 AudioCueState::Playing => 1.0,
                 AudioCueState::FadingOut { .. } => {
                     let start = stream.fade_start.get_or_insert_with(Instant::now);
-                    let p = (start.elapsed().as_secs_f32() / stream.fade_out_duration)
-                        .clamp(0.0, 1.0);
+                    let p =
+                        (start.elapsed().as_secs_f32() / stream.fade_out_duration).clamp(0.0, 1.0);
                     if p >= 1.0 {
-                        for ds in &stream.device_sinks { ds.sink.stop(); }
+                        for ds in &stream.device_sinks {
+                            ds.sink.stop();
+                        }
                         return false;
                     }
                     stream.state = AudioCueState::FadingOut { progress: p };
@@ -381,7 +433,8 @@ impl AudioPlaybackEngine {
                     }
                 }
 
-                ds.sink.set_volume((base * ds.volume * sound_master).clamp(0.0, 2.0));
+                ds.sink
+                    .set_volume((base * ds.volume * sound_master).clamp(0.0, 2.0));
             }
 
             // Remove stopped sinks.
@@ -397,7 +450,10 @@ impl AudioPlaybackEngine {
     }
 
     pub fn stream_state(&self, cue_id: u32) -> Option<AudioCueState> {
-        self.streams.iter().find(|s| s.cue_id == cue_id).map(|s| s.state)
+        self.streams
+            .iter()
+            .find(|s| s.cue_id == cue_id)
+            .map(|s| s.state)
     }
 
     pub fn current_cue_id(&self) -> Option<u32> {
@@ -405,7 +461,10 @@ impl AudioPlaybackEngine {
     }
 
     pub fn state(&self) -> AudioCueState {
-        self.streams.last().map(|s| s.state).unwrap_or(AudioCueState::Stopped)
+        self.streams
+            .last()
+            .map(|s| s.state)
+            .unwrap_or(AudioCueState::Stopped)
     }
 
     pub fn active_count(&self) -> usize {
@@ -434,41 +493,38 @@ impl AudioPlaybackEngine {
             })
     }
 
-    /// Current per-route volume for a specific device on a stream (for UI display).
-    pub fn route_volume(&self, cue_id: u32, device_name: &str) -> Option<f32> {
-        self.streams
-            .iter()
-            .find(|s| s.cue_id == cue_id)
-            .and_then(|s| {
-                s.device_sinks
-                    .iter()
-                    .find(|ds| {
-                        ds.device_name == device_name
-                            || (device_name.is_empty()
-                                && ds.device_name == s.device_sinks[0].device_name)
-                    })
-                    .map(|ds| ds.volume)
-            })
+    /// Current per-route volume for a specific output on a stream (for UI display).
+    pub fn route_volume(&self, cue_id: u32, device_name: &str, channel_offset: u16) -> Option<f32> {
+        self.find_route(cue_id, device_name, channel_offset)
+            .map(|ds| ds.volume)
     }
 
-    /// Current per-route pan for a specific device on a stream (for UI display).
-    pub fn route_pan(&self, cue_id: u32, device_name: &str) -> Option<f32> {
-        self.streams
-            .iter()
-            .find(|s| s.cue_id == cue_id)
-            .and_then(|s| {
-                s.device_sinks
-                    .iter()
-                    .find(|ds| {
-                        ds.device_name == device_name
-                            || (device_name.is_empty()
-                                && ds.device_name == s.device_sinks[0].device_name)
-                    })
-                    .map(|ds| ds.pan)
-            })
+    /// Current per-route pan for a specific output on a stream (for UI display).
+    pub fn route_pan(&self, cue_id: u32, device_name: &str, channel_offset: u16) -> Option<f32> {
+        self.find_route(cue_id, device_name, channel_offset)
+            .map(|ds| ds.pan)
+    }
+
+    fn find_route(
+        &self,
+        cue_id: u32,
+        device_name: &str,
+        channel_offset: u16,
+    ) -> Option<&DeviceSink> {
+        let stream = self.streams.iter().find(|s| s.cue_id == cue_id)?;
+        if device_name.is_empty() {
+            stream.device_sinks.first()
+        } else {
+            stream
+                .device_sinks
+                .iter()
+                .find(|ds| ds.device_name == device_name && ds.channel_offset == channel_offset)
+        }
     }
 }
 
 impl Default for AudioPlaybackEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

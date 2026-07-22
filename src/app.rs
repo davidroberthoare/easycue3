@@ -1332,6 +1332,7 @@ impl EasyCueApp {
             self.audio_playback.adjust_stream_output(
                 target_id,
                 &fade.device_name,
+                fade.channel_offset,
                 fade.target_volume,
                 fade.target_pan,
                 data.fade_time,
