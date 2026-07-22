@@ -139,6 +139,10 @@ pub struct UiState {
     pub show_fixture_editor: bool,
     pub show_help_shortcuts: bool,
     pub show_help_about: bool,
+    pub show_remote_settings: bool,
+    /// QR texture cache for the remote settings dialog: (encoded URL, texture).
+    #[cfg(feature = "remote")]
+    pub remote_qr: Option<(String, egui::TextureHandle)>,
     pub show_autosave_prompt: bool,
     pub autosave_path: Option<std::path::PathBuf>,
     pub selected_usb_port: String,
@@ -201,6 +205,9 @@ impl Default for UiState {
             show_fixture_editor: false,
             show_help_shortcuts: false,
             show_help_about: false,
+            show_remote_settings: false,
+            #[cfg(feature = "remote")]
+            remote_qr: None,
             show_autosave_prompt: false,
             autosave_path: None,
             selected_usb_port: String::new(),
@@ -293,6 +300,16 @@ pub struct EasyCueApp {
     /// In-progress sound master fade driven by an Adjust cue.
     #[cfg(feature = "audio")]
     pub sound_fade: Option<SoundFadeState>,
+
+    /// Running remote-control server (None when disabled).
+    #[cfg(feature = "remote")]
+    pub remote: Option<crate::remote::RemoteServer>,
+    /// Remote-control settings (persisted to eframe storage).
+    #[cfg(feature = "remote")]
+    pub remote_settings: crate::remote::RemoteSettings,
+    /// Last remote settings written to persistent storage.
+    #[cfg(feature = "remote")]
+    last_persisted_remote_settings: crate::remote::RemoteSettings,
 
     /// Last saved file path to persistent storage (avoid redundant saves).
     last_persisted_file_path: Option<std::path::PathBuf>,
@@ -508,6 +525,11 @@ impl EasyCueApp {
             (player, playback)
         };
 
+        #[cfg(feature = "remote")]
+        let remote_settings: crate::remote::RemoteSettings = cc.storage
+            .and_then(|storage| eframe::get_value(storage, "remote_settings"))
+            .unwrap_or_default();
+
         let mut app = Self {
             universes,
             dmx_backend,
@@ -535,6 +557,12 @@ impl EasyCueApp {
             autofollow_timer: None,
             #[cfg(feature = "audio")]
             sound_fade: None,
+            #[cfg(feature = "remote")]
+            remote: None,
+            #[cfg(feature = "remote")]
+            remote_settings: remote_settings.clone(),
+            #[cfg(feature = "remote")]
+            last_persisted_remote_settings: remote_settings,
             last_persisted_file_path: None,
             preferred_dmx_backend: saved_dmx_backend.clone().unwrap_or_default(),
             last_persisted_dmx_backend: saved_dmx_backend.unwrap_or_default(),
@@ -542,6 +570,29 @@ impl EasyCueApp {
         };
 
         app.restore_startup_dmx_backend();
+
+        #[cfg(feature = "remote")]
+        {
+            // Automation override: EASYCUE3_REMOTE=<port>[:<pin>] force-enables the
+            // remote server for this run only (not persisted; port 0 = ephemeral).
+            if let Ok(spec) = std::env::var("EASYCUE3_REMOTE") {
+                let (port_str, pin) = spec.split_once(':').unwrap_or((spec.as_str(), ""));
+                match port_str.parse::<u16>() {
+                    Ok(port) => {
+                        app.remote_settings = crate::remote::RemoteSettings {
+                            enabled: true,
+                            port,
+                            pin: pin.to_string(),
+                        };
+                        app.last_persisted_remote_settings = app.remote_settings.clone();
+                    }
+                    Err(_) => log::warn!("EASYCUE3_REMOTE: invalid port in '{}'", spec),
+                }
+            }
+            if app.remote_settings.enabled {
+                app.apply_remote_settings(&cc.egui_ctx);
+            }
+        }
 
         let startup_show_load_start = std::time::Instant::now();
         let last_file = cc.storage
@@ -937,6 +988,33 @@ impl EasyCueApp {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    /// Start/stop/restart the remote server to match `remote_settings`.
+    /// On failure the enabled flag is reset so the UI reflects reality.
+    #[cfg(feature = "remote")]
+    pub fn apply_remote_settings(&mut self, ctx: &egui::Context) {
+        self.remote = None; // dropping the handle stops any running server
+        if !self.remote_settings.enabled {
+            self.ui_state.status_message = "Remote control stopped".to_string();
+            return;
+        }
+        match crate::remote::RemoteServer::start(
+            self.remote_settings.port,
+            &self.remote_settings.pin,
+            ctx.clone(),
+        ) {
+            Ok(server) => {
+                self.ui_state.status_message =
+                    format!("Remote control running on port {}", server.port);
+                self.remote = Some(server);
+            }
+            Err(e) => {
+                self.remote_settings.enabled = false;
+                self.ui_state.status_message = format!("Remote control failed: {}", e);
+                log::error!("[remote] failed to start: {:#}", e);
             }
         }
     }
@@ -1601,6 +1679,10 @@ impl eframe::App for EasyCueApp {
         #[cfg(feature = "audio")]
         self.audio_playback.update(self.ui_state.sound_master);
 
+        // Remote control: execute queued phone commands and publish state diffs.
+        #[cfg(feature = "remote")]
+        crate::remote::glue::service_frame(self, ctx);
+
         // Auto-fallback: if the hardware backend lost the device, switch to Virtual.
         if !self.dmx_backend.is_connected() {
             log::warn!("DMX device lost — falling back to Virtual DMX");
@@ -1683,13 +1765,22 @@ impl eframe::App for EasyCueApp {
         }
 
         // Persist file path only if it changed (avoid redundant saves every frame)
+        #[cfg(feature = "remote")]
+        let remote_settings_dirty = self.remote_settings != self.last_persisted_remote_settings;
+        #[cfg(not(feature = "remote"))]
+        let remote_settings_dirty = false;
         if self.current_file_path != self.last_persisted_file_path
             || self.preferred_dmx_backend != self.last_persisted_dmx_backend
+            || remote_settings_dirty
         {
             if let Some(storage) = frame.storage_mut() {
                 self.save(storage);
                 self.last_persisted_file_path = self.current_file_path.clone();
                 self.last_persisted_dmx_backend = self.preferred_dmx_backend.clone();
+                #[cfg(feature = "remote")]
+                {
+                    self.last_persisted_remote_settings = self.remote_settings.clone();
+                }
             }
         }
     }
@@ -1697,6 +1788,8 @@ impl eframe::App for EasyCueApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "dock_state", &self.dock_state);
         eframe::set_value(storage, "preferred_dmx_backend", &self.preferred_dmx_backend);
+        #[cfg(feature = "remote")]
+        eframe::set_value(storage, "remote_settings", &self.remote_settings);
         if let Some(path) = &self.current_file_path {
             storage.set_string("last_file", path.to_string_lossy().to_string());
         }

@@ -23,8 +23,9 @@ Unit tests exist for `effects`, `cue` serde compatibility, `fixtures`, and `show
 - `audio` — audio playback (requires ALSA on Linux; uses `rodio`)
 - `video` — video playback (requires GStreamer; uses `lumina-video` from git)
 - `media` — shorthand for `audio + video`
+- `remote` — phone/browser remote control server (axum; pure Rust, no system libs)
 - `full` — all of the above
-- **default** — `usb + audio`
+- **default** — `usb + audio + remote`
 
 egui is pinned to **0.31** for `lumina-video` compatibility — do not bump it.
 
@@ -49,6 +50,7 @@ EasyCue3 is a theatrical lighting and media console combining ETC EOS-style ligh
 | `src/ui/` | egui immediate-mode panels (dockable via `egui_dock`): cue list, audio cues, channels (dual-mode), patching, properties |
 | `src/show/` | `ShowFile` — JSON serialization of cue list + audio list + patch list + metadata |
 | `src/command.rs` | EOS-style command parser (`"1 Thru 10 At 50"`) with context-aware routing |
+| `src/remote/` | Embedded remote-control server (axum + WebSocket) bridging phone clients to the engine; client PWA lives in `remote_client/` and is embedded at compile time |
 | `src/serde_helpers.rs` | Custom serializers that round floats to 2 decimal places (prevents `0.800000011920929` in JSON) |
 
 ### Data Flow — Cue Playback
@@ -108,3 +110,4 @@ Audio file paths in show files are stored as bare filenames when the file lives 
 
 - `docs/VIRTUAL_INTENSITY.md` — virtual intensity concept, algorithm, key files
 - `docs/EFFECTS.md` — effects concept, output-stage overlay architecture, key files
+- `docs/REMOTE.md` — phone remote: server/bridge architecture, protocol, client notes, testing (incl. `EASYCUE3_REMOTE` env override)

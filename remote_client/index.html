@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html class="theme-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a1e37">
+  <title>EasyCue3 Remote</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="stylesheet" href="framework7-bundle.min.css">
+  <style>
+    /* Minimal custom CSS: only what Framework7 has no component for. */
+    :root {
+      --f7-theme-color: #1e96ff;
+      --f7-theme-color-rgb: 30, 150, 255;
+      --f7-theme-color-shade: #0077dd;
+      --f7-theme-color-tint: #4faeff;
+    }
+    /* DMX channel grid (no F7 equivalent) */
+    .ec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+      gap: 6px;
+      padding: 8px;
+    }
+    .ec-cell {
+      border: 1px solid var(--f7-list-item-border-color, #333);
+      border-radius: 6px;
+      text-align: center;
+      padding: 6px 0;
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--f7-text-color);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .ec-cell .ec-val { font-size: 15px; font-weight: 600; display: block; }
+    .ec-cell.ec-on  { border-color: var(--f7-theme-color); }
+    .ec-cell.ec-sel { background: rgba(30, 150, 255, 0.25); border-color: #4faeff; }
+    .ec-cell.ec-patched .ec-num { color: var(--f7-theme-color-tint); }
+    /* Big GO row (F7 buttons, just sized up) */
+    .ec-go-row .button { height: 56px; font-size: 18px; font-weight: 700; }
+    /* Live cue row accents using F7 vars */
+    .ec-cue-live  { background: rgba(0, 200, 100, 0.15); }
+    .ec-cue-next  { background: rgba(255, 200, 0, 0.12); }
+    /* Colour picker popup must layer above the fixture control sheet
+       (F7 sheets otherwise out-stack popups). */
+    .ec-color-popup, .popup.color-picker-popup { z-index: 13600; }
+    .ec-swatch {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.4); display: inline-block;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- PIN login -->
+  <div class="login-screen" id="pin-screen">
+    <div class="view">
+      <div class="page">
+        <div class="page-content login-screen-content">
+          <div class="login-screen-title">EasyCue3 Remote</div>
+          <form id="pin-form">
+            <div class="list">
+              <ul>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-title item-label">PIN</div>
+                    <div class="item-input-wrap">
+                      <input type="password" inputmode="numeric" id="pin-input"
+                             placeholder="Enter console PIN" autocomplete="off">
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <div class="list">
+              <ul>
+                <li><a href="#" class="list-button item-link" id="pin-submit">Connect</a></li>
+              </ul>
+              <div class="block-footer" id="pin-hint">
+                Ask the console operator for the remote PIN.
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="views tabs safe-areas">
+
+    <!-- Bottom tab bar -->
+    <div class="toolbar tabbar toolbar-bottom">
+      <div class="toolbar-inner">
+        <a href="#view-cues" class="tab-link tab-link-active">Cues</a>
+        <a href="#view-fixtures" class="tab-link">Fixtures</a>
+        <a href="#view-channels" class="tab-link">Channels</a>
+        <a href="#view-patch" class="tab-link">Patch</a>
+        <a href="#view-cmd" class="tab-link">Cmd</a>
+      </div>
+    </div>
+
+    <!-- CUES -->
+    <div id="view-cues" class="view view-main tab tab-active">
+      <div class="page">
+        <div class="navbar">
+          <div class="navbar-bg"></div>
+          <div class="navbar-inner">
+            <div class="title" id="cues-title">EasyCue3</div>
+            <div class="right">
+              <a href="#" class="link" id="blackout-btn">BO</a>
+            </div>
+          </div>
+        </div>
+        <div class="page-content">
+          <div class="block block-strong ec-go-row" style="margin-top: 12px;">
+            <div class="grid grid-cols-3 grid-gap">
+              <a href="#" class="button button-fill color-green" id="btn-go">GO</a>
+              <a href="#" class="button button-outline color-red" id="btn-stop">STOP</a>
+              <a href="#" class="button button-outline" id="btn-back">BACK</a>
+            </div>
+            <div class="progressbar margin-top" id="cue-progress" data-progress="0">
+              <span></span>
+            </div>
+          </div>
+          <div class="block-title" id="cues-status">&nbsp;</div>
+          <div class="list list-strong-ios list-dividers-ios inset-md" id="cue-list">
+            <ul></ul>
+          </div>
+          <div class="block block-strong">
+            <p class="segmented-label">Grand master</p>
+            <div class="range-slider" id="master-range"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FIXTURES -->
+    <div id="view-fixtures" class="view tab">
+      <div class="page">
+        <div class="navbar">
+          <div class="navbar-bg"></div>
+          <div class="navbar-inner">
+            <div class="title">Fixtures</div>
+          </div>
+        </div>
+        <div class="page-content">
+          <div class="list media-list list-strong-ios inset-md" id="fixture-list">
+            <ul></ul>
+          </div>
+          <div class="block block-strong" id="fixture-empty" style="display:none">
+            <p>No fixtures patched.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHANNELS -->
+    <div id="view-channels" class="view tab">
+      <div class="page">
+        <div class="navbar">
+          <div class="navbar-bg"></div>
+          <div class="navbar-inner">
+            <div class="title">Channels</div>
+            <div class="right">
+              <a href="#" class="link" id="universe-btn">U1</a>
+            </div>
+          </div>
+        </div>
+        <div class="page-content">
+          <div class="block block-strong margin-top" id="channel-level-block">
+            <div class="grid grid-cols-5 grid-gap">
+              <a href="#" class="button button-small button-outline" data-level="100">Full</a>
+              <a href="#" class="button button-small button-outline" data-level="75">75</a>
+              <a href="#" class="button button-small button-outline" data-level="50">50</a>
+              <a href="#" class="button button-small button-outline" data-level="25">25</a>
+              <a href="#" class="button button-small button-outline" data-level="0">Out</a>
+            </div>
+            <div class="range-slider margin-top" id="channel-range"></div>
+            <div class="grid grid-cols-2 grid-gap margin-top">
+              <div class="block-footer" id="channel-sel-label">No channels selected</div>
+              <a href="#" class="button button-small" id="channel-clear-sel">Clear selection</a>
+            </div>
+          </div>
+          <div class="ec-grid" id="channel-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PATCH -->
+    <div id="view-patch" class="view tab">
+      <div class="page">
+        <div class="navbar">
+          <div class="navbar-bg"></div>
+          <div class="navbar-inner">
+            <div class="title">Patch</div>
+            <div class="right">
+              <a href="#" class="link" id="patch-add-btn">Add</a>
+            </div>
+          </div>
+        </div>
+        <div class="page-content">
+          <div class="list media-list list-strong-ios inset-md" id="patch-list">
+            <ul></ul>
+          </div>
+          <div class="block block-strong" id="patch-empty" style="display:none">
+            <p>Nothing patched yet. Tap Add to patch a fixture.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMMAND LINE -->
+    <div id="view-cmd" class="view tab">
+      <div class="page page-with-subnavbar">
+        <div class="navbar">
+          <div class="navbar-bg"></div>
+          <div class="navbar-inner">
+            <div class="title">Command</div>
+          </div>
+          <div class="subnavbar">
+            <div class="subnavbar-inner">
+              <form id="cmd-form" style="display:flex; width:100%; gap:8px; align-items:center;">
+                <input type="text" id="cmd-input" placeholder="e.g. 1thru5@50"
+                       autocapitalize="off" autocorrect="off" autocomplete="off"
+                       style="flex:1"
+                       class="input-with-value">
+                <a href="#" class="button button-fill button-small" id="cmd-send">Send</a>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div class="page-content">
+          <div class="block block-strong margin-top">
+            <p class="segmented segmented-strong">
+              <a href="#" class="button tab-link-active" id="ctx-fixture">Fixtures</a>
+              <a href="#" class="button" id="ctx-channel">Channels</a>
+              <span class="segmented-highlight"></span>
+            </p>
+            <div class="block-footer">
+              Fixture context: numbers address patched fixtures.
+              Channel context: numbers address raw DMX channels.
+            </div>
+          </div>
+          <div class="list list-strong-ios inset-md" id="cmd-log">
+            <ul></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script src="framework7-bundle.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

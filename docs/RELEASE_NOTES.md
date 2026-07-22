@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.5.0
+
+- **New: Remote control** — run EasyCue3 from any phone or tablet browser on the venue wifi, no app to install.
+  - Embedded web server (off by default; enable in Settings → Remote Control...), serving a Framework7-based PWA over WebSocket + REST.
+  - Five panels: Cues (GO/BACK/STOP, double-tap a cue to jump to it, grand master, blackout), Fixtures (intensity — virtual for RGB-only fixtures — color picker, profile-driven sliders), Channels (512-channel grid across active universes), Patch (add/edit/renumber/re-address/delete fixtures, with the same overlap validation as the desktop patch list), and a command line mirroring the desktop's EOS-style syntax.
+  - QR code pairing and mDNS discovery (`easycue3.local`) so there's no IP address to type in; optional PIN to keep other people on the venue wifi out.
+  - The desktop app remains the sole owner of engine state — the server only relays commands and state diffs, so recording, tracking, and playback behave identically whether driven from the console or a phone.
+  - "Add to Home Screen" on iOS/Android gives a full-screen, icon-launched experience.
+
 ## v0.4.0
 
 - **New: Effects** — repeating waveform patterns (sine, square, sawtooth, random) applied to fixture parameters, ETC-style but kept deliberately simple.

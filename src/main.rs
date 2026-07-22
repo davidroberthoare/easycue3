@@ -11,6 +11,8 @@ mod ui;
 mod fixtures;
 mod show;
 mod command;
+#[cfg(feature = "remote")]
+mod remote;
 
 // Use library modules (dmx, cue, audio, effects are defined in lib.rs)
 use easycue3::{dmx, cue, audio, effects};

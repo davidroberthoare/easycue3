@@ -14,6 +14,7 @@ A simple theatrical lighting console I've been building for my school and my com
 - Fixture patching with parameter-based control (color pickers, intensity sliders)
 - Channel grid, fixture list and magic sheet for live control
 - Effects: sine/square/sawtooth/random waveforms on intensity, hue, saturation, or pan/tilt — with phase spread for chases, cue-triggered with fade in/out
+- **Remote control**: run the console from any phone or tablet browser on the venue wifi — no app install. Cue playback, fixture/color control, raw channel grid, patching, and the command line, all live-synced
 - Save and load show files (JSON, human-readable)
 - USB DMX output (Enttec USB Pro, Enttec Open DMX USB, and generic FTDI-based Open DMX clones e.g. DSD TECH USB-to-DMX512)
 
@@ -154,6 +155,20 @@ Restart EasyCue and the profile appears in the Patching panel dropdown. See `fix
 
 ---
 
+## Remote control
+
+Control the console from a phone or tablet on the same wifi network — no app to install, no App Store. Enable it in **Settings → Remote Control...**, then scan the QR code (or open the shown URL) in the phone's browser. For the full-screen app-like experience, use the browser's "Add to Home Screen" option.
+
+- Cue playback: GO / BACK / STOP, double-tap a cue to jump to it, grand master, blackout
+- Fixture control: intensity, color picker, and profile-driven parameter sliders
+- Raw channel grid across all active universes
+- Patching: add, edit, renumber, re-address, and remove fixtures
+- Command line, mirroring the desktop's EOS-style syntax
+
+An optional PIN can be set to stop other people on the venue wifi from connecting. This is a LAN-only feature — there's no internet/remote-WAN access.
+
+---
+
 ## Show files
 
 JSON format, lives in `shows/`. Human-readable and git-friendly — you can diff them between rehearsals.
@@ -195,6 +210,14 @@ EasyCue is built on top of excellent open source projects. Thank you to all main
 - [rfd](https://github.com/PolyMeilex/rfd) - Native file dialogs.
 - [image](https://github.com/image-rs/image) - PNG/image loading.
 - [dirs](https://github.com/dirs-dev/dirs-rs) - Cross-platform user config/data directory resolution.
+
+### Remote control
+
+- [axum](https://github.com/tokio-rs/axum) - Web server framework for the embedded remote-control server (feature-gated).
+- [futures-util](https://github.com/rust-lang/futures-rs) - Async stream/sink utilities for the WebSocket bridge.
+- [mdns-sd](https://github.com/keepsimple1/mdns-sd) - mDNS service discovery (`easycue3.local`) for phone pairing.
+- [qrcode](https://github.com/kennytm/qrcode-rust) - QR code generation for the pairing dialog.
+- [Framework7](https://framework7.io/) - Mobile UI framework powering the phone/browser client (vendored, MIT licensed).
 
 ### Logging, errors, and utility crates
 

@@ -53,6 +53,8 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_fixture_editor(ctx, app);
     render_help_shortcuts(ctx, app);
     render_help_about(ctx, app);
+    #[cfg(feature = "remote")]
+    render_remote_settings(ctx, app);
 }
 
 /// Handle global keyboard shortcuts
@@ -534,6 +536,15 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 if ui.button("Fixture Profiles...").clicked() {
                     app.ui_state.show_fixture_editor = true;
                     ui.close_menu();
+                }
+
+                #[cfg(feature = "remote")]
+                {
+                    ui.separator();
+                    if ui.button("Remote Control...").clicked() {
+                        app.ui_state.show_remote_settings = true;
+                        ui.close_menu();
+                    }
                 }
             });
             
@@ -1182,4 +1193,129 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
     
     // Clear command input after execution
     app.ui_state.command_input.clear();
+}
+
+/// Render the Remote Control settings dialog.
+#[cfg(feature = "remote")]
+fn render_remote_settings(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_remote_settings {
+        return;
+    }
+
+    let mut open = true;
+    let mut apply_clicked = false;
+
+    egui::Window::new(format!("{} Remote Control", ph::DEVICE_MOBILE))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(360.0)
+        .show(ctx, |ui| {
+            ui.checkbox(&mut app.remote_settings.enabled, "Enable remote control server");
+
+            ui.add_enabled_ui(app.remote_settings.enabled, |ui| {
+                egui::Grid::new("remote_settings_grid")
+                    .num_columns(2)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Port:");
+                        ui.add(egui::DragValue::new(&mut app.remote_settings.port)
+                            .range(1024..=65535));
+                        ui.end_row();
+
+                        ui.label("PIN (optional):");
+                        ui.add(egui::TextEdit::singleline(&mut app.remote_settings.pin)
+                            .hint_text("empty = no PIN")
+                            .desired_width(120.0));
+                        ui.end_row();
+                    });
+            });
+
+            ui.add_space(4.0);
+            if ui.button(format!("{} Apply / Restart Server", ph::ARROW_CLOCKWISE)).clicked() {
+                apply_clicked = true;
+            }
+
+            ui.separator();
+
+            match &app.remote {
+                Some(server) => {
+                    let ip = crate::remote::local_ip()
+                        .map(|i| i.to_string())
+                        .unwrap_or_else(|| "127.0.0.1".to_string());
+                    let url = format!("http://{}:{}", ip, server.port);
+
+                    ui.label(egui::RichText::new(format!(
+                        "{} Running — {} client(s) connected",
+                        ph::WIFI_HIGH,
+                        server.client_count()
+                    )).color(egui::Color32::from_rgb(0, 220, 120)));
+                    ui.add_space(4.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Phone URL:");
+                        ui.monospace(&url);
+                        if ui.small_button(ph::COPY).on_hover_text("Copy URL").clicked() {
+                            ui.ctx().copy_text(url.clone());
+                        }
+                    });
+                    ui.label(
+                        egui::RichText::new(format!("also try: http://easycue3.local:{}", server.port))
+                            .small()
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.add_space(6.0);
+
+                    // QR code for pairing — regenerated only when the URL changes.
+                    let needs_qr = app.ui_state.remote_qr
+                        .as_ref()
+                        .map(|(cached_url, _)| cached_url != &url)
+                        .unwrap_or(true);
+                    if needs_qr {
+                        if let Ok(code) = qrcode::QrCode::new(url.as_bytes()) {
+                            let width = code.width();
+                            let quiet = 2usize;
+                            let size = width + quiet * 2;
+                            let mut pixels = vec![egui::Color32::WHITE; size * size];
+                            for (i, color) in code.to_colors().iter().enumerate() {
+                                if *color == qrcode::Color::Dark {
+                                    let x = i % width + quiet;
+                                    let y = i / width + quiet;
+                                    pixels[y * size + x] = egui::Color32::BLACK;
+                                }
+                            }
+                            let image = egui::ColorImage {
+                                size: [size, size],
+                                pixels,
+                            };
+                            let texture = ctx.load_texture(
+                                "remote_qr",
+                                image,
+                                egui::TextureOptions::NEAREST,
+                            );
+                            app.ui_state.remote_qr = Some((url.clone(), texture));
+                        }
+                    }
+                    if let Some((_, texture)) = &app.ui_state.remote_qr {
+                        ui.vertical_centered(|ui| {
+                            ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(180.0, 180.0)));
+                            ui.label(egui::RichText::new("Scan with the phone camera").small());
+                        });
+                    }
+                }
+                None => {
+                    ui.label(egui::RichText::new(format!("{} Not running", ph::WIFI_SLASH))
+                        .color(egui::Color32::GRAY));
+                    app.ui_state.remote_qr = None;
+                }
+            }
+        });
+
+    if apply_clicked {
+        app.apply_remote_settings(ctx);
+        app.ui_state.remote_qr = None;
+    }
+    if !open {
+        app.ui_state.show_remote_settings = false;
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "easycue3"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["EasyCue3 Contributors"]
 description = "A simple theatrical lighting console with integrated audio playback"
@@ -29,6 +29,12 @@ artnet_protocol = "0.3"
 # Async Runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 
+# Remote control server (feature = "remote")
+axum = { version = "0.8", features = ["ws"], optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["sink"], optional = true }
+mdns-sd = { version = "0.13", optional = true }
+qrcode = { version = "0.14", default-features = false, optional = true }
+
 # Error Handling
 anyhow = "1.0"
 thiserror = "1.0"
@@ -43,9 +49,10 @@ dirs = "5.0"  # Platform-specific config directories
 egui-phosphor = "0.9.0"
 
 [features]
-default = ["usb", "audio"]  # Enable USB DMX and audio by default
+default = ["usb", "audio", "remote"]  # Enable USB DMX, audio, and remote control by default
 usb = ["serialport"]  # Enable USB DMX interfaces (Enttec USB Pro)
 audio = ["rodio", "cpal"]  # Enable audio playback (requires ALSA on Linux)
 video = ["lumina-video"]  # Enable video playback (requires GStreamer on Linux)
 media = ["audio", "video"]  # Enable all media features
-full = ["usb", "media"]  # Enable all optional features
+remote = ["axum", "futures-util", "mdns-sd", "qrcode", "tokio/net", "tokio/macros"]  # Phone/browser remote control server (pure Rust, no system libs)
+full = ["usb", "media", "remote"]  # Enable all optional features
