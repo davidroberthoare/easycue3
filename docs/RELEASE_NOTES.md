@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.6.0
+
+- **New: Native multi-channel audio output** — route audio cues to any stereo pair of a multi-channel interface (e.g. a USB audio interface with separate front and rear outputs), not just the first pair.
+  - Devices that report more than two channels are opened at full width, and each stereo pair shows up as its own entry in the output picker ("Interface · Out 1-2", "Interface · Out 3-4", ...) alongside plain stereo devices.
+  - Cues can play on any pair, on several pairs at once, and an Adjust cue can crossfade between pairs exactly like crossfading between separate devices — including fading onto a pair the Play cue never routed to, joining in sync from silence.
+  - The routing happens in the app itself, so it works the same on Windows, macOS, and Linux — no OS-level channel-mapping configuration needed.
+  - Plain stereo devices and the default output are unaffected: the picker looks and behaves exactly as before if you never touch a multi-channel interface.
+  - Show files remain backward compatible — routes and fades from older shows load and re-save unchanged.
+  - Linux/PipeWire users routing to a secondary device (built on the v0.5.0 groundwork) should pin `channels N` on the device's `~/.asoundrc` alias so EasyCue3 knows its true channel count; see `docs/AUDIO_DEVICES.md`.
+
 ## v0.5.0
 
 - **New: Remote control** — run EasyCue3 from any phone or tablet browser on the venue wifi, no app to install.
