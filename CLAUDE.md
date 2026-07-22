@@ -111,3 +111,4 @@ Audio file paths in show files are stored as bare filenames when the file lives 
 - `docs/VIRTUAL_INTENSITY.md` — virtual intensity concept, algorithm, key files
 - `docs/EFFECTS.md` — effects concept, output-stage overlay architecture, key files
 - `docs/REMOTE.md` — phone remote: server/bridge architecture, protocol, client notes, testing (incl. `EASYCUE3_REMOTE` env override)
+- `docs/AUDIO_DEVICES.md` — multi-device/multi-channel audio output setup on Linux (PipeWire/ALSA), device-list filtering, known cross-platform limitations

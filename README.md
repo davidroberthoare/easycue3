@@ -133,6 +133,14 @@ Put audio files in the `media/` directory next to your project. Show files refer
 
 ---
 
+## Audio output devices
+
+EasyCue3 can route each audio cue to any combination of output devices (speakers, a USB interface, etc.) independently, with its own volume/pan per route, and crossfade between them with an Adjust cue — useful for multi-room or multi-speaker setups.
+
+On Linux, a multi-channel USB audio interface (e.g. an interface with separate front and rear output pairs) needs a small one-time `~/.asoundrc` setup before its extra channels are reachable — PipeWire otherwise only exposes the first stereo pair. See `docs/AUDIO_DEVICES.md` for the setup steps and known limitations (Linux/PipeWire-specific, no hot-plug).
+
+---
+
 ## Custom fixtures
 
 13 fixture profiles ship with the app: dimmer, RGB/RGBA/RGBW/RGBAW/RGBAWUV variants, LED PAR, and moving head. Add your own in `fixture_profiles/` (bundled) or `~/.config//fixture_profiles/` (user, survives updates).
