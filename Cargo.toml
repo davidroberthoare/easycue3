@@ -1,6 +1,6 @@
 [package]
 name = "easycue3"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = ["EasyCue3 Contributors"]
 description = "A simple theatrical lighting console with integrated audio playback"
@@ -47,6 +47,7 @@ rfd = "0.14"  # Native file dialogs
 image = { version = "0.25", default-features = false, features = ["png"] }  # Icon loading
 dirs = "5.0"  # Platform-specific config directories
 egui-phosphor = "0.9.0"
+ureq = "3.3.0"  # Minimal blocking HTTP client for the update check (no async runtime needed)
 
 [features]
 default = ["usb", "audio", "remote"]  # Enable USB DMX, audio, and remote control by default

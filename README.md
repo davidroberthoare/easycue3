@@ -17,6 +17,7 @@ A simple theatrical lighting console I've been building for my school and my com
 - **Remote control**: run the console from any phone or tablet browser on the venue wifi — no app install. Cue playback, fixture/color control, raw channel grid, patching, and the command line, all live-synced
 - Save and load show files (JSON, human-readable)
 - USB DMX output (Enttec USB Pro, Enttec Open DMX USB, and generic FTDI-based Open DMX clones e.g. DSD TECH USB-to-DMX512)
+- Check for updates (Help menu, plus a quiet once-a-day background check) — notify-only, links to the GitHub release page
 
 
 ## What it doesn't do (yet)

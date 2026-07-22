@@ -1,5 +1,10 @@
 # Release Notes
 
+## v0.6.1
+
+- **New: Check for Updates** — Help menu now has a "Check for Updates" item that looks up the latest GitHub release and tells you if a newer version is available, with a link to the release page. Notify-only: nothing downloads or installs itself.
+  - Also checks automatically in the background at most once per day on launch; if a newer version is found, a small "Update Available" badge appears in the menu bar (click it to see details) — otherwise it stays out of the way.
+
 ## v0.6.0
 
 - **New: Native multi-channel audio output** — route audio cues to any stereo pair of a multi-channel interface (e.g. a USB audio interface with separate front and rear outputs), not just the first pair.

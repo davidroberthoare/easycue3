@@ -139,6 +139,7 @@ pub struct UiState {
     pub show_fixture_editor: bool,
     pub show_help_shortcuts: bool,
     pub show_help_about: bool,
+    pub show_update_dialog: bool,
     pub show_remote_settings: bool,
     /// QR texture cache for the remote settings dialog: (encoded URL, texture).
     #[cfg(feature = "remote")]
@@ -205,6 +206,7 @@ impl Default for UiState {
             show_fixture_editor: false,
             show_help_shortcuts: false,
             show_help_about: false,
+            show_update_dialog: false,
             show_remote_settings: false,
             #[cfg(feature = "remote")]
             remote_qr: None,
@@ -319,6 +321,13 @@ pub struct EasyCueApp {
     last_persisted_dmx_backend: PersistedDmxBackend,
     /// Whether a DMX backend preference existed in persistent storage at startup.
     startup_had_saved_dmx_backend: bool,
+
+    /// Result of the most recent "check for updates" call (never persisted).
+    pub update_state: crate::update::UpdateCheckState,
+    /// Pending background update check, polled non-blockingly each frame.
+    update_check_rx: Option<std::sync::mpsc::Receiver<crate::update::UpdateCheckState>>,
+    /// When we last checked for updates, persisted to throttle the automatic startup check.
+    last_update_check: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Tracks a timed fade of the sound master, driven by an Adjust cue.
@@ -345,6 +354,13 @@ impl EasyCueApp {
 
     pub fn reset_cue_colors_to_defaults(&mut self) {
         self.cue_colors = CueColorSettings::default();
+    }
+
+    /// Kicks off a fresh background check for a newer release, ignoring the
+    /// daily throttle (used by the manual "Check for Updates" menu action).
+    pub fn trigger_update_check(&mut self, ctx: &egui::Context) {
+        self.update_state = crate::update::UpdateCheckState::Checking;
+        self.update_check_rx = Some(crate::update::spawn_check(ctx.clone()));
     }
 
     fn configure_cobalt_theme(ctx: &egui::Context) {
@@ -531,6 +547,9 @@ impl EasyCueApp {
             .and_then(|storage| eframe::get_value(storage, "remote_settings"))
             .unwrap_or_default();
 
+        let last_update_check: Option<chrono::DateTime<chrono::Utc>> = cc.storage
+            .and_then(|storage| eframe::get_value(storage, "last_update_check"));
+
         let mut app = Self {
             universes,
             dmx_backend,
@@ -568,9 +587,21 @@ impl EasyCueApp {
             preferred_dmx_backend: saved_dmx_backend.clone().unwrap_or_default(),
             last_persisted_dmx_backend: saved_dmx_backend.unwrap_or_default(),
             startup_had_saved_dmx_backend: had_saved_dmx_backend,
+            update_state: crate::update::UpdateCheckState::Unknown,
+            update_check_rx: None,
+            last_update_check,
         };
 
         app.restore_startup_dmx_backend();
+
+        // Auto-check for updates at most once per day, fully in the background.
+        let should_auto_check_updates = app.last_update_check
+            .map(|last| chrono::Utc::now() - last > chrono::Duration::hours(24))
+            .unwrap_or(true);
+        if should_auto_check_updates {
+            app.update_state = crate::update::UpdateCheckState::Checking;
+            app.update_check_rx = Some(crate::update::spawn_check(cc.egui_ctx.clone()));
+        }
 
         #[cfg(feature = "remote")]
         {
@@ -1535,6 +1566,15 @@ impl eframe::App for EasyCueApp {
             log::info!("Theme reapplied in update()");
         }
 
+        // Non-blocking poll for a background update-check result, if one is in flight.
+        if let Some(rx) = &self.update_check_rx {
+            if let Ok(state) = rx.try_recv() {
+                self.update_state = state;
+                self.last_update_check = Some(chrono::Utc::now());
+                self.update_check_rx = None;
+            }
+        }
+
         // Suppress hotkeys while any text field (label editors, property boxes, etc.) has focus.
         // Ctrl+R (record) is safe to allow regardless.
         let text_focused = ctx.memory(|m| m.focused().is_some());
@@ -1793,6 +1833,7 @@ impl eframe::App for EasyCueApp {
         eframe::set_value(storage, "preferred_dmx_backend", &self.preferred_dmx_backend);
         #[cfg(feature = "remote")]
         eframe::set_value(storage, "remote_settings", &self.remote_settings);
+        eframe::set_value(storage, "last_update_check", &self.last_update_check);
         if let Some(path) = &self.current_file_path {
             storage.set_string("last_file", path.to_string_lossy().to_string());
         }

@@ -53,6 +53,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_fixture_editor(ctx, app);
     render_help_shortcuts(ctx, app);
     render_help_about(ctx, app);
+    render_update_dialog(ctx, app);
     #[cfg(feature = "remote")]
     render_remote_settings(ctx, app);
 }
@@ -555,6 +556,12 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     ui.close_menu();
                 }
                 ui.separator();
+                if ui.button("Check for Updates").clicked() {
+                    app.ui_state.show_update_dialog = true;
+                    app.trigger_update_check(ctx);
+                    ui.close_menu();
+                }
+                ui.separator();
                 if ui.button("About").clicked() {
                     app.ui_state.show_help_about = true;
                     ui.close_menu();
@@ -565,6 +572,16 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(egui::RichText::new(&app.show_title).strong());
                 ui.separator();
+
+                // Passive "update available" badge — only appears once the background
+                // check finds a newer release; clicking reuses that result (no re-fetch).
+                if let crate::update::UpdateCheckState::UpdateAvailable(info) = &app.update_state {
+                    let label = format!("{} Update Available: v{}", ph::ARROW_CIRCLE_UP, info.latest_version);
+                    if ui.button(egui::RichText::new(label).color(egui::Color32::from_rgb(255, 200, 0))).clicked() {
+                        app.ui_state.show_update_dialog = true;
+                    }
+                    ui.separator();
+                }
             });
         });
     });
@@ -646,6 +663,51 @@ fn render_help_about(ctx: &Context, app: &mut EasyCueApp) {
                 ui.horizontal(|ui| {
                     if ui.button("Close").clicked() {
                         app.ui_state.show_help_about = false;
+                    }
+                });
+            });
+        });
+}
+
+/// Render the "check for updates" dialog — notify-only, no downloading or
+/// self-replacing; opening the release page in the browser is on the user.
+fn render_update_dialog(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_update_dialog {
+        return;
+    }
+
+    egui::Window::new("Software Update")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                match &app.update_state {
+                    crate::update::UpdateCheckState::Unknown
+                    | crate::update::UpdateCheckState::Checking => {
+                        ui.label("Checking for updates…");
+                    }
+                    crate::update::UpdateCheckState::UpToDate => {
+                        ui.label(format!(
+                            "You're up to date (v{}).",
+                            env!("CARGO_PKG_VERSION")
+                        ));
+                    }
+                    crate::update::UpdateCheckState::UpdateAvailable(info) => {
+                        ui.label(format!("A new version is available: v{}", info.latest_version));
+                        ui.label(format!("You are running v{}", env!("CARGO_PKG_VERSION")));
+                        ui.add_space(6.0);
+                        ui.hyperlink_to("View Release on GitHub", &info.html_url);
+                    }
+                    crate::update::UpdateCheckState::Failed => {
+                        ui.label("Couldn't check for updates. Please try again later.");
+                    }
+                }
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    if ui.button("Close").clicked() {
+                        app.ui_state.show_update_dialog = false;
                     }
                 });
             });
