@@ -56,6 +56,9 @@ impl DeviceSink {
 
 struct ActiveAudioStream {
     cue_id: u32,
+    /// The source file, kept so an Adjust cue can join a device that wasn't
+    /// one of the original output routes (see `join_device`).
+    audio_path: std::path::PathBuf,
     /// One entry per output route (usually just the default device).
     device_sinks: Vec<DeviceSink>,
     state: AudioCueState,
@@ -138,6 +141,7 @@ impl AudioPlaybackEngine {
 
         self.streams.push(ActiveAudioStream {
             cue_id: cue.id,
+            audio_path: resolved,
             device_sinks,
             state: initial_state,
             fade_in_duration: data.fade_in,
@@ -157,9 +161,44 @@ impl AudioPlaybackEngine {
         true
     }
 
+    /// Open a new device sink on `stream` for a device it wasn't originally routed to,
+    /// starting from silence at the same playback position as the stream's other sinks —
+    /// so an Adjust cue can fade audio *onto* a device the Play cue never routed to.
+    /// Returns the new sink's index, or `None` if the device doesn't exist or fails to open.
+    fn join_device(stream: &mut ActiveAudioStream, device_name: &str, player: &AudioPlayer) -> Option<usize> {
+        if !player.device_names().iter().any(|n| n == device_name) {
+            return None;
+        }
+        let sink = player.new_player(device_name).ok()?;
+        let file = File::open(&stream.audio_path).ok()?;
+        let raw = Decoder::try_from(file).ok()?;
+        let elapsed = stream.play_start.elapsed();
+        let (mut panned, pan_ctrl) = PanSource::new(raw, 0.0);
+        if let Err(e) = rodio::Source::try_seek(&mut panned, elapsed) {
+            log::warn!(
+                "Adjust: joining '{}' couldn't seek to {:.1}s (starting from 0): {}",
+                device_name, elapsed.as_secs_f32(), e
+            );
+        }
+        sink.set_volume(0.0);
+        sink.append(panned);
+        stream.device_sinks.push(DeviceSink {
+            device_name: device_name.to_string(),
+            sink,
+            volume: 0.0,
+            adjust: None,
+            pan: 0.0,
+            pan_ctrl,
+            pan_adjust: None,
+        });
+        log::info!("Adjust: joined device '{}' to cue {} at {:.1}s in", device_name, stream.cue_id, elapsed.as_secs_f32());
+        Some(stream.device_sinks.len() - 1)
+    }
+
     /// Fade the per-route volume and/or pan for a specific output device on a stream.
     /// `cue_id == 0` targets all active streams.  `device_name` empty = default device.
-    /// `target_pan` of `None` leaves pan unchanged.
+    /// `target_pan` of `None` leaves pan unchanged.  If the stream isn't already routed
+    /// to `device_name`, it's joined in from silence so the fade can bring it in live.
     pub fn adjust_stream_output(
         &mut self,
         cue_id: u32,
@@ -168,6 +207,7 @@ impl AudioPlaybackEngine {
         target_pan: Option<f32>,
         fade_time: f32,
         stop_when_complete: bool,
+        player: &AudioPlayer,
     ) {
         for stream in self.streams.iter_mut() {
             if cue_id != 0 && stream.cue_id != cue_id {
@@ -177,6 +217,7 @@ impl AudioPlaybackEngine {
                 Some(0)
             } else {
                 stream.device_sinks.iter().position(|ds| ds.device_name == device_name)
+                    .or_else(|| Self::join_device(stream, device_name, player))
             };
             if let Some(idx) = ds_idx {
                 let ds = &mut stream.device_sinks[idx];
@@ -213,6 +254,12 @@ impl AudioPlaybackEngine {
                         });
                     }
                 }
+            } else {
+                log::warn!(
+                    "Adjust: cue {} has no output device named '{}' — fade skipped",
+                    stream.cue_id,
+                    if device_name.is_empty() { "Default" } else { device_name },
+                );
             }
         }
     }

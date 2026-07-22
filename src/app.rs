@@ -502,9 +502,10 @@ impl EasyCueApp {
         let (audio_player, audio_playback) = {
             let audio_init_start = std::time::Instant::now();
             log::info!("[startup][audio] Initializing audio subsystem");
-            let player = AudioPlayer::new().unwrap_or_else(|e| {
+            let mut player = AudioPlayer::new().unwrap_or_else(|e| {
                 panic!("Could not open default audio output: {}", e);
             });
+            player.open_all_outputs();
             let playback = AudioPlaybackEngine::new();
             log::info!(
                 "[startup][audio] Audio subsystem initialized in {:.2}ms",
@@ -1335,6 +1336,7 @@ impl EasyCueApp {
                 fade.target_pan,
                 data.fade_time,
                 data.stop_when_complete,
+                &self.audio_player,
             );
         }
 

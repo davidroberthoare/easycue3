@@ -42,11 +42,26 @@ impl AudioPlayer {
         })
     }
 
+    /// ALSA meta-plugins that never represent a distinct physical (or
+    /// user-named) output — they either discard audio, resample/remix for
+    /// another plugin, or transparently re-target whatever the system
+    /// default happens to be. Matched against the raw ALSA PCM id (not the
+    /// human-readable description, which some backends override with
+    /// confusing text like "Default ALSA Output (currently PipeWire ...)").
+    const NON_DEVICE_PLUGIN_IDS: &'static [&'static str] = &[
+        "null", "default", "pipewire", "pulse", "jack", "oss",
+        "lavrate", "samplerate", "speexrate", "speex", "upmix", "vdownmix",
+    ];
+
     /// Enumerate all output devices and open a stream for each one that isn't
     /// already open.  Silently skips devices that fail to open.
     pub fn open_all_outputs(&mut self) {
         let host = rodio::cpal::default_host();
-        let already: Vec<String> = self.outputs.iter().map(|o| o.name.clone()).collect();
+        let mut opened: std::collections::HashSet<String> = self
+            .outputs
+            .iter()
+            .map(|o| o.name.to_ascii_lowercase())
+            .collect();
 
         let devices = match host.output_devices() {
             Ok(d) => d,
@@ -54,14 +69,17 @@ impl AudioPlayer {
         };
 
         for device in devices {
+            let id = device.id().map(|d| d.1).unwrap_or_default();
+            if Self::NON_DEVICE_PLUGIN_IDS.contains(&id.as_str()) {
+                continue;
+            }
             let name = match device.description() {
                 Ok(desc) => desc.name().to_string(),
                 Err(_) => continue,
             };
-            if name.to_ascii_lowercase() == "default" {
-                continue;
-            }
-            if already.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
+            if !opened.insert(name.to_ascii_lowercase()) {
+                // Same card enumerated again under a different underlying PCM
+                // (hw/plughw/dmix/...) — already opened or already failed once.
                 continue;
             }
             match DeviceSinkBuilder::from_device(device) {

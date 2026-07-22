@@ -89,4 +89,7 @@ impl<S: Source<Item = f32>> Source for PanSource<S> {
     fn total_duration(&self) -> Option<Duration> {
         self.inner.total_duration()
     }
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.inner.try_seek(pos)
+    }
 }
