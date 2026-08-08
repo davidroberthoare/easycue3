@@ -86,6 +86,15 @@ impl Default for MagicSheetState {
     }
 }
 
+/// Which field of a lighting cue's properties the UI should activate for editing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CueEditField {
+    /// The cue "Label" text field.
+    Label,
+    /// The cue "Fade Up" text field.
+    FadeUp,
+}
+
 /// UI state flags and dialog state
 pub struct UiState {
     // Selection state (by stable cue ID, not index)
@@ -163,6 +172,15 @@ pub struct UiState {
     #[cfg(feature = "audio")]
     pub adjust_target_edit: String,
 
+    /// Cue-property field to activate & select-all on the next frame it's rendered.
+    /// Set by record and by the `l`/`i`/`q<n>l`/`q<n>i` commands; consumed by the
+    /// properties panel once the field has been focused.
+    pub focus_cue_edit: Option<(u32, CueEditField)>,
+    /// Edit buffer for the lighting cue "Fade Up" text field.
+    pub fade_up_edit: String,
+    /// Edit buffer for the lighting cue "Fade Down" text field.
+    pub fade_down_edit: String,
+
     /// HSV colour wheel widget state (shared across single- and multi-fixture panels).
     pub color_wheel: crate::ui::ColorWheel,
     /// Which single fixture the wheel was last synced from; None when multi-select was active.
@@ -220,6 +238,9 @@ impl Default for UiState {
             artnet_universe: 0,
             #[cfg(feature = "audio")]
             adjust_target_edit: String::new(),
+            focus_cue_edit: None,
+            fade_up_edit: String::new(),
+            fade_down_edit: String::new(),
             #[cfg(feature = "audio")]
             audio_file_cache: HashMap::new(),
             show_debug_ui: false,
@@ -1278,13 +1299,22 @@ impl EasyCueApp {
     /// Jump to and fire the cue at `abs_idx` (regardless of kind). Updates the play head
     /// and arms autofollow — identical behaviour to go_next().
     pub fn go_to_cue(&mut self, abs_idx: usize) -> bool {
+        self._go_to_cue(abs_idx, false)
+    }
+
+    /// Make the cue at `abs_idx` the active cue instantly, without a fade.
+    pub fn jump_to_cue(&mut self, abs_idx: usize) -> bool {
+        self._go_to_cue(abs_idx, true)
+    }
+
+    fn _go_to_cue(&mut self, abs_idx: usize, instant: bool) -> bool {
         self.autofollow_timer = None;
         let cue = self.cue_list.get_cue(abs_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
             crate::cue::CueKind::Lighting(data) => {
                 let tracked = self.cue_list.tracked_state_up_to(abs_idx);
-                let fade_time = data.fade_up;
+                let fade_time = if instant { 0.0 } else { data.fade_up };
                 self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
                 self.sync_effects_to_index(abs_idx, fade_time);
                 true
@@ -1426,6 +1456,69 @@ impl EasyCueApp {
         self.ui_state.status_message = format!("Recorded cue {:.0}", next_number);
         log::info!("Recorded cue {:.0} with {} channels", next_number, channel_count);
         assigned_id
+    }
+
+    /// Select a cue by stable ID and keep the legacy per-kind selection fields in sync.
+    pub fn select_cue(&mut self, id: u32) {
+        self.ui_state.selected_cue_id = Some(id);
+        let is_lx = self.cue_list.find_by_id(id).map(|c| c.is_lighting()).unwrap_or(false);
+        if is_lx {
+            self.ui_state.selected_lighting_cue_id = Some(id);
+            self.ui_state.selected_audio_cue_id = None;
+        } else {
+            self.ui_state.selected_audio_cue_id = Some(id);
+            self.ui_state.selected_lighting_cue_id = None;
+        }
+    }
+
+    /// Overwrite the lighting data of the cue at `upd_idx` with the current live
+    /// universe levels (tracking-aware). Returns true if a lighting cue was updated.
+    pub fn capture_stage_to_cue(&mut self, upd_idx: usize) -> bool {
+        let upd_number = match self.cue_list.get_cue(upd_idx) {
+            Some(c) if c.is_lighting() => c.number,
+            _ => return false,
+        };
+        let prev_tracked = if upd_idx > 0 {
+            self.cue_list.tracked_state_up_to(upd_idx - 1)
+        } else {
+            std::collections::HashMap::new()
+        };
+        let mut deltas: Vec<(u16, u8)> = Vec::new();
+        for (uni_idx, universe) in self.universes.iter().enumerate() {
+            let universe_num = (uni_idx + 1) as u16;
+            for ch in 1u16..=512 {
+                if let Ok(live_val) = universe.get_channel(ch) {
+                    let key = crate::cue::universe_key(universe_num, ch);
+                    let tracked_val = prev_tracked.get(&key).copied().unwrap_or(0);
+                    if live_val != tracked_val {
+                        deltas.push((key, live_val));
+                    }
+                }
+            }
+        }
+        if let Some(c) = self.cue_list.get_cue_mut(upd_idx) {
+            if let Some(d) = c.lighting_data_mut() {
+                d.channel_values.clear();
+                for (key, val) in deltas {
+                    d.channel_values.insert(key, val);
+                }
+            }
+        }
+        self.ui_state.status_message = format!("Captured stage to cue {:.1}", upd_number);
+        true
+    }
+
+    /// Set the fade-up and fade-down times (seconds, clamped 0–30) of a lighting cue.
+    pub fn set_lighting_fade_times(&mut self, id: u32, secs: f32) {
+        let secs = secs.clamp(0.0, 30.0);
+        if let Some(idx) = self.cue_list.cues().iter().position(|c| c.id == id) {
+            if let Some(c) = self.cue_list.get_cue_mut(idx) {
+                if let Some(d) = c.lighting_data_mut() {
+                    d.fade_up = secs;
+                    d.fade_down = secs;
+                }
+            }
+        }
     }
 
     /// Compare two show files, ignoring timestamps. Returns true if they're substantially identical.
@@ -1578,7 +1671,7 @@ impl eframe::App for EasyCueApp {
         // Suppress hotkeys while any text field (label editors, property boxes, etc.) has focus.
         // Ctrl+R (record) is safe to allow regardless.
         let text_focused = ctx.memory(|m| m.focused().is_some());
-        let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down) = ctx.input(|i| (
+        let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down, update) = ctx.input(|i| (
             i.key_pressed(egui::Key::Space)     && !i.modifiers.any() && !text_focused,
             i.key_pressed(egui::Key::S)         && !i.modifiers.any() && !text_focused,
             i.key_pressed(egui::Key::R)         && i.modifiers.ctrl,
@@ -1587,6 +1680,7 @@ impl eframe::App for EasyCueApp {
             i.key_pressed(egui::Key::Escape),
             i.key_pressed(egui::Key::ArrowUp)   && !text_focused,
             i.key_pressed(egui::Key::ArrowDown) && !text_focused,
+            i.key_pressed(egui::Key::U)         && i.modifiers.ctrl && !text_focused,
         ));
 
         if stop {
@@ -1597,8 +1691,23 @@ impl eframe::App for EasyCueApp {
         }
         if record {
             let id = self.record_cue();
-            self.ui_state.selected_cue_id = Some(id);
-            self.ui_state.selected_lighting_cue_id = Some(id);
+            // Jump into the new cue as the actively running cue.
+            if let Some(idx) = self.cue_list.cues().iter().position(|c| c.id == id) {
+                self.jump_to_cue(idx);
+            }
+            // go_to_cue clears the selection; re-select so the properties panel shows it.
+            self.select_cue(id);
+            // There is no cue after the newest one — blank the on-deck box.
+            self.ui_state.go_cue_input.clear();
+            // Activate the new cue's label field so the operator can rename it.
+            self.ui_state.focus_cue_edit = Some((id, CueEditField::Label));
+        }
+        // Ctrl+U: prompt to update the currently active lighting cue with the live
+        // stage levels (same confirmation modal as the "Update from Stage" button).
+        if update {
+            if let Some(id) = self.playback.current_cue_id() {
+                self.ui_state.pending_update_cue_id = Some(id);
+            }
         }
         if ctrl_g {
             self.ui_state.goto_mode = true;
@@ -1647,7 +1756,6 @@ impl eframe::App for EasyCueApp {
                         self.ui_state.selected_lighting_cue_id = None;
                     }
                     self.ui_state.go_cue_input = format!("{:.1}", num);
-                    self.ui_state.status_message = format!("On deck: Q{:.1}", num);
                 }
             }
         }

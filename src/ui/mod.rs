@@ -25,7 +25,7 @@ pub use effects::render_effects_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
 pub use groups::{render_groups_panel, GroupsPanelState};
 pub use magic_sheet::render_magic_sheet_panel;
-pub use properties::{render_cue_properties_panel, render_instrument_properties_panel};
+pub use properties::{render_cue_properties_panel, render_instrument_properties_panel, render_update_from_stage_modal};
 pub use patching::{render_patching_panel, PatchingPanelState};
 
 /// Render the main UI
@@ -54,6 +54,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_help_shortcuts(ctx, app);
     render_help_about(ctx, app);
     render_update_dialog(ctx, app);
+    render_update_from_stage_modal(ctx, app);
     #[cfg(feature = "remote")]
     render_remote_settings(ctx, app);
 }
@@ -230,18 +231,22 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
         for event in &i.events {
             if let egui::Event::Text(text) = event {
                 for ch in text.chars().map(|c| c.to_ascii_lowercase()) {
-                    // Cue navigation commands (q<num>, go<num>, goto<num>) work from
+                    // Cue commands (q<num>, go<num>, goto<num>, l, i<time>) work from
                     // any context so they're usable from every panel.
                     let is_cue_cmd = {
                         let cmd = &app.ui_state.command_input;
-                        // Start a new cue command.
-                        (cmd.is_empty() && (ch == 'q' || ch == 'g'))
-                        // Continue a q<num> command.
-                        || (!cmd.is_empty() && cmd.starts_with('q')
-                            && (ch.is_ascii_digit() || ch == '.'))
+                        // Start a new cue command ('l' = label edit, 'i' = fade edit).
+                        (cmd.is_empty() && (ch == 'q' || ch == 'g' || ch == 'l' || ch == 'i'))
+                        // Continue a q<num> command, optionally suffixed with 'l' (label)
+                        // or 'i' (fade edit, followed by an optional time).
+                        || (!cmd.is_empty() && cmd.starts_with('q') && !cmd.ends_with('l')
+                            && (ch.is_ascii_digit() || ch == '.' || ch == 'l' || ch == 'i'))
                         // Continue a go/goto<num> command ('o','t' build "goto").
                         || (!cmd.is_empty() && cmd.starts_with('g')
                             && (ch.is_ascii_digit() || ch == '.' || ch == 'o' || ch == 't'))
+                        // Continue an i<time> command (fade time value).
+                        || (!cmd.is_empty() && cmd.starts_with('i')
+                            && (ch.is_ascii_digit() || ch == '.'))
                     };
                     if is_cue_cmd {
                         app.ui_state.command_input.push(ch);
@@ -613,11 +618,14 @@ fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
                 ui.label(egui::RichText::new("Command Line").strong());
                 ui.label("go12 / goto12 — Go to and fire cue 12");
                 ui.label("q12 — Arm cue 12 as on-deck (no fire)");
+                ui.label("l / q12l — Focus the Label field of the active (or specified) cue");
+                ui.label("i / i5 / q12i / q12i5 — set a cue's fade time");
                 ui.label("Ctrl+G — Open goto prompt, then type number + Enter");
+                ui.label("Ctrl+R — Record cue");
+                ui.label("Ctrl+U — Update the active cue from the live stage");
                 ui.add_space(8.0);
 
                 ui.label(egui::RichText::new("Show File").strong());
-                ui.label("Ctrl+R — Record cue");
                 ui.label("Ctrl+S — Save");
                 ui.label("Ctrl+O — Open");
                 ui.add_space(10.0);
@@ -1117,6 +1125,22 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                         .color(egui::Color32::from_rgb(180, 180, 100)),
                 );
             }
+
+            // On-deck indicator — derived from the play head every frame so it
+            // always matches the true next cue, even when running through cues.
+            // The transient status message above is left alone so it can keep
+            // showing something more useful (errors, GO confirmations, …).
+            if let Some(next_idx) = app.cue_list.next_any_index() {
+                if let Some(c) = app.cue_list.get_cue(next_idx) {
+                    ui.separator();
+                    let color = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
+                    ui.label(
+                        egui::RichText::new(format!("On deck: Q{:.1} {}", c.number, c.label))
+                            .color(color)
+                            .strong(),
+                    );
+                }
+            }
             
             // Right side: DMX backend and emergency controls
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1175,6 +1199,25 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
     });
 }
 
+/// Split the tail of a `q<num>[l|i[<secs>]]` command into the numeric part and an
+/// optional edit directive: the cue-property field to focus, plus a fade time for `i`.
+fn split_cue_edit_suffix(tail: &str) -> (String, Option<(crate::app::CueEditField, Option<f32>)>) {
+    if let Some(rest) = tail.strip_suffix('l') {
+        return (rest.to_string(), Some((crate::app::CueEditField::Label, None)));
+    }
+    if let Some(idx) = tail.find('i') {
+        let num_part = &tail[..idx];
+        let secs_part = &tail[idx + 1..];
+        let secs = if secs_part.is_empty() {
+            None
+        } else {
+            secs_part.parse::<f32>().ok()
+        };
+        return (num_part.to_string(), Some((crate::app::CueEditField::FadeUp, secs)));
+    }
+    (tail.to_string(), None)
+}
+
 /// Execute the current command line input
 pub fn execute_command_line(app: &mut EasyCueApp) {
     let input = app.ui_state.command_input.trim().to_string();
@@ -1197,39 +1240,71 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
         }
     }
 
+    // Label / fade-edit commands on the ACTIVE cue (falls back to the selected cue
+    // when nothing is running):
+    //   "l"   → select the cue and focus its Label field
+    //   "i"   → select the cue and focus its Fade Up field
+    //   "i5"  → select the cue, set fade up+down to 5s, focus Fade Up
+    if input == "l"
+        || input == "i"
+        || (input.starts_with('i') && input[1..].chars().all(|c| c.is_ascii_digit() || c == '.'))
+    {
+        let target = app.playback.current_cue_id().or(app.ui_state.selected_cue_id);
+        if let Some(target) = target {
+            if input == "l" {
+                app.select_cue(target);
+                app.ui_state.focus_cue_edit = Some((target, crate::app::CueEditField::Label));
+            } else {
+                if input.len() > 1 {
+                    if let Ok(secs) = input[1..].parse::<f32>() {
+                        app.set_lighting_fade_times(target, secs);
+                    }
+                }
+                app.select_cue(target);
+                app.ui_state.focus_cue_edit = Some((target, crate::app::CueEditField::FadeUp));
+            }
+        }
+        app.ui_state.command_input.clear();
+        return;
+    }
+
     // On-deck command: q<number> — arm a standby cue without firing it.
     // Sets the play head to just before the target so next_any_index() points to it,
     // which drives the on-deck arrow and yellow highlight in the cue table.
+    // With an edit suffix (q2l / q2i / q2i5) the cue is only *selected* for editing in
+    // the properties panel — the play head and on-deck box are left untouched.
     if let Some(num_str) = input.strip_prefix('q') {
         if !num_str.is_empty() {
-            if let Ok(num) = num_str.parse::<f32>() {
-                let abs_idx = app.cue_list.cues().iter()
-                    .position(|c| (c.number - num).abs() < 0.005);
-                if let Some(abs_idx) = abs_idx {
-                    // Move play head to just before this cue.
-                    let prev_idx = if abs_idx > 0 { Some(abs_idx - 1) } else { None };
-                    app.cue_list.set_current_index(prev_idx);
-                    app.ui_state.go_cue_input = format!("{:.1}", num);
-                    // Select the cue and keep legacy fields in sync.
-                    let id = app.cue_list.get_cue(abs_idx).map(|c| c.id);
-                    let is_lx = app.cue_list.get_cue(abs_idx).map(|c| c.is_lighting()).unwrap_or(false);
-                    if let Some(id) = id {
-                        app.ui_state.selected_cue_id = Some(id);
-                        if is_lx {
-                            app.ui_state.selected_lighting_cue_id = Some(id);
-                            app.ui_state.selected_audio_cue_id = None;
-                        } else {
-                            app.ui_state.selected_audio_cue_id = Some(id);
-                            app.ui_state.selected_lighting_cue_id = None;
+            let (num_part, suffix) = split_cue_edit_suffix(num_str);
+            if !num_part.is_empty() {
+                if let Ok(num) = num_part.parse::<f32>() {
+                    let abs_idx = app.cue_list.cues().iter()
+                        .position(|c| (c.number - num).abs() < 0.005);
+                    if let Some(abs_idx) = abs_idx {
+                        let id = app.cue_list.get_cue(abs_idx).map(|c| c.id);
+                        if let Some(id) = id {
+                            app.select_cue(id);
+                            if let Some((field, secs)) = suffix {
+                                // Edit-only: don't move the play head or on-deck box.
+                                if let Some(secs) = secs {
+                                    app.set_lighting_fade_times(id, secs);
+                                }
+                                app.ui_state.focus_cue_edit = Some((id, field));
+                                app.ui_state.status_message = format!("Edit Q{:.1}", num);
+                            } else {
+                                // Plain q<num>: arm as on-deck (existing behaviour).
+                                let prev_idx = if abs_idx > 0 { Some(abs_idx - 1) } else { None };
+                                app.cue_list.set_current_index(prev_idx);
+                                app.ui_state.go_cue_input = format!("{:.1}", num);
+                            }
                         }
+                    } else {
+                        app.ui_state.status_message = format!("Cue {:.1} not found", num);
                     }
-                    app.ui_state.status_message = format!("On deck: Q{:.1}", num);
-                } else {
-                    app.ui_state.status_message = format!("Cue {:.1} not found", num);
                 }
-                app.ui_state.command_input.clear();
-                return;
             }
+            app.ui_state.command_input.clear();
+            return;
         }
     }
 

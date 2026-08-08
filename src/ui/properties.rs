@@ -4,8 +4,44 @@ use egui::Ui;
 use crate::app::EasyCueApp;
 use egui_phosphor::regular as ph;
 
+use egui::text_edit::TextEditOutput;
+
+/// Focus a `TextEdit` and select all of its text.
+/// Call this on the output of `TextEdit::show(ui)` after the widget has been
+/// rendered (egui's documented pattern for manipulating cursor/selection).
+fn focus_and_select_all(ctx: &egui::Context, output: &mut TextEditOutput, text_len: usize) {
+    output.response.request_focus();
+    let mut state = output.state.clone();
+    use egui::text::{CCursor, CCursorRange};
+    state.cursor.set_char_range(Some(CCursorRange::two(
+        CCursor::new(0),
+        CCursor::new(text_len),
+    )));
+    state.store(ctx, output.response.id);
+}
+
+/// Select all text in a `TextEdit` identified by `id`. Safe to call every frame;
+/// it only changes anything when there is a stored state to adjust.
+fn select_all_edit(ctx: &egui::Context, id: egui::Id, text_len: usize) {
+    if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+        use egui::text::{CCursor, CCursorRange};
+        state.cursor.set_char_range(Some(CCursorRange::two(
+            CCursor::new(0),
+            CCursor::new(text_len),
+        )));
+        egui::TextEdit::store_state(ctx, id, state);
+    }
+}
+
 /// Render cue properties for the selected cue.
 pub fn render_cue_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
+    // Drop stale field-focus requests that no longer match the selected cue
+    // (e.g. the operator moved the selection on after requesting an edit).
+    if let Some((fid, _)) = app.ui_state.focus_cue_edit {
+        if Some(fid) != app.ui_state.selected_cue_id {
+            app.ui_state.focus_cue_edit = None;
+        }
+    }
     if let Some(sel_id) = app.ui_state.selected_cue_id {
         let cue = app.cue_list.find_by_id(sel_id).cloned();
         if let Some(cue) = cue {
@@ -33,6 +69,53 @@ pub fn render_cue_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         ui.add_space(10.0);
         ui.label("Select a cue to view its properties");
     });
+}
+
+/// Confirmation modal for "Update from Stage". Rendered at the top level so it
+/// appears regardless of which cue is selected or which panel has focus.
+/// The "Update" button is the default (Enter confirms) — it is kept focused while
+/// the modal is open, and egui's `Response::clicked` treats Space/Enter on a
+/// focused button as a click.
+pub fn render_update_from_stage_modal(ctx: &egui::Context, app: &mut EasyCueApp) {
+    if let Some(upd_id) = app.ui_state.pending_update_cue_id {
+        if let Some(upd_idx) = app.cue_list.cues().iter().position(|c| c.id == upd_id) {
+            let upd_number = app.cue_list.get_cue(upd_idx).map(|c| c.number).unwrap_or(0.0);
+            let mut confirmed = false;
+            let mut cancelled = false;
+            egui::Modal::new(egui::Id::new("update_cue_confirm")).show(ctx, |ui| {
+                ui.set_min_width(300.0);
+                ui.heading("Update Cue from Stage?");
+                ui.add_space(6.0);
+                ui.label(format!("Overwrite Q{:.1} with the current live output?", upd_number));
+                ui.label(egui::RichText::new("The existing channel data will be replaced.").color(egui::Color32::from_rgb(200, 140, 60)));
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    let update_btn = ui.add(
+                        egui::Button::new(egui::RichText::new("Update").strong()),
+                    );
+                    if update_btn.clicked() {
+                        confirmed = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                    // Keep Update focused while the modal is open so Enter confirms.
+                    if !ui.memory(|m| m.has_focus(update_btn.id)) {
+                        update_btn.request_focus();
+                    }
+                });
+            });
+            if confirmed {
+                app.capture_stage_to_cue(upd_idx);
+                app.ui_state.pending_update_cue_id = None;
+            }
+            if cancelled {
+                app.ui_state.pending_update_cue_id = None;
+            }
+        } else {
+            app.ui_state.pending_update_cue_id = None;
+        }
+    }
 }
 
 /// Render instrument/channel properties for the current selection.
@@ -107,32 +190,83 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             // Label
             ui.label("Label:");
             let mut label = cue.label.clone();
-            if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            let label_id = egui::Id::new(("lx_cue_label", cue.id));
+            let pending_label = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
+            let mut label_output = egui::TextEdit::singleline(&mut label)
+                .id(label_id)
+                .desired_width(160.0)
+                .show(ui);
+            if label_output.response.changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label.clone(); }
+            }
+            if pending_label {
+                app.ui_state.focus_cue_edit = None;
+                focus_and_select_all(ui.ctx(), &mut label_output, label.len());
+            } else if label_output.response.gained_focus() {
+                select_all_edit(ui.ctx(), label_id, label.len());
             }
             ui.end_row();
 
-            // Fade times
+            // Fade times (editable text fields, committed on lost focus / Enter)
             let (fade_up, fade_down) = cue.lighting_data()
                 .map(|d| (d.fade_up, d.fade_down))
                 .unwrap_or((0.0, 0.0));
 
             // ui.label("Fade ↑:");
             ui.label(format!("Fade {}:", ph::ARROW_UP));
-            let mut fu = fade_up;
-            if ui.add(egui::DragValue::new(&mut fu).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.lighting_data_mut() { d.fade_up = fu; }
+            let fu_id = egui::Id::new(("lx_fade_up", cue.id));
+            let pending_fu = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::FadeUp));
+            // Sync the edit buffer from the cue unless the operator is typing in this field.
+            if pending_fu || !ui.memory(|m| m.has_focus(fu_id)) {
+                app.ui_state.fade_up_edit = format!("{:.1}", fade_up);
+            }
+            let mut fu = app.ui_state.fade_up_edit.clone();
+            let mut fu_output = egui::TextEdit::singleline(&mut fu)
+                .id(fu_id)
+                .desired_width(80.0)
+                .hint_text("secs")
+                .show(ui);
+            if fu_output.response.changed() {
+                app.ui_state.fade_up_edit = fu;
+            }
+            if fu_output.response.lost_focus() {
+                if let Ok(v) = app.ui_state.fade_up_edit.trim().parse::<f32>() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        if let Some(d) = c.lighting_data_mut() { d.fade_up = v.clamp(0.0, 30.0); }
+                    }
                 }
+            }
+            if pending_fu {
+                app.ui_state.focus_cue_edit = None;
+                focus_and_select_all(ui.ctx(), &mut fu_output, app.ui_state.fade_up_edit.len());
+            } else if fu_output.response.gained_focus() {
+                select_all_edit(ui.ctx(), fu_id, app.ui_state.fade_up_edit.len());
             }
             ui.end_row();
 
             ui.label(format!("Fade {}:", ph::ARROW_DOWN));
-            let mut fd = fade_down;
-            if ui.add(egui::DragValue::new(&mut fd).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.lighting_data_mut() { d.fade_down = fd; }
+            let fd_id = egui::Id::new(("lx_fade_down", cue.id));
+            if !ui.memory(|m| m.has_focus(fd_id)) {
+                app.ui_state.fade_down_edit = format!("{:.1}", fade_down);
+            }
+            let mut fd = app.ui_state.fade_down_edit.clone();
+            let fd_output = egui::TextEdit::singleline(&mut fd)
+                .id(fd_id)
+                .desired_width(80.0)
+                .hint_text("secs")
+                .show(ui);
+            if fd_output.response.changed() {
+                app.ui_state.fade_down_edit = fd;
+            }
+            if fd_output.response.lost_focus() {
+                if let Ok(v) = app.ui_state.fade_down_edit.trim().parse::<f32>() {
+                    if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                        if let Some(d) = c.lighting_data_mut() { d.fade_down = v.clamp(0.0, 30.0); }
+                    }
                 }
+            }
+            if fd_output.response.gained_focus() {
+                select_all_edit(ui.ctx(), fd_id, app.ui_state.fade_down_edit.len());
             }
             ui.end_row();
 
@@ -168,66 +302,6 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
     ui.add_space(6.0);
     if ui.button("Update from Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
         app.ui_state.pending_update_cue_id = Some(cue.id);
-    }
-
-    // ── Update from Stage confirmation modal ──────────────────────────────────
-    if let Some(upd_id) = app.ui_state.pending_update_cue_id {
-        if let Some(upd_idx) = app.cue_list.cues().iter().position(|c| c.id == upd_id) {
-            let upd_number = app.cue_list.get_cue(upd_idx).map(|c| c.number).unwrap_or(0.0);
-            let mut confirmed = false;
-            let mut cancelled = false;
-            egui::Modal::new(egui::Id::new("update_cue_confirm")).show(ui.ctx(), |ui| {
-                ui.set_min_width(300.0);
-                ui.heading("Update Cue from Stage?");
-                ui.add_space(6.0);
-                ui.label(format!("Overwrite Q{:.1} with the current live output?", upd_number));
-                ui.label(egui::RichText::new("The existing channel data will be replaced.").color(egui::Color32::from_rgb(200, 140, 60)));
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Update").clicked() {
-                        confirmed = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancelled = true;
-                    }
-                });
-            });
-            if confirmed {
-                let prev_tracked = if upd_idx > 0 {
-                    app.cue_list.tracked_state_up_to(upd_idx - 1)
-                } else {
-                    std::collections::HashMap::new()
-                };
-                let mut deltas: Vec<(u16, u8)> = Vec::new();
-                for (uni_idx, universe) in app.universes.iter().enumerate() {
-                    let universe_num = (uni_idx + 1) as u16;
-                    for ch in 1u16..=512 {
-                        if let Ok(live_val) = universe.get_channel(ch) {
-                            let key = crate::cue::universe_key(universe_num, ch);
-                            let tracked_val = prev_tracked.get(&key).copied().unwrap_or(0);
-                            if live_val != tracked_val {
-                                deltas.push((key, live_val));
-                            }
-                        }
-                    }
-                }
-                if let Some(c) = app.cue_list.get_cue_mut(upd_idx) {
-                    if let Some(d) = c.lighting_data_mut() {
-                        d.channel_values.clear();
-                        for (key, val) in deltas {
-                            d.channel_values.insert(key, val);
-                        }
-                    }
-                }
-                app.ui_state.status_message = format!("Captured stage to cue {:.1}", upd_number);
-                app.ui_state.pending_update_cue_id = None;
-            }
-            if cancelled {
-                app.ui_state.pending_update_cue_id = None;
-            }
-        } else {
-            app.ui_state.pending_update_cue_id = None;
-        }
     }
 
     render_cue_effect_actions(ui, app, cue, idx);
@@ -391,8 +465,20 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
             ui.label("Label:");
             let mut label = cue.label.clone();
-            if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            let label_id = egui::Id::new(("audio_cue_label", cue.id));
+            let pending_label = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
+            let mut label_output = egui::TextEdit::singleline(&mut label)
+                .id(label_id)
+                .desired_width(160.0)
+                .show(ui);
+            if label_output.response.changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label.clone(); }
+            }
+            if pending_label {
+                app.ui_state.focus_cue_edit = None;
+                focus_and_select_all(ui.ctx(), &mut label_output, label.len());
+            } else if label_output.response.gained_focus() {
+                select_all_edit(ui.ctx(), label_id, label.len());
             }
             ui.end_row();
 
@@ -614,8 +700,20 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
 
             ui.label("Label:");
             let mut label = cue.label.clone();
-            if ui.add(egui::TextEdit::singleline(&mut label).desired_width(160.0)).changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label; }
+            let label_id = egui::Id::new(("adjust_cue_label", cue.id));
+            let pending_label = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
+            let mut label_output = egui::TextEdit::singleline(&mut label)
+                .id(label_id)
+                .desired_width(160.0)
+                .show(ui);
+            if label_output.response.changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label.clone(); }
+            }
+            if pending_label {
+                app.ui_state.focus_cue_edit = None;
+                focus_and_select_all(ui.ctx(), &mut label_output, label.len());
+            } else if label_output.response.gained_focus() {
+                select_all_edit(ui.ctx(), label_id, label.len());
             }
             ui.end_row();
 
@@ -627,17 +725,19 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                     .unwrap_or_default();
             }
             let hint = if target_audio_cue.is_none() { "blank = all streams" } else { "cue number" };
-            let target_resp = ui.add(
-                egui::TextEdit::singleline(&mut app.ui_state.adjust_target_edit)
-                    .id(target_id)
-                    .desired_width(80.0)
-                    .hint_text(hint),
-            );
-            if target_resp.lost_focus() {
+            let target_output = egui::TextEdit::singleline(&mut app.ui_state.adjust_target_edit)
+                .id(target_id)
+                .desired_width(80.0)
+                .hint_text(hint)
+                .show(ui);
+            if target_output.response.lost_focus() {
                 let parsed = app.ui_state.adjust_target_edit.trim().parse::<f32>().ok();
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
                     if let Some(d) = c.adjust_data_mut() { d.target_audio_cue = parsed; }
                 }
+            }
+            if target_output.response.gained_focus() {
+                select_all_edit(ui.ctx(), target_id, app.ui_state.adjust_target_edit.len());
             }
             ui.end_row();
 

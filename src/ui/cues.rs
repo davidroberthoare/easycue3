@@ -236,8 +236,16 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         // Edit actions
         if ui.button(format!("{} LX", ph::PLUS)).on_hover_text("Record a lighting cue from the current live output").clicked() {
             let id = app.record_cue();
-            app.ui_state.selected_cue_id = Some(id);
-            app.ui_state.selected_lighting_cue_id = Some(id);
+            // Jump into the new cue as the actively running cue.
+            if let Some(idx) = app.cue_list.cues().iter().position(|c| c.id == id) {
+                app.jump_to_cue(idx);
+            }
+            // go_to_cue clears the selection; re-select so the properties panel shows it.
+            app.select_cue(id);
+            // There is no cue after the newest one — blank the on-deck box.
+            app.ui_state.go_cue_input.clear();
+            // Activate the new cue's label field so the operator can rename it.
+            app.ui_state.focus_cue_edit = Some((id, crate::app::CueEditField::Label));
         }
 
 

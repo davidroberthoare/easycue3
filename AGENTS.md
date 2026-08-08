@@ -12,6 +12,9 @@ cargo test                             # unit tests for effects, cue serde, fixt
 cargo fmt && cargo clippy
 ```
 
+## IMPORTANT NOTE: 
+to save context tokens, I'll run manual tests myself. You can stop after doing a cargo check for obvious code errors.
+
 - `cargo test` has one pre-existing failure: `enttec_usb_pro::tests::test_protocol_message_format`. Unrelated to app logic — don't chase it.
 - Releasing: GitHub Action `.github/workflows/release.yml` builds on tag `v*` (with `--no-default-features --features audio,usb`) and packages `media`, `shows`, `fixture_profiles/` alongside the binary.
 

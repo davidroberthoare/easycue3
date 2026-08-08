@@ -1188,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "easycue3"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "anyhow",
  "artnet_protocol",
