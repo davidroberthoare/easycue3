@@ -1221,6 +1221,7 @@ impl EasyCueApp {
             self.ui_state.go_cue_input.clear();
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("GO → cue {:.1} '{}'", cue.number, cue.label);
+            self.follow_cue_in_script_view(cue.id);
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
                 self.autofollow_timer = Some((std::time::Instant::now(), delay));
                 log::info!("  autofollow armed: {:.1}s", delay);
@@ -1256,6 +1257,7 @@ impl EasyCueApp {
         if fired {
             self.cue_list.set_current_index(Some(prev_idx));
             log::info!("BACK → cue {:.1} '{}'", cue.number, cue.label);
+            self.follow_cue_in_script_view(cue.id);
         }
         fired
     }
@@ -1351,6 +1353,7 @@ impl EasyCueApp {
             self.ui_state.selected_cue_id = None;
             self.cue_list.set_current_index(Some(abs_idx));
             log::info!("GO→ cue {:.1} '{}'", cue.number, cue.label);
+            self.follow_cue_in_script_view(cue.id);
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
                 self.autofollow_timer = Some((std::time::Instant::now(), delay));
                 log::info!("  autofollow armed: {:.1}s", delay);
@@ -1401,6 +1404,32 @@ impl EasyCueApp {
             self.ui_state.status_message = format!("Script marker: cue #{} not found", cue_id);
             log::warn!("Script marker references missing cue #{}", cue_id);
             false
+        }
+    }
+
+    /// If the fired cue has a script-viewer marker, record it as the pending
+    /// focus target. The panel decides whether to actually jump (it skips the
+    /// jump if the marker is already visible on screen). Called after any cue
+    /// fires (GO / BACK / goto / autofollow), so a running board op always
+    /// sees where in the script the show is.
+    fn follow_cue_in_script_view(&mut self, cue_id: u32) {
+        if !self.script_viewer.is_loaded() {
+            return;
+        }
+        let marker = self
+            .script_viewer
+            .data
+            .markers
+            .iter()
+            .find(|m| m.cue_id == cue_id)
+            .copied();
+        if let Some(m) = marker {
+            self.script_viewer.pending_focus = Some((m.page_index, m.x, m.y));
+            log::debug!(
+                "[scriptviewer] cue #{} has marker on page {} — pending focus",
+                cue_id,
+                m.page_index + 1
+            );
         }
     }
 

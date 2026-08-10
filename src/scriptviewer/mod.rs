@@ -177,6 +177,14 @@ pub struct ScriptViewer {
 
     /// Timestamp of the last re-rasterization (debounces zoom refinement).
     last_refine: Option<Instant>,
+    /// Pending "bring this point into view" target `(page, x, y)` in PDF
+    /// points, set when a cue fires elsewhere. Applied on the next panel frame
+    /// once that page is rasterized, so the pan is computed from real pixel
+    /// dimensions. `None` = nothing pending.
+    pub pending_focus: Option<(usize, f32, f32)>,
+    /// True when the Fit button was pressed; the next panel frame recomputes
+    /// zoom/pan so the whole current page fills the canvas.
+    pub pending_fit: bool,
     /// Last error message from a PDF load / rasterization attempt.
     pub error: Option<String>,
 }
@@ -199,6 +207,8 @@ impl Default for ScriptViewer {
             popup_new_kind: NewCueKind::Lighting,
             popup_existing_cue: None,
             last_refine: None,
+            pending_focus: None,
+            pending_fit: false,
             error: None,
         }
     }
@@ -251,6 +261,8 @@ impl ScriptViewer {
         self.pending_add = None;
         self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
+        self.pending_focus = None;
+        self.pending_fit = false;
 
         let document = pdfium.load_pdf_from_file(path, None)?;
         self.page_count = document.pages().len() as usize;
@@ -298,6 +310,8 @@ impl ScriptViewer {
         self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
         self.last_refine = None;
+        self.pending_focus = None;
+        self.pending_fit = false;
         self.error = None;
     }
 

@@ -11,12 +11,15 @@
 //! Marker coordinates are stored in PDF point space; the screen↔page transform
 //! is recomputed here on every frame from the current zoom/pan.
 
-use crate::app::EasyCueApp;
+use crate::app::{EasyCueApp, TabKind};
 use crate::scriptviewer::{CueMarker, NewCueKind, PendingMarker};
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 /// Hit radius (screen px) for marker selection/clicking.
-const MARKER_RADIUS_PX: f32 = 10.0;
+const MARKER_RADIUS_PX: f32 = 14.0;
+/// Zoom clamp bounds (also used by the +/- buttons and scroll zoom).
+const MIN_ZOOM: f32 = 0.05;
+const MAX_ZOOM: f32 = 8.0;
 
 /// Entry point called by the tab viewer.
 pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
@@ -103,19 +106,18 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
             ui.separator();
             if ui.small_button("−").clicked() {
-                app.script_viewer.zoom = (app.script_viewer.zoom * 0.8).max(0.1);
+                app.script_viewer.zoom = (app.script_viewer.zoom * 0.8).max(MIN_ZOOM);
             }
             ui.label(format!("{:>3.0}%", app.script_viewer.zoom * 100.0));
             if ui.small_button("+").clicked() {
-                app.script_viewer.zoom = (app.script_viewer.zoom * 1.25).min(8.0);
+                app.script_viewer.zoom = (app.script_viewer.zoom * 1.25).min(MAX_ZOOM);
             }
             if ui
                 .small_button("⟲ Fit")
-                .on_hover_text("Reset zoom & pan")
+                .on_hover_text("Fit whole page in view")
                 .clicked()
             {
-                app.script_viewer.zoom = 1.0;
-                app.script_viewer.pan = Vec2::ZERO;
+                app.script_viewer.pending_fit = true;
             }
         });
 
@@ -183,9 +185,102 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             None => return,
         }
     };
+
+    // ── Apply the Fit button: fit the whole page into the canvas, centred ────
+    if app.script_viewer.pending_fit {
+        let scale = (canvas_rect.width() / width_pts).min(canvas_rect.height() / height_pts);
+        app.script_viewer.zoom = (scale * width_pts / w_px as f32).clamp(MIN_ZOOM, MAX_ZOOM);
+        let disp_w = w_px as f32 * app.script_viewer.zoom;
+        let disp_h = disp_w * (height_pts / width_pts);
+        app.script_viewer.pan = egui::vec2(
+            (canvas_rect.width() - disp_w) * 0.5,
+            (canvas_rect.height() - disp_h) * 0.5,
+        );
+        app.script_viewer.pending_fit = false;
+    }
+
+    // ── Apply a pending "bring marker into view" focus ───────────────────────
+    // Set when a cue fires elsewhere. Only jumps when the marker is NOT already
+    // visible on screen; on the same page it recentres only when panned away.
+    if let Some((fpage, fx, fy)) = app.script_viewer.pending_focus {
+        if fpage != app.script_viewer.current_page {
+            // Marker is on another page — must jump there. `page_changed` above
+            // already ran for the old page, so it rasterizes next frame and the
+            // focus is re-evaluated then.
+            app.script_viewer.current_page = fpage;
+        } else {
+            let scale_here = w_px as f32 * app.script_viewer.zoom / width_pts;
+            let screen_pos = Pos2::new(
+                canvas_rect.min.x + app.script_viewer.pan.x + fx * scale_here,
+                canvas_rect.min.y + app.script_viewer.pan.y + fy * scale_here,
+            );
+            if canvas_rect.contains(screen_pos) {
+                app.script_viewer.pending_focus = None; // already visible — no jump
+            } else {
+                app.script_viewer.pan = egui::vec2(
+                    canvas_rect.width() * 0.5 - fx * scale_here,
+                    canvas_rect.height() * 0.5 - fy * scale_here,
+                );
+                app.script_viewer.pending_focus = None;
+            }
+        }
+    }
+
+    // ── Pan & zoom input ─────────────────────────────────────────────────────
+    // Plain scroll (vertical or horizontal) pans the view; Ctrl/Cmd+scroll
+    // zooms. Note: egui routes Ctrl+scroll into `zoom_delta()` (a multiplicative
+    // factor), NOT into `smooth_scroll_delta`, so that's what we read here.
+    let shift_held = ui.input(|i| i.modifiers.shift);
+    if canvas_response.dragged_by(egui::PointerButton::Middle)
+        || canvas_response.dragged_by(egui::PointerButton::Secondary)
+        || (canvas_response.dragged_by(egui::PointerButton::Primary) && shift_held)
+    {
+        app.script_viewer.pan += canvas_response.drag_delta();
+    }
+
+    let (scroll_delta, ctrl_zoom) = ui.input(|i| {
+        if i.modifiers.ctrl || i.modifiers.command {
+            (Vec2::ZERO, i.zoom_delta())
+        } else {
+            (i.smooth_scroll_delta, 1.0)
+        }
+    });
+    let pointer_over_canvas =
+        canvas_rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default()));
+    if pointer_over_canvas {
+        if ctrl_zoom != 1.0 {
+            app.script_viewer.zoom = (app.script_viewer.zoom * ctrl_zoom).clamp(MIN_ZOOM, MAX_ZOOM);
+        }
+        if scroll_delta != Vec2::ZERO {
+            app.script_viewer.pan += scroll_delta;
+        }
+    }
+
+    // ── Keyboard page navigation (only when this panel is the active one) ────
+    // Left/Right and PageUp/PageDown step through pages.
+    let panel_active = app.ui_state.active_pane == Some(TabKind::ScriptViewer);
+    let text_focused = ui.memory(|m| m.focused().is_some());
+    if panel_active && !text_focused {
+        let (left, right, page_up, page_down) = ui.input(|i| {
+            (
+                i.key_pressed(egui::Key::ArrowLeft),
+                i.key_pressed(egui::Key::ArrowRight),
+                i.key_pressed(egui::Key::PageUp),
+                i.key_pressed(egui::Key::PageDown),
+            )
+        });
+        if right || page_down {
+            let next = (app.script_viewer.current_page + 1).min(page_count.saturating_sub(1));
+            app.script_viewer.current_page = next;
+        }
+        if left || page_up {
+            app.script_viewer.current_page = app.script_viewer.current_page.saturating_sub(1);
+        }
+    }
+
+    // ── Draw the page (after all view mutations so the frame is consistent) ──
     let zoom = app.script_viewer.zoom;
     let pan = app.script_viewer.pan;
-
     let w = w_px as f32 * zoom;
     let h = w * (height_pts / width_pts);
     let page_rect = Rect::from_min_size(canvas_rect.min + pan, Vec2::new(w, h));
@@ -204,32 +299,6 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         Stroke::new(1.0, Color32::from_rgb(60, 90, 130)),
         egui::epaint::StrokeKind::Outside,
     );
-
-    // ── Pan & zoom input (mirrors the magic sheet canvas) ────────────────────
-    let shift_held = ui.input(|i| i.modifiers.shift);
-    if canvas_response.dragged_by(egui::PointerButton::Middle)
-        || canvas_response.dragged_by(egui::PointerButton::Secondary)
-        || (canvas_response.dragged_by(egui::PointerButton::Primary) && shift_held)
-    {
-        app.script_viewer.pan += canvas_response.drag_delta();
-    }
-
-    let (pan_delta, zoom_delta) = ui.input(|i| {
-        if i.modifiers.shift {
-            (i.smooth_scroll_delta, 0.0f32)
-        } else {
-            (Vec2::ZERO, i.smooth_scroll_delta.y)
-        }
-    });
-    if canvas_rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
-        if zoom_delta != 0.0 {
-            app.script_viewer.zoom =
-                (app.script_viewer.zoom * (1.0 + zoom_delta * 0.001)).clamp(0.1, 8.0);
-        }
-        if pan_delta != Vec2::ZERO {
-            app.script_viewer.pan += pan_delta;
-        }
-    }
 
     // ── Coordinate transforms (PDF points ↔ screen) — closures capture only
     //    copied locals, never `app`, so mutation elsewhere is unconstrained.
@@ -274,7 +343,7 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
 
-        // Double-click empty space → add-cue popup; single click → select.
+        // Double-click empty space → add-cue popup.
         if canvas_response.double_clicked() && !shift_held {
             if let Some(pos) = canvas_response.interact_pointer_pos() {
                 if hit_marker(app, current_page, pos, &to_screen).is_none() {
@@ -286,9 +355,27 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     });
                 }
             }
-        } else if canvas_response.clicked_by(egui::PointerButton::Primary) && !shift_held {
+        }
+        // Single click: select the marker (and its cue in the cue list), or
+        // click the background to deselect everything.
+        if canvas_response.clicked_by(egui::PointerButton::Primary) && !shift_held {
             if let Some(pos) = canvas_response.interact_pointer_pos() {
-                app.script_viewer.selected_marker = hit_marker(app, current_page, pos, &to_screen);
+                match hit_marker(app, current_page, pos, &to_screen) {
+                    Some(idx) => {
+                        app.script_viewer.selected_marker = Some(idx);
+                        if let Some(cue_id) =
+                            app.script_viewer.data.markers.get(idx).map(|m| m.cue_id)
+                        {
+                            app.select_cue(cue_id);
+                        }
+                    }
+                    None => {
+                        app.script_viewer.selected_marker = None;
+                        app.ui_state.selected_cue_id = None;
+                        app.ui_state.selected_lighting_cue_id = None;
+                        app.ui_state.selected_audio_cue_id = None;
+                    }
+                }
             }
         }
 
@@ -345,6 +432,10 @@ fn draw_markers(
     current_page: usize,
     to_screen: &dyn Fn(f32, f32) -> Pos2,
 ) {
+    // The marker whose cue is selected in the cue list (highlights regardless of
+    // which panel initiated the selection, so all three views stay linked).
+    let selected_cue = app.ui_state.selected_cue_id;
+
     // Collect this page's markers with their screen positions.
     let markers: Vec<(usize, &CueMarker, Pos2)> = app
         .script_viewer
@@ -356,65 +447,141 @@ fn draw_markers(
         .map(|(idx, m)| (idx, m, to_screen(m.x, m.y)))
         .collect();
 
-    // Colour by cue type using the user's cue colour settings.
+    // Colour by live cue status (fading/active/on-deck) falling back to the
+    // kind's base colour, matching the cue list. Missing cues render grey.
     for (idx, marker, pos) in &markers {
         let (fill, text) = marker_color(app, marker.cue_id);
-        let is_selected =
-            app.script_viewer.edit_mode && app.script_viewer.selected_marker == Some(*idx);
+        let is_selected = app.script_viewer.edit_mode
+            && (app.script_viewer.selected_marker == Some(*idx)
+                || selected_cue == Some(marker.cue_id));
 
         // Visible ring slightly smaller than the (invisible) hit radius.
         let r = if is_selected {
-            MARKER_RADIUS_PX + 3.0
+            MARKER_RADIUS_PX + 4.0
         } else {
             MARKER_RADIUS_PX
         };
-        painter.circle_filled(*pos, r, Color32::from_black_alpha(140));
-        painter.circle_filled(*pos, r - 2.0, fill);
+        painter.circle_filled(*pos, r, Color32::from_black_alpha(150));
+        painter.circle_filled(*pos, r - 3.0, fill);
         painter.circle_stroke(
             *pos,
-            r - 2.0,
+            r - 3.0,
             Stroke::new(if is_selected { 2.5 } else { 1.5 }, text),
         );
 
-        // Cue number label to the right, with a backdrop for legibility.
+        // "2.0: Label" text to the right, vertically centred on the dot.
         let label = cue_short_label(app, marker.cue_id);
-        let label_pos = Pos2::new(pos.x + r + 2.0, pos.y);
         let galley = painter.layout_no_wrap(label, egui::FontId::proportional(12.0), text);
+        let pad = Vec2::new(5.0, 2.5);
+        let label_tl = Pos2::new(pos.x + r + 3.0, pos.y - galley.size().y / 2.0);
         painter.rect_filled(
-            Rect::from_min_size(
-                label_pos + Vec2::new(-2.0, -galley.size().y / 2.0 - 1.0),
-                galley.size() + Vec2::new(4.0, 2.0),
-            ),
-            2.0,
+            Rect::from_min_size(label_tl - pad, galley.size() + pad * 2.0),
+            3.0,
             Color32::from_black_alpha(120),
         );
-        painter.galley(label_pos, galley, text);
+        painter.galley(label_tl, galley, text);
     }
 }
 
-/// Fill + text colour for a marker, colour-coded by cue type (reuses the user's
-/// cue colour settings). Missing cues render grey so the operator can spot them.
+/// Fill + text colour for a marker, driven by the linked cue's live status:
+/// fading → `status_fading`, active → `status_active`, on-deck → `status_on_deck`,
+/// otherwise the cue kind's base colour — mirroring the Cue list rows. Missing
+/// cues render grey so the operator can spot them.
 fn marker_color(app: &EasyCueApp, cue_id: u32) -> (Color32, Color32) {
     use crate::app::EasyCueApp as App;
-    let base = match app.cue_list.find_by_id(cue_id) {
-        None => Color32::from_rgb(90, 90, 100),
-        Some(c) => match c.kind {
-            crate::cue::CueKind::Lighting(_) => {
-                App::color32_from_rgba(app.cue_colors.base_lighting)
-            }
-            #[cfg(feature = "audio")]
-            crate::cue::CueKind::Audio(_) => App::color32_from_rgba(app.cue_colors.base_audio),
-            #[cfg(feature = "audio")]
-            crate::cue::CueKind::Adjust(_) => App::color32_from_rgba(app.cue_colors.base_adjust),
-        },
+
+    let abs_idx = app.cue_list.cues().iter().position(|c| c.id == cue_id);
+    let Some(abs_idx) = abs_idx else {
+        return (Color32::from_rgb(90, 90, 100), Color32::WHITE);
     };
-    (base, Color32::WHITE)
+    let cue = app.cue_list.get_cue(abs_idx).expect("index just found");
+
+    let is_lighting = cue.is_lighting();
+    #[cfg(feature = "audio")]
+    let is_audio = cue.is_audio();
+    #[cfg(feature = "audio")]
+    let is_adjust = cue.is_adjust();
+
+    // Lighting: active while it's the play-head cue; fading while a fade runs.
+    let lx_active_id = app.playback.current_cue_id();
+    let is_lx_active = lx_active_id == Some(cue_id) && is_lighting;
+    let is_lx_fading = is_lx_active && app.playback.fade_progress().is_some();
+
+    // Audio: active while its stream plays; fading during in/out fades.
+    #[cfg(feature = "audio")]
+    let is_audio_active = is_audio && app.audio_playback.active_cue_ids().contains(&cue_id);
+    #[cfg(not(feature = "audio"))]
+    let is_audio_active = false;
+    #[cfg(feature = "audio")]
+    let is_audio_fading = is_audio_active
+        && matches!(
+            app.audio_playback.stream_state(cue_id),
+            Some(
+                crate::audio::AudioCueState::FadingIn { .. }
+                    | crate::audio::AudioCueState::FadingOut { .. }
+            )
+        );
+    #[cfg(not(feature = "audio"))]
+    let is_audio_fading = false;
+
+    // Adjust: active while its targeted stream has a per-route fade in progress.
+    #[cfg(feature = "audio")]
+    let is_adjust_active = if is_adjust && app.cue_list.current_index() == Some(abs_idx) {
+        cue.adjust_data()
+            .and_then(|d| {
+                let target_id = d
+                    .target_audio_cue
+                    .and_then(|n| {
+                        app.cue_list
+                            .cues()
+                            .iter()
+                            .find(|c| (c.number - n).abs() < 0.005)
+                            .map(|c| c.id)
+                    })
+                    .unwrap_or(0);
+                app.audio_playback.volume_adjust_progress(target_id)
+            })
+            .is_some()
+    } else {
+        false
+    };
+    #[cfg(not(feature = "audio"))]
+    let is_adjust_active = false;
+
+    let is_active = is_lx_active || is_audio_active || is_adjust_active;
+    let is_fading = is_lx_fading || is_audio_fading || is_adjust_active;
+    let is_on_deck = app.cue_list.next_any_index() == Some(abs_idx);
+
+    let base = match cue.kind {
+        crate::cue::CueKind::Lighting(_) => App::color32_from_rgba(app.cue_colors.base_lighting),
+        #[cfg(feature = "audio")]
+        crate::cue::CueKind::Audio(_) => App::color32_from_rgba(app.cue_colors.base_audio),
+        #[cfg(feature = "audio")]
+        crate::cue::CueKind::Adjust(_) => App::color32_from_rgba(app.cue_colors.base_adjust),
+    };
+    let fill = if is_fading {
+        App::color32_from_rgba(app.cue_colors.status_fading)
+    } else if is_active {
+        App::color32_from_rgba(app.cue_colors.status_active)
+    } else if is_on_deck {
+        App::color32_from_rgba(app.cue_colors.status_on_deck)
+    } else {
+        base
+    };
+    (fill, Color32::WHITE)
 }
 
-/// "Q12.3" style short label for a marker, or a missing-cue hint.
+/// "2.0: Label" text for a marker (label omitted when empty), or a missing-cue
+/// hint.
 fn cue_short_label(app: &EasyCueApp, cue_id: u32) -> String {
     match app.cue_list.find_by_id(cue_id) {
-        Some(c) => format!("{:.1}", c.number),
+        Some(c) => {
+            if c.label.is_empty() {
+                format!("{:.1}", c.number)
+            } else {
+                format!("{:.1}: {}", c.number, c.label)
+            }
+        }
         None => "?".to_string(),
     }
 }
@@ -484,9 +651,6 @@ fn render_marker_editor_strip(ui: &mut Ui, app: &mut EasyCueApp) {
                 app.script_viewer.remove_marker(midx);
                 app.script_viewer.selected_marker = None;
                 app.ui_state.status_message = "Marker deleted".to_string();
-            }
-            if ui.button("Deselect").clicked() {
-                app.script_viewer.selected_marker = None;
             }
         });
     });

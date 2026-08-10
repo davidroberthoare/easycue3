@@ -14,10 +14,22 @@ Working first pass, feature-complete against the spec:
 - ✅ Click to select, drag to move, Delete to remove markers
 - ✅ Marker reassignment via combo in the edit strip
 - ✅ Click marker in Playback mode → fires the linked cue (GO behaviour)
-- ✅ Zoom (scroll + buttons) / pan (middle/right/shift-drag), fit reset
+- ✅ Zoom (Ctrl/Cmd+scroll + buttons) / pan (scroll, or middle/right/shift-drag)
+- ✅ "⟲ Fit" fits the whole current page into the canvas, centred
 - ✅ Zoom-out re-rasterization at higher resolution (debounced)
 - ✅ Persistence in the show file (`ShowFile::script_viewer`)
 - ✅ Lazy PDF load from the show file on panel open
+- ✅ Marker dots colour-coded by **live cue status** (fading / active / on-deck
+  → the `CueColorSettings` status colours, else the cue kind's base colour),
+  mirroring the Cue list rows
+- ✅ Selection is **linked across all three views**: clicking a dot selects the
+  cue in the Cue list (+ Cue Properties); selecting in the Cue list highlights
+  the matching marker. Background click deselects everything.
+- ✅ Dot labels read `2.0: Label` (label omitted when empty)
+- ✅ Left/Right + PageUp/PageDown step through pages while the panel is active
+- ✅ Firing a cue anywhere (GO/BACK/goto/autofollow) brings its marker into
+  view — **unless it is already visible on screen** (no jump). Jumping to a
+  different page always re-centres the marker.
 
 ## Files
 
@@ -120,3 +132,5 @@ is pre-existing).
   grey "?" and can be relinked/deleted in Edit mode).
 - The add-cue popup is centered rather than anchored to the click point.
 - Playback "click = fire" is by design (no select-without-fire mode).
+- Scroll-over-canvas panning relies on egui's `smooth_scroll_delta` reaching the
+  panel (the tab's scroll area has no overflow, so events pass through).
