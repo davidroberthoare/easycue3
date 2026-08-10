@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-08-10T21:48:15.731497815+00:00",
+  "created": "2026-08-10T22:03:11.540937584+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -1836,6 +1836,102 @@
       "label": "restore to scene with Glen",
       "number": 149.0,
       "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 184,
+      "label": "transition",
+      "number": 150.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 185,
+      "label": "bedroom scene",
+      "number": 151.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 186,
+      "label": "song light",
+      "number": 152.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 187,
+      "label": "col change",
+      "number": 153.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 188,
+      "label": "outdoor scene light",
+      "number": 154.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 189,
+      "label": "at the door",
+      "number": 155.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 190,
+      "label": "restore bedroom",
+      "number": 156.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 191,
+      "label": "transition",
+      "number": 157.0,
+      "type": "Lighting"
     }
   ],
   "description": "",
@@ -2354,8 +2450,8 @@
       }
     ]
   },
-  "modified": "2026-08-10T21:48:15.731872027+00:00",
-  "next_cue_id": 184,
+  "modified": "2026-08-10T22:03:11.541470082+00:00",
+  "next_cue_id": 192,
   "next_effect_id": 1,
   "patch": [
     {
@@ -2526,8 +2622,8 @@
       {
         "cue_id": 41,
         "page_index": 0,
-        "x": 276.7855224609375,
-        "y": 313.38946533203125
+        "x": 283.20849609375,
+        "y": 312.5079650878906
       },
       {
         "cue_id": 42,
@@ -3368,6 +3464,54 @@
         "page_index": 79,
         "x": 315.18408203125,
         "y": 387.1938171386719
+      },
+      {
+        "cue_id": 184,
+        "page_index": 80,
+        "x": 269.67791748046875,
+        "y": 258.65496826171875
+      },
+      {
+        "cue_id": 185,
+        "page_index": 80,
+        "x": 249.74270629882812,
+        "y": 359.6759338378906
+      },
+      {
+        "cue_id": 186,
+        "page_index": 80,
+        "x": 269.1069030761719,
+        "y": 501.5585632324219
+      },
+      {
+        "cue_id": 187,
+        "page_index": 81,
+        "x": 337.4190979003906,
+        "y": 213.15098571777344
+      },
+      {
+        "cue_id": 188,
+        "page_index": 82,
+        "x": 262.0705261230469,
+        "y": 134.18943786621094
+      },
+      {
+        "cue_id": 189,
+        "page_index": 82,
+        "x": 239.81771850585938,
+        "y": 441.0202941894531
+      },
+      {
+        "cue_id": 190,
+        "page_index": 83,
+        "x": 280.7663879394531,
+        "y": 310.54193115234375
+      },
+      {
+        "cue_id": 191,
+        "page_index": 84,
+        "x": 202.32212829589844,
+        "y": 374.1307373046875
       }
     ],
     "pdf_path": "/mnt/data/DRH_GDRIVE/projects/Wedding_Singer/script/the-wedding-singer.pdf"

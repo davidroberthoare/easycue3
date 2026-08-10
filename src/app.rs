@@ -367,6 +367,8 @@ pub struct EasyCueApp {
     startup_had_saved_dmx_backend: bool,
     /// Script-viewer zoom to restore on launch / show / New Show (persisted).
     script_viewer_zoom: f32,
+    /// Script-viewer dark mode (inverted page) to restore on launch (persisted).
+    script_viewer_dark_mode: bool,
 
     /// Result of the most recent "check for updates" call (never persisted).
     pub update_state: crate::update::UpdateCheckState,
@@ -603,6 +605,9 @@ impl EasyCueApp {
             .and_then(|storage| eframe::get_value::<f32>(storage, "script_viewer_zoom"))
             .unwrap_or(1.0)
             .clamp(0.05, 8.0);
+        let script_viewer_dark_mode: bool = cc.storage
+            .and_then(|storage| eframe::get_value::<bool>(storage, "script_viewer_dark_mode"))
+            .unwrap_or(false);
 
         let mut app = Self {
             universes,
@@ -643,11 +648,13 @@ impl EasyCueApp {
             last_persisted_dmx_backend: saved_dmx_backend.unwrap_or_default(),
             startup_had_saved_dmx_backend: had_saved_dmx_backend,
             script_viewer_zoom,
+            script_viewer_dark_mode,
             update_state: crate::update::UpdateCheckState::Unknown,
             update_check_rx: None,
             last_update_check,
         };
         app.script_viewer.zoom = script_viewer_zoom;
+        app.script_viewer.dark_mode = script_viewer_dark_mode;
 
         app.restore_startup_dmx_backend();
 
@@ -2128,6 +2135,7 @@ impl eframe::App for EasyCueApp {
         if self.current_file_path != self.last_persisted_file_path
             || self.preferred_dmx_backend != self.last_persisted_dmx_backend
             || (self.script_viewer.zoom - self.script_viewer_zoom).abs() > 0.001
+            || self.script_viewer.dark_mode != self.script_viewer_dark_mode
             || remote_settings_dirty
         {
             if let Some(storage) = frame.storage_mut() {
@@ -2140,6 +2148,7 @@ impl eframe::App for EasyCueApp {
                 self.last_persisted_file_path = self.current_file_path.clone();
                 self.last_persisted_dmx_backend = self.preferred_dmx_backend.clone();
                 self.script_viewer_zoom = self.script_viewer.zoom;
+                self.script_viewer_dark_mode = self.script_viewer.dark_mode;
                 #[cfg(feature = "remote")]
                 {
                     self.last_persisted_remote_settings = self.remote_settings.clone();
@@ -2163,6 +2172,7 @@ impl eframe::App for EasyCueApp {
         eframe::set_value(storage, "dock_state", &self.dock_state);
         eframe::set_value(storage, "preferred_dmx_backend", &self.preferred_dmx_backend);
         eframe::set_value(storage, "script_viewer_zoom", &self.script_viewer.zoom);
+        eframe::set_value(storage, "script_viewer_dark_mode", &self.script_viewer.dark_mode);
         #[cfg(feature = "remote")]
         eframe::set_value(storage, "remote_settings", &self.remote_settings);
         eframe::set_value(storage, "last_update_check", &self.last_update_check);

@@ -84,6 +84,13 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 "Playback mode: click a marker to fire its cue".to_string()
             };
         }
+
+        // Dark mode: invert the page (white text on black). Re-rasterizes the
+        // current page on toggle; the setting persists alongside the zoom.
+        let mut dark = app.script_viewer.dark_mode;
+        if ui.toggle_value(&mut dark, "🌙 Dark").on_hover_text("Invert the script page").changed() {
+            app.script_viewer.set_dark_mode(dark, ui.ctx());
+        }
         ui.separator();
 
         // Page navigation + zoom.
@@ -494,10 +501,17 @@ fn draw_markers(
         let galley = painter.layout_no_wrap(label, egui::FontId::proportional(12.0), text);
         let pad = Vec2::new(5.0, 2.5);
         let label_tl = Pos2::new(pos.x + r + 3.0, pos.y - galley.size().y / 2.0);
+        // In dark mode the page is black, so give the pill a near-opaque dark
+        // grey (#222) instead of the translucent black used on a white page.
+        let pill_color = if app.script_viewer.dark_mode {
+            Color32::from_rgba_unmultiplied(70, 70, 70, 225)
+        } else {
+            Color32::from_black_alpha(120)
+        };
         painter.rect_filled(
             Rect::from_min_size(label_tl - pad, galley.size() + pad * 2.0),
             3.0,
-            Color32::from_black_alpha(120),
+            pill_color,
         );
         painter.galley(label_tl, galley, text);
     }

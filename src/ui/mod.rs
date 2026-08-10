@@ -392,8 +392,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.ui_state.selected_lighting_cue_id = None;
                     app.ui_state.selected_audio_cue_id = None;
                     let script_zoom = app.script_viewer.zoom;
+                    let script_dark = app.script_viewer.dark_mode;
                     app.script_viewer = crate::scriptviewer::ScriptViewer::default();
                     app.script_viewer.zoom = script_zoom;
+                    app.script_viewer.dark_mode = script_dark;
                     app.ui_state.selected_channels.clear();
                     app.ui_state.channel_base_levels.clear();
                     app.ui_state.group_master = 100;

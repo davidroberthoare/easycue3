@@ -173,6 +173,9 @@ pub struct ScriptViewer {
     /// View state.
     pub zoom: f32,
     pub pan: egui::Vec2,
+    /// Invert the rendered page (white text on black) — a persisted UI preference,
+    /// applied at rasterization time by flipping the page's RGB bytes.
+    pub dark_mode: bool,
     /// Screen-y of the canvas top on the last rendered frame. Used to compensate
     /// `pan.y` when the canvas shifts vertically (e.g. the marker-editor strip
     /// appearing/disappearing above it), so page content — and a just-placed
@@ -222,6 +225,7 @@ impl Default for ScriptViewer {
             current_page: 0,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
+            dark_mode: false,
             last_canvas_top: None,
             edit_mode: false,
             selected_marker: None,
@@ -398,7 +402,7 @@ impl ScriptViewer {
                 .render_form_data(true)
                 .render_annotations(true),
         )?;
-        let img = upload_bitmap(ctx, bitmap, index, width_pts, height_pts)?;
+        let img = upload_bitmap(ctx, bitmap, index, width_pts, height_pts, self.dark_mode)?;
         self.pages[index] = Some(img);
         Ok(())
     }
@@ -450,7 +454,14 @@ impl ScriptViewer {
                 return;
             }
         };
-        match upload_bitmap(ctx, bitmap, self.current_page, width_pts, height_pts) {
+        match upload_bitmap(
+            ctx,
+            bitmap,
+            self.current_page,
+            width_pts,
+            height_pts,
+            self.dark_mode,
+        ) {
             Ok(img) => {
                 self.pages[self.current_page] = Some(img);
                 self.last_refine = Some(Instant::now());
@@ -469,6 +480,20 @@ impl ScriptViewer {
         if let Err(e) = self.ensure_pages_rendered(ctx) {
             self.error = Some(format!("Page rasterization failed: {}", e));
             log::warn!("[scriptviewer] {}", self.error.as_deref().unwrap_or(""));
+        }
+    }
+
+    /// Toggle dark mode (inverted page). Dropping the page cache forces a
+    /// re-rasterization with the new polarity; neighbouring pages re-render on
+    /// demand as the window scrolls.
+    pub fn set_dark_mode(&mut self, dark: bool, ctx: &egui::Context) {
+        if self.dark_mode == dark {
+            return;
+        }
+        self.dark_mode = dark;
+        self.pages = (0..self.page_count).map(|_| None).collect();
+        if self.is_loaded() {
+            self.page_changed(ctx);
         }
     }
 
@@ -519,18 +544,32 @@ fn render_target_width(width_pts: f32, height_pts: f32, desired_px: u32) -> i32 
     (target as u32).min(MAX_TEXTURE_SIDE) as i32
 }
 
-/// Upload a rendered pdfium bitmap as an egui GPU texture.
+/// Upload a rendered pdfium bitmap as an egui GPU texture. When `dark_mode` is
+/// set, the RGB channels are inverted at upload time (white text on black) —
+/// done here once per rasterization, so it costs nothing per frame.
 fn upload_bitmap(
     ctx: &egui::Context,
     bitmap: PdfBitmap<'_>,
     index: usize,
     width_pts: f32,
     height_pts: f32,
+    dark_mode: bool,
 ) -> Result<PageImage> {
     let w = bitmap.width() as usize;
     let h = bitmap.height() as usize;
     let rgba = bitmap.as_rgba_bytes();
-    let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
+    let pixels = if dark_mode {
+        let mut px = rgba.to_vec();
+        for chunk in px.chunks_exact_mut(4) {
+            chunk[0] = 255 - chunk[0];
+            chunk[1] = 255 - chunk[1];
+            chunk[2] = 255 - chunk[2];
+        }
+        px
+    } else {
+        rgba.to_vec()
+    };
+    let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &pixels);
     let texture = ctx.load_texture(
         format!("scriptviewer_page_{}", index),
         image,
