@@ -48,6 +48,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }  # Ic
 dirs = "5.0"  # Platform-specific config directories
 egui-phosphor = "0.9.0"
 ureq = "3.3.0"  # Minimal blocking HTTP client for the update check (no async runtime needed)
+pdfium-render = "0.9.3"  # PDF rasterization for the script viewer (loads libpdfium.so at runtime)
 
 [features]
 default = ["usb", "audio", "remote"]  # Enable USB DMX, audio, and remote control by default

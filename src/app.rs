@@ -25,6 +25,7 @@ pub enum TabKind {
     InstrumentProperties,
     MagicSheet,
     Effects,
+    ScriptViewer,
     // Legacy variants kept for saved dock state deserialization — never shown
     #[serde(other)]
     Unknown,
@@ -41,6 +42,7 @@ impl std::fmt::Display for TabKind {
             TabKind::InstrumentProperties => write!(f, "Instrument Properties"),
             TabKind::MagicSheet => write!(f, "Magic Sheet"),
             TabKind::Effects => write!(f, "Effects"),
+            TabKind::ScriptViewer => write!(f, "Script Viewer"),
             TabKind::Unknown => write!(f, "?"),
         }
     }
@@ -303,6 +305,8 @@ pub struct EasyCueApp {
     pub magic_sheet: crate::magic_sheet::MagicSheet,
     /// Ephemeral magic sheet panel state (not saved).
     pub magic_sheet_state: MagicSheetState,
+    /// Script viewer: persisted annotations + runtime PDF/texture state.
+    pub script_viewer: crate::scriptviewer::ScriptViewer,
     pub show_title: String,
     pub current_file_path: Option<std::path::PathBuf>,
     pub dock_state: DockState<TabKind>,
@@ -589,6 +593,7 @@ impl EasyCueApp {
             groups_state: crate::ui::GroupsPanelState::default(),
             magic_sheet: crate::magic_sheet::MagicSheet::default(),
             magic_sheet_state: MagicSheetState::default(),
+            script_viewer: crate::scriptviewer::ScriptViewer::default(),
             show_title: "Example Show".to_string(),
             current_file_path: None,
             dock_state,
@@ -774,6 +779,18 @@ impl EasyCueApp {
         self.groups = show.groups;
         self.magic_sheet = show.magic_sheet;
         self.cue_colors = show.cue_colors;
+        // Script viewer: restore persisted annotations. The PDF itself is not
+        // loaded here (no egui context for textures) — the panel lazily loads
+        // it on first render if `pdf_path` is set and no document is loaded.
+        // If the new show references a different script, drop the currently
+        // loaded document so the panel re-loads the right one.
+        if self.script_viewer.data.pdf_path != show.script_viewer.pdf_path {
+            self.script_viewer.reset_runtime();
+        }
+        self.script_viewer.data = show.script_viewer;
+        self.script_viewer.selected_marker = None;
+        self.script_viewer.pending_add = None;
+        self.script_viewer.drag_marker = None;
         self.magic_sheet_state = MagicSheetState {
             canvas_offset: egui::Vec2::new(
                 self.magic_sheet.canvas_offset[0],
@@ -816,6 +833,7 @@ impl EasyCueApp {
         show.cue_colors = self.cue_colors.clone();
         show.effects = self.effect_list.effects().to_vec();
         show.next_effect_id = self.effect_list.next_id();
+        show.script_viewer = self.script_viewer.data.clone();
 
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -1371,6 +1389,67 @@ impl EasyCueApp {
         self.autofollow_timer = None;
         self.cue_list.set_current_index(None);
         log::info!("Cue 0: blackout ({:.1}s fade)", fade_seconds);
+    }
+
+    /// Fire the cue referenced by a script-viewer marker (playback mode).
+    /// Same behaviour as firing it from the cue list — a normal GO with fade.
+    /// Returns true if the cue was found and fired.
+    pub fn fire_cue_by_id(&mut self, cue_id: u32) -> bool {
+        if let Some(idx) = self.cue_list.cues().iter().position(|c| c.id == cue_id) {
+            self.go_to_cue(idx)
+        } else {
+            self.ui_state.status_message = format!("Script marker: cue #{} not found", cue_id);
+            log::warn!("Script marker references missing cue #{}", cue_id);
+            false
+        }
+    }
+
+    /// Create a new cue inline from the script viewer's add-cue popup and add it
+    /// to the cue list. Returns the new cue's stable ID, or None on failure.
+    /// The created cue follows the same numbering and auto-targeting conventions
+    /// as the equivalent buttons in the Cues panel.
+    pub fn add_cue_of_kind(&mut self, kind: crate::scriptviewer::NewCueKind) -> Option<u32> {
+        let next_number = self.cue_list.cues().iter()
+            .last()
+            .map(|c| c.number.floor() + 1.0)
+            .unwrap_or(1.0);
+        let id = self.cue_list.next_id();
+
+        match kind {
+            crate::scriptviewer::NewCueKind::Lighting => {
+                let mut cue = Cue::new_lighting(next_number);
+                cue.label = format!("Cue {:.0}", next_number);
+                self.cue_list.add_cue(cue);
+            }
+            #[cfg(feature = "audio")]
+            crate::scriptviewer::NewCueKind::Sound => {
+                let mut cue = Cue::new_audio(next_number, std::path::PathBuf::new());
+                cue.label = format!("Sound {:.0}", next_number);
+                self.cue_list.add_cue(cue);
+            }
+            #[cfg(feature = "audio")]
+            crate::scriptviewer::NewCueKind::Adjustment => {
+                // Auto-target the most recent audio cue, matching the Cues panel.
+                let prev_audio_num: Option<f32> = self.cue_list.cues().iter()
+                    .rev()
+                    .find_map(|c| c.audio_data().map(|_| c.number));
+                let mut cue = Cue::new_adjust(next_number);
+                if let crate::cue::CueKind::Adjust(ref mut d) = cue.kind {
+                    d.target_audio_cue = prev_audio_num;
+                }
+                cue.label = format!("Adjust {:.0}", next_number);
+                self.cue_list.add_cue(cue);
+            }
+            #[cfg(not(feature = "audio"))]
+            crate::scriptviewer::NewCueKind::Sound | crate::scriptviewer::NewCueKind::Adjustment => {
+                return None;
+            }
+        }
+
+        #[cfg(feature = "audio")]
+        self.ui_state.audio_file_cache.clear();
+        self.ui_state.status_message = format!("Added cue {:.1}", next_number);
+        Some(id)
     }
 
     /// Execute an Adjust cue: fade per-device volume/pan on the targeted audio stream.

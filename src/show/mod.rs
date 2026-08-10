@@ -87,6 +87,11 @@ pub struct ShowFile {
     #[serde(default)]
     pub cue_colors: CueColorSettings,
 
+    /// Script viewer annotations: PDF path reference + cue markers placed on
+    /// its pages. See `src/scriptviewer` for the data model.
+    #[serde(default)]
+    pub script_viewer: crate::scriptviewer::ScriptViewerData,
+
     /// Show-level effect library (waveform patterns applied via cues).
     #[serde(default)]
     pub effects: Vec<crate::effects::Effect>,
@@ -120,6 +125,7 @@ impl ShowFile {
             groups: GroupList::default(),
             magic_sheet: MagicSheet::default(),
             cue_colors: CueColorSettings::default(),
+            script_viewer: crate::scriptviewer::ScriptViewerData::default(),
             effects: Vec::new(),
             next_effect_id: 1,
             #[cfg(feature = "audio")]
@@ -179,6 +185,29 @@ mod tests {
         assert!(show.effects.is_empty());
         // EffectList::from_parts clamps a defaulted 0 back to a valid next ID.
         assert_eq!(show.next_effect_id, 0);
+    }
+
+    #[test]
+    fn script_viewer_data_round_trips_through_show_file() {
+        use crate::scriptviewer::{CueMarker, ScriptViewerData};
+
+        let mut data = ScriptViewerData::default();
+        data.set_pdf_path(std::path::PathBuf::from("lorem.pdf"));
+        data.markers.push(CueMarker::new(0, 12.5, 34.0, 1));
+        data.markers.push(CueMarker::new(2, 200.0, 600.0, 7));
+
+        let mut show = ShowFile::new();
+        show.script_viewer = data.clone();
+        let json = serde_json::to_string(&show).unwrap();
+        let back: ShowFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.script_viewer.pdf_path, data.pdf_path);
+        assert_eq!(back.script_viewer.markers, data.markers);
+
+        // Old show files without the field still load (serde default).
+        let old = r#"{"description":"","created":"x","modified":"x","cues":[]}"#;
+        let show: ShowFile = serde_json::from_str(old).unwrap();
+        assert!(show.script_viewer.markers.is_empty());
+        assert!(show.script_viewer.pdf_path.is_none());
     }
 }
 

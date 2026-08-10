@@ -1,276 +1,109 @@
 {
   "audio_cues": [],
-  "created": "2026-07-19T17:36:54.351236586+00:00",
+  "created": "2026-08-10T12:58:47.693024929+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
-      "b": 95,
-      "g": 95,
-      "r": 95
+      "b": 110,
+      "g": 100,
+      "r": 100
     },
     "base_audio": {
       "a": 255,
-      "b": 170,
-      "g": 90,
-      "r": 50
+      "b": 190,
+      "g": 95,
+      "r": 65
     },
     "base_lighting": {
       "a": 255,
-      "b": 154,
-      "g": 97,
-      "r": 128
+      "b": 170,
+      "g": 85,
+      "r": 150
     },
     "status_active": {
       "a": 255,
-      "b": 33,
-      "g": 168,
-      "r": 24
+      "b": 45,
+      "g": 45,
+      "r": 175
     },
     "status_fading": {
       "a": 255,
-      "b": 149,
-      "g": 207,
-      "r": 0
+      "b": 30,
+      "g": 160,
+      "r": 200
     },
     "status_on_deck": {
       "a": 255,
-      "b": 0,
-      "g": 167,
-      "r": 193
+      "b": 45,
+      "g": 135,
+      "r": 45
     }
   },
   "cues": [
     {
       "autofollow": null,
       "data": {
-        "channel_values": {
-          "200": 33,
-          "202": 33,
-          "204": 80,
-          "206": 90,
-          "207": 27,
-          "208": 100,
-          "216": 70,
-          "218": 65,
-          "220": 80,
-          "222": 90,
-          "223": 27,
-          "224": 100,
-          "3": 75
-        },
+        "channel_values": {},
         "fade_down": 3.0,
         "fade_up": 3.0
       },
-      "id": 13,
-      "label": "Intro Speech",
+      "id": 29,
+      "label": "Test",
+      "number": 0.5,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 27,
+      "label": "Worklights",
       "number": 1.0,
       "type": "Lighting"
     },
     {
-      "autofollow": 2.0,
+      "autofollow": null,
       "data": {
-        "channel_values": {
-          "1": 50,
-          "204": 0,
-          "220": 0,
-          "3": 0
-        },
+        "channel_values": {},
         "fade_down": 3.0,
         "fade_up": 3.0
       },
-      "id": 14,
-      "label": "Blackout",
+      "id": 28,
+      "label": "Preset",
       "number": 2.0,
       "type": "Lighting"
     },
     {
       "autofollow": null,
       "data": {
-        "audio_path": "media/sample1.mp3",
-        "fade_in": 0.0,
-        "fade_out": 2.0,
-        "length": null,
-        "notes": "",
-        "output_routes": [
-          {
-            "device_name": "",
-            "pan": 0.0,
-            "volume": 1.0
-          }
-        ]
-      },
-      "id": 4,
-      "label": "play music #1",
-      "number": 3.0,
-      "type": "Audio"
-    },
-    {
-      "autofollow": 4.0,
-      "data": {
-        "channel_values": {
-          "1": 90,
-          "101": 32,
-          "102": 100,
-          "104": 32,
-          "105": 100,
-          "107": 32,
-          "108": 100,
-          "2": 90,
-          "20": 70,
-          "21": 100,
-          "22": 54,
-          "23": 34,
-          "24": 100,
-          "25": 100,
-          "28": 70,
-          "29": 100,
-          "3": 90,
-          "30": 54,
-          "31": 34,
-          "32": 100,
-          "33": 100,
-          "36": 70,
-          "37": 100,
-          "38": 54,
-          "39": 34,
-          "4": 90,
-          "40": 100,
-          "41": 100,
-          "44": 70,
-          "45": 100,
-          "46": 54,
-          "47": 34,
-          "48": 100,
-          "49": 100,
-          "5": 90,
-          "52": 70,
-          "53": 100,
-          "54": 54,
-          "55": 34,
-          "56": 100,
-          "57": 100
-        },
+        "channel_values": {},
         "fade_down": 3.0,
         "fade_up": 3.0
       },
-      "id": 15,
-      "label": "Scene 1",
+      "id": 30,
+      "label": "Cue 3",
+      "number": 3.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 31,
+      "label": "Cue 4",
       "number": 4.0,
       "type": "Lighting"
     },
     {
       "autofollow": null,
       "data": {
-        "fade_time": 3.0,
-        "output_fades": [
-          {
-            "device_name": "",
-            "target_pan": null,
-            "target_volume": 0.0
-          }
-        ],
-        "stop_when_complete": true,
-        "target_audio_cue": 3.0
-      },
-      "id": 7,
-      "label": "fade out sample 1",
-      "number": 7.0,
-      "type": "Adjust"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "audio_path": "media/sample2.mp3",
-        "fade_in": 0.0,
-        "fade_out": 4.0,
-        "length": 5.0,
-        "notes": "",
-        "output_routes": [
-          {
-            "device_name": "",
-            "pan": 0.0,
-            "volume": 1.0
-          }
-        ]
-      },
-      "id": 5,
-      "label": "Play music #2",
-      "number": 8.0,
-      "type": "Audio"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "channel_values": {
-          "1": 100,
-          "100": 100,
-          "101": 40,
-          "103": 100,
-          "104": 46,
-          "106": 98,
-          "107": 37,
-          "2": 50,
-          "20": 90,
-          "28": 57,
-          "3": 0,
-          "30": 60,
-          "31": 66,
-          "36": 29,
-          "37": 20,
-          "38": 4,
-          "39": 100,
-          "4": 0,
-          "44": 29,
-          "45": 20,
-          "46": 4,
-          "47": 100,
-          "5": 0,
-          "52": 29,
-          "53": 20,
-          "54": 4,
-          "55": 100
-        },
-        "fade_down": 1.0,
-        "fade_up": 1.0
-      },
-      "id": 16,
-      "label": "SR Highlight",
-      "number": 9.0,
-      "type": "Lighting"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "channel_values": {
-          "1": 0,
-          "100": 0,
-          "101": 0,
-          "102": 0,
-          "103": 0,
-          "104": 0,
-          "105": 0,
-          "106": 0,
-          "107": 0,
-          "108": 0,
-          "2": 0,
-          "20": 0,
-          "28": 0,
-          "36": 0,
-          "44": 0,
-          "52": 0
-        },
-        "fade_down": 3.0,
-        "fade_up": 3.0
-      },
-      "id": 17,
-      "label": "Blackout",
-      "number": 10.0,
-      "type": "Lighting"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "audio_path": "/mnt/data/david/Music/coin.wav",
+        "audio_path": "/home/david/Documents/Local_Projects/easycue3/media/sample1.mp3",
         "fade_in": 0.0,
         "fade_out": 0.0,
         "length": null,
@@ -283,206 +116,14 @@
           }
         ]
       },
-      "id": 18,
-      "label": "coin",
-      "number": 11.0,
+      "id": 32,
+      "label": "Sound 5",
+      "number": 5.0,
       "type": "Audio"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "audio_path": "/mnt/data/david/Music/Journey - Don’t Stop Believin’ (Official Studio Instrumental).mp3",
-        "fade_in": 0.0,
-        "fade_out": 0.0,
-        "length": null,
-        "notes": "",
-        "output_routes": [
-          {
-            "device_name": "",
-            "pan": 0.0,
-            "volume": 1.0
-          }
-        ]
-      },
-      "id": 19,
-      "label": "Journey - Don’t Stop Believin’ (Official Studio Instrumental)",
-      "number": 12.0,
-      "type": "Audio"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "audio_path": "/mnt/data/david/Music/Rick Astley - Never Gonna Give You Up (Official Music Video).mp3",
-        "fade_in": 0.0,
-        "fade_out": 0.0,
-        "length": null,
-        "notes": "",
-        "output_routes": [
-          {
-            "device_name": "",
-            "pan": 0.0,
-            "volume": 1.0
-          }
-        ]
-      },
-      "id": 20,
-      "label": "Rick Astley - Never Gonna Give You Up (Official Music Video)",
-      "number": 13.0,
-      "type": "Audio"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "audio_path": "/mnt/data/david/Music/Sound 60-glued.wav",
-        "fade_in": 0.0,
-        "fade_out": 0.0,
-        "length": null,
-        "notes": "",
-        "output_routes": [
-          {
-            "device_name": "",
-            "pan": 0.0,
-            "volume": 1.0
-          }
-        ]
-      },
-      "id": 21,
-      "label": "Sound 60-glued",
-      "number": 14.0,
-      "type": "Audio"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "audio_path": "/mnt/data/david/Music/Journey - Don’t Stop Believin’ (Official Studio Instrumental).m4a",
-        "fade_in": 0.0,
-        "fade_out": 0.0,
-        "length": null,
-        "notes": "",
-        "output_routes": [
-          {
-            "device_name": "",
-            "pan": 0.0,
-            "volume": 1.0
-          }
-        ]
-      },
-      "id": 22,
-      "label": "Journey - Don’t Stop Believin’ (Official Studio Instrumental)",
-      "number": 15.0,
-      "type": "Audio"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "channel_values": {
-          "1": 50,
-          "21": 0,
-          "22": 0,
-          "23": 0,
-          "24": 0,
-          "25": 0,
-          "29": 0,
-          "30": 0,
-          "31": 0,
-          "32": 0,
-          "33": 0,
-          "37": 0,
-          "38": 0,
-          "39": 0,
-          "40": 0,
-          "41": 0,
-          "45": 0,
-          "46": 0,
-          "47": 0,
-          "48": 0,
-          "49": 0,
-          "53": 0,
-          "54": 0,
-          "55": 0,
-          "56": 0,
-          "57": 0
-        },
-        "effect_actions": [
-          {
-            "action": "start",
-            "effect_id": 2,
-            "fixtures": [
-              1
-            ]
-          }
-        ],
-        "fade_down": 3.0,
-        "fade_up": 3.0
-      },
-      "id": 23,
-      "label": "Cue 11",
-      "number": 16.0,
-      "type": "Lighting"
-    },
-    {
-      "autofollow": null,
-      "data": {
-        "channel_values": {
-          "1": 0
-        },
-        "effect_actions": [
-          {
-            "action": "start",
-            "effect_id": 1,
-            "fixtures": [
-              2,
-              3,
-              4
-            ]
-          },
-          {
-            "action": "stop",
-            "effect_id": 2
-          }
-        ],
-        "fade_down": 3.0,
-        "fade_up": 3.0
-      },
-      "id": 24,
-      "label": "Cue 12",
-      "number": 26.299999237060547,
-      "type": "Lighting"
     }
   ],
   "description": "",
-  "effects": [
-    {
-      "id": 1,
-      "label": "bump",
-      "phase_spread": 170.0,
-      "rate": 0.800000011920929,
-      "size": 100.0,
-      "smoothing": 50.0,
-      "target": "position",
-      "waveform": "sine"
-    },
-    {
-      "id": 3,
-      "label": "colour wave",
-      "phase_spread": 0.0,
-      "rate": 1.0,
-      "size": 100.0,
-      "smoothing": 50.0,
-      "target": "hue",
-      "waveform": "sine"
-    },
-    {
-      "id": 4,
-      "label": "wave",
-      "phase_spread": 360.0,
-      "rate": 1.0,
-      "size": 25.0,
-      "smoothing": 50.0,
-      "target": "intensity",
-      "waveform": "sine"
-    }
-  ],
+  "effects": [],
   "groups": {
     "groups": [
       {
@@ -521,10 +162,10 @@
   },
   "magic_sheet": {
     "canvas_offset": [
-      0.0,
-      0.0
+      177.1253662109375,
+      252.59512329101562
     ],
-    "canvas_zoom": 1.0,
+    "canvas_zoom": 0.8189863562583923,
     "next_shape_id": 21,
     "shapes": [
       {
@@ -997,9 +638,9 @@
       }
     ]
   },
-  "modified": "2026-07-19T17:36:54.351468400+00:00",
-  "next_cue_id": 25,
-  "next_effect_id": 5,
+  "modified": "2026-08-10T12:58:47.693355602+00:00",
+  "next_cue_id": 33,
+  "next_effect_id": 1,
   "patch": [
     {
       "id": 1,
@@ -1121,5 +762,34 @@
       "start_address": 216,
       "universe": 1
     }
-  ]
+  ],
+  "script_viewer": {
+    "markers": [
+      {
+        "cue_id": 28,
+        "page_index": 0,
+        "x": 478.6169738769531,
+        "y": 64.38040924072266
+      },
+      {
+        "cue_id": 30,
+        "page_index": 0,
+        "x": 471.2452392578125,
+        "y": 182.53057861328125
+      },
+      {
+        "cue_id": 31,
+        "page_index": 0,
+        "x": 439.19012451171875,
+        "y": 343.8919982910156
+      },
+      {
+        "cue_id": 32,
+        "page_index": 0,
+        "x": 467.824462890625,
+        "y": 466.1078796386719
+      }
+    ],
+    "pdf_path": "/home/david/Documents/Local_Projects/easycue3/media/lorem.pdf"
+  }
 }

@@ -12,6 +12,7 @@ mod magic_sheet;
 mod pan_tilt_gizmo;
 mod properties;
 mod patching;
+mod script_viewer;
 
 use egui::Context;
 use crate::app::{EasyCueApp, TabKind};
@@ -27,6 +28,7 @@ pub use groups::{render_groups_panel, GroupsPanelState};
 pub use magic_sheet::render_magic_sheet_panel;
 pub use properties::{render_cue_properties_panel, render_instrument_properties_panel, render_update_from_stage_modal};
 pub use patching::{render_patching_panel, PatchingPanelState};
+pub use script_viewer::render_script_viewer_panel;
 
 /// Render the main UI
 pub fn render(ctx: &Context, app: &mut EasyCueApp) {
@@ -348,6 +350,7 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             TabKind::InstrumentProperties => render_instrument_properties_panel(ui, self.app),
             TabKind::MagicSheet => render_magic_sheet_panel(ui, self.app),
             TabKind::Effects => render_effects_panel(ui, self.app),
+            TabKind::ScriptViewer => render_script_viewer_panel(ui, self.app),
             TabKind::Unknown => { ui.label("(unknown tab)"); }
         }
     }
@@ -381,6 +384,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.ui_state.selected_cue_id = None;
                     app.ui_state.selected_lighting_cue_id = None;
                     app.ui_state.selected_audio_cue_id = None;
+                    app.script_viewer = crate::scriptviewer::ScriptViewer::default();
                     app.ui_state.selected_channels.clear();
                     app.ui_state.channel_base_levels.clear();
                     app.ui_state.group_master = 100;
@@ -506,6 +510,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
                 if ui.button("Effects").clicked() {
                     app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Effects);
+                    ui.close_menu();
+                }
+                if ui.button("Script Viewer").clicked() {
+                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::ScriptViewer);
                     ui.close_menu();
                 }
                 

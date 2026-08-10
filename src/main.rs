@@ -7,6 +7,7 @@ mod app;
 mod groups;
 mod magic_sheet;
 mod media;
+mod scriptviewer;
 mod ui;
 mod fixtures;
 mod show;
