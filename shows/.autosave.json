@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-08-10T12:58:47.693024929+00:00",
+  "created": "2026-08-10T14:04:57.666058478+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -72,7 +72,7 @@
         "fade_up": 3.0
       },
       "id": 28,
-      "label": "Preset",
+      "label": "something",
       "number": 2.0,
       "type": "Lighting"
     },
@@ -96,7 +96,7 @@
         "fade_up": 3.0
       },
       "id": 31,
-      "label": "Cue 4",
+      "label": "test",
       "number": 4.0,
       "type": "Lighting"
     },
@@ -120,6 +120,66 @@
       "label": "Sound 5",
       "number": 5.0,
       "type": "Audio"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 33,
+      "label": "Cue 6",
+      "number": 6.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 34,
+      "label": "Cue 7",
+      "number": 7.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 35,
+      "label": "Cue 8",
+      "number": 8.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 36,
+      "label": "Cue 9 - this is a longer cue",
+      "number": 9.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 37,
+      "label": "Cue 10",
+      "number": 10.0,
+      "type": "Lighting"
     }
   ],
   "description": "",
@@ -638,8 +698,8 @@
       }
     ]
   },
-  "modified": "2026-08-10T12:58:47.693355602+00:00",
-  "next_cue_id": 33,
+  "modified": "2026-08-10T14:04:57.666222982+00:00",
+  "next_cue_id": 38,
   "next_effect_id": 1,
   "patch": [
     {
@@ -788,6 +848,36 @@
         "page_index": 0,
         "x": 467.824462890625,
         "y": 466.1078796386719
+      },
+      {
+        "cue_id": 33,
+        "page_index": 2,
+        "x": 523.7101440429688,
+        "y": 373.0752868652344
+      },
+      {
+        "cue_id": 34,
+        "page_index": 2,
+        "x": 510.08892822265625,
+        "y": 707.3833618164062
+      },
+      {
+        "cue_id": 35,
+        "page_index": 3,
+        "x": 416.88525390625,
+        "y": 231.53744506835938
+      },
+      {
+        "cue_id": 36,
+        "page_index": 3,
+        "x": 416.0331115722656,
+        "y": 438.15521240234375
+      },
+      {
+        "cue_id": 37,
+        "page_index": 5,
+        "x": 238.59776306152344,
+        "y": 283.53277587890625
       }
     ],
     "pdf_path": "/home/david/Documents/Local_Projects/easycue3/media/lorem.pdf"

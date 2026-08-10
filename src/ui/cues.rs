@@ -679,7 +679,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         }
                         ui.separator();
                         if ui.button("Edit in Properties").clicked() {
-                            app.ui_state.selected_cue_id = Some(cue_id);
+                            app.select_cue(cue_id);
                             ui.close_menu();
                         }
                         ui.separator();
@@ -696,18 +696,12 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     if let Some(id) = clicked_id {
         if selected_id == Some(id) {
             app.ui_state.selected_cue_id = None;
+            app.ui_state.selected_lighting_cue_id = None;
+            app.ui_state.selected_audio_cue_id = None;
         } else {
-            app.ui_state.selected_cue_id = Some(id);
-            // Keep legacy fields in sync for properties panel
-            if let Some(cue) = app.cue_list.find_by_id(id) {
-                if cue.is_lighting() {
-                    app.ui_state.selected_lighting_cue_id = Some(id);
-                    app.ui_state.selected_audio_cue_id = None;
-                } else {
-                    app.ui_state.selected_audio_cue_id = Some(id);
-                    app.ui_state.selected_lighting_cue_id = None;
-                }
-            }
+            // Route through `select_cue` so the script viewer stays in step
+            // (brings the cue's marker into view if one exists).
+            app.select_cue(id);
         }
     }
 

@@ -1577,6 +1577,10 @@ impl EasyCueApp {
             self.ui_state.selected_audio_cue_id = Some(id);
             self.ui_state.selected_lighting_cue_id = None;
         }
+        // Keep the script viewer in step: selecting a cue anywhere also brings
+        // its marker into view (no-op when it has no marker, or when it's
+        // already visible on screen).
+        self.follow_cue_in_script_view(id);
     }
 
     /// Overwrite the lighting data of the cue at `upd_idx` with the current live
@@ -1850,19 +1854,11 @@ impl eframe::App for EasyCueApp {
                 if let Some(cue) = self.cue_list.get_cue(new_idx) {
                     let num = cue.number;
                     let id  = cue.id;
-                    let is_lighting = cue.is_lighting();
                     // Move play head to just before this cue so next_any_index() points here.
                     let prev_idx = if new_idx > 0 { Some(new_idx - 1) } else { None };
                     drop(cue);
                     self.cue_list.set_current_index(prev_idx);
-                    self.ui_state.selected_cue_id = Some(id);
-                    if is_lighting {
-                        self.ui_state.selected_lighting_cue_id = Some(id);
-                        self.ui_state.selected_audio_cue_id = None;
-                    } else {
-                        self.ui_state.selected_audio_cue_id = Some(id);
-                        self.ui_state.selected_lighting_cue_id = None;
-                    }
+                    self.select_cue(id);
                     self.ui_state.go_cue_input = format!("{:.1}", num);
                 }
             }

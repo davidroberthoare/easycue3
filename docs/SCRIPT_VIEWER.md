@@ -23,8 +23,10 @@ Working first pass, feature-complete against the spec:
   → the `CueColorSettings` status colours, else the cue kind's base colour),
   mirroring the Cue list rows
 - ✅ Selection is **linked across all three views**: clicking a dot selects the
-  cue in the Cue list (+ Cue Properties); selecting in the Cue list highlights
-  the matching marker. Background click deselects everything.
+  cue in the Cue list (+ Cue Properties); selecting a cue in the Cue list
+  (row click, context menu, or ↑/↓ arrows) highlights the matching marker and
+  brings it into view if it isn't already on screen. Background click
+  deselects everything.
 - ✅ Dot labels read `2.0: Label` (label omitted when empty)
 - ✅ Left/Right + PageUp/PageDown step through pages while the panel is active
 - ✅ Firing a cue anywhere (GO/BACK/goto/autofollow) brings its marker into
