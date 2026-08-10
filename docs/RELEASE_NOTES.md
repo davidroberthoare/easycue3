@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.7.1
+
+- **Script Viewer quality-of-life**:
+  - Double-clicking a page to add a **Lighting / Sound / Adjust** cue now selects the new cue and focuses its Label field in Cue Properties, so you can name it immediately.
+  - The add-cue popup remembers your last action. If you last created a cue it re-selects that kind and focuses **Create & link** (just press Enter); if you last linked an existing cue, the cue picker keeps your last choice and is focused ready to use.
+- **New: Edit → Re-number Cues…** — renumber a whole batch of cues in one go. Choose **all** cues or a `#x–#y` range, the new start number, and the step (default 1.0), then Apply. Adjustment-cue targets are re-linked to their renumbered audio cues and script markers (which reference cues by stable ID) track the new numbers automatically.
+
 ## v0.7.0
 
 - **New: Script Viewer** — run the show straight off your PDF script. Load the script (View → Script Viewer), click anywhere on a page to drop a *cue marker* linked to a cue, and click markers during the show to fire their cues.
