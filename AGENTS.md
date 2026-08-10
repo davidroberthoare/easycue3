@@ -50,4 +50,4 @@ to save context tokens, I'll run manual tests myself. You can stop after doing a
 
 ## Docs
 
-- `docs/EFFECTS.md`, `docs/VIRTUAL_INTENSITY.md`, `docs/REMOTE.md` (incl. env overrides + testing), `docs/AUDIO_DEVICES.md` (Linux `~/.asoundrc` multi-channel setup, `channels N` must be pinned), `docs/MAGIC_SHEET.md`, `docs/easycue3-remote-spec.md`.
+- `docs/EFFECTS.md`, `docs/VIRTUAL_INTENSITY.md`, `docs/REMOTE.md` (incl. env overrides + testing), `docs/AUDIO_DEVICES.md` (Linux `~/.asoundrc` multi-channel setup, `channels N` must be pinned), `docs/MAGIC_SHEET.md`, `docs/SCRIPT_VIEWER.md`.

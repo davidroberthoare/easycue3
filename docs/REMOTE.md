@@ -5,11 +5,11 @@ Phone/browser remote for EasyCue3: the desktop app embeds a web server
 it in sync over a WebSocket. No app store, no separate install — Settings →
 Remote Control, scan the QR code, optionally "Add to Home Screen".
 
-Original spec: `docs/easycue3-remote-spec.md`. Implemented as the spec's
-"plain HTML/JS fallback" path (chosen up front): the client is hand-written
-JS on Framework7 (vendored in `remote_client/`, embedded into the binary at
-compile time via `include_bytes!`). egui/wasm was rejected because desktop
-panel code is too coupled to `EasyCueApp` for real reuse, and egui's mobile
+Original design spec: a Framework7 PWA over WebSocket + REST (the "plain
+HTML/JS fallback" path, chosen up front): the client is hand-written JS on
+Framework7 (vendored in `remote_client/`, embedded into the binary at compile
+time via `include_bytes!`). egui/wasm was rejected because desktop panel code
+is too coupled to `EasyCueApp` for real reuse, and egui's mobile
 text input/bundle size are poor on phones.
 
 ## Architecture

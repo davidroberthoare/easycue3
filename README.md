@@ -15,6 +15,7 @@ A simple theatrical lighting console I've been building for my school and my com
 - Channel grid, fixture list and magic sheet for live control
 - Effects: sine/square/sawtooth/random waveforms on intensity, hue, saturation, or pan/tilt — with phase spread for chases, cue-triggered with fade in/out
 - **Remote control**: run the console from any phone or tablet browser on the venue wifi — no app install. Cue playback, fixture/color control, raw channel grid, patching, and the command line, all live-synced
+- **Script viewer**: load a PDF of your show script, drop cue markers on it, and click them during the show to fire cues — selection is synced with the Cue list
 - Save and load show files (JSON, human-readable)
 - USB DMX output (Enttec USB Pro, Enttec Open DMX USB, and generic FTDI-based Open DMX clones e.g. DSD TECH USB-to-DMX512)
 - Check for updates (Help menu, plus a quiet once-a-day background check) — notify-only, links to the GitHub release page
@@ -177,6 +178,19 @@ Control the console from a phone or tablet on the same wifi network — no app t
 - Command line, mirroring the desktop's EOS-style syntax
 
 An optional PIN can be set to stop other people on the venue wifi from connecting. This is a LAN-only feature — there's no internet/remote-WAN access.
+
+---
+
+## Script viewer
+
+Run a show straight off your PDF script instead of (or alongside) the cue list. Open **View → Script Viewer**, load the show's script, and click anywhere to drop a marker linked to a cue — the marker sits on the exact line you want the cue to land.
+
+- **Two-way sync with the Cue list**: clicking a marker selects its cue everywhere (Cue list, Cue Properties); selecting a cue from the list or keyboard (row click, context menu, or ↑/↓ arrows) highlights the matching marker and brings it into view if it isn't already on screen.
+- **Click to fire**: in playback the markers are read-only — click one to fire its cue exactly as if you'd hit it from the cue list.
+- **Navigate** with `←`/`→` or `PageUp`/`PageDown`; scroll to zoom, drag to pan. Zooming in re-rasterizes the page at display resolution so text stays sharp.
+- Markers persist in the show file, and the PDF is referenced by filename via the `media/` directory (same portable convention as audio cues).
+
+The script feature needs a PDFium library, which is bundled in a `lib/` subdirectory of every download — nothing to install separately.
 
 ---
 

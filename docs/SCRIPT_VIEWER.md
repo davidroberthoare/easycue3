@@ -1,7 +1,7 @@
 # Script Viewer (Cue Markers) — Implementation & Handoff
 
-Implements `docs/lighting-script-viewer-spec-v2.md`: load a PDF script, place
-cue markers on it, and click markers during playback to fire cues.
+Load a PDF script, place cue markers on it, and click markers during playback
+to fire cues.
 
 ## Status
 

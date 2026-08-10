@@ -175,6 +175,19 @@ jobs:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Prepare release notes
+        run: |
+          # Take the top-most (latest) section of docs/RELEASE_NOTES.md as the
+          # release body, falling back to GitHub's auto-generated notes if the
+          # section is missing.
+          awk '/^## v/{ if (seen) exit; seen=1 } { print }' \
+            docs/RELEASE_NOTES.md > RELEASE_BODY.md
+          if [ ! -s RELEASE_BODY.md ]; then echo "## Auto-generated notes" > RELEASE_BODY.md; fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
@@ -182,6 +195,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          body_path: RELEASE_BODY.md
           files: |
             linux/easycue3-linux-x86_64.tar.gz
             windows/easycue3-windows-x86_64.zip

@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.7.0
+
+- **New: Script Viewer** — run the show straight off your PDF script. Load the script (View → Script Viewer), click anywhere on a page to drop a *cue marker* linked to a cue, and click markers during the show to fire their cues.
+  - **Selection is synced across all three views**: clicking a marker selects its cue in the Cue list and Cue Properties; selecting a cue from the list (row click, context menu, or ↑/↓ arrows) highlights the matching marker and brings it into view if it isn't already on screen.
+  - Markers sit on the exact script line in PDF point space, persist in the show file, and keep working even if the cue is renamed — they reference cues by stable ID.
+  - Page navigation with `←`/`→` or `PageUp`/`PageDown`; scroll to zoom, drag to pan, with automatic re-rasterization when you zoom in so text stays sharp.
+  - **Nothing to install**: the PDFium renderer is bundled in a `lib/` subdirectory of every download (the library is loaded at runtime, so Linux/macOS users need no system package and no `PDFIUM_LIBRARY_PATH`).
+- **Release packaging** now ships a bundled PDFium library (`libpdfium.so` / `pdfium.dll` / `libpdfium.dylib`) in the `lib/` folder of each platform package, keeping the bundle root tidy. Script viewing works out of the box on every supported platform.
+
 ## v0.6.1
 
 - **New: Check for Updates** — Help menu now has a "Check for Updates" item that looks up the latest GitHub release and tells you if a newer version is available, with a link to the release page. Notify-only: nothing downloads or installs itself.
