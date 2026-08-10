@@ -102,11 +102,37 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             {
                 app.script_viewer.current_page = app.script_viewer.current_page.saturating_sub(1);
             }
-            ui.label(format!(
-                "Page {} / {}",
-                if page_count > 0 { current_page + 1 } else { 0 },
-                page_count
-            ));
+            // Editable page number: type a page and press Enter to jump straight
+            // to it (clamped to 1..=page count). The buffer tracks the displayed
+            // page while unfocused, and keeps what the operator types while focused.
+            let page_edit_id = egui::Id::new("sv_page_jump");
+            if !ui.memory(|m| m.has_focus(page_edit_id)) {
+                app.ui_state.page_jump_input = if page_count > 0 {
+                    (current_page + 1).to_string()
+                } else {
+                    "0".to_string()
+                };
+            }
+            let mut page_edit = app.ui_state.page_jump_input.clone();
+            let page_resp = egui::TextEdit::singleline(&mut page_edit)
+                .id(page_edit_id)
+                .desired_width(30.0)
+                .margin(egui::Margin::symmetric(3, 1))
+                .show(ui);
+            if page_resp.response.changed() {
+                app.ui_state.page_jump_input = page_edit;
+            }
+            if page_resp.response.lost_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+            {
+                if let Ok(n) = app.ui_state.page_jump_input.trim().parse::<usize>() {
+                    let target = n.clamp(1, page_count.max(1));
+                    app.script_viewer.current_page = target - 1;
+                    page_resp.response.surrender_focus();
+                }
+            }
+            ui.label("/");
+            ui.label(format!("{}", page_count));
             if ui.small_button("▶").on_hover_text("Next page").clicked() {
                 let next = (app.script_viewer.current_page + 1).min(page_count.saturating_sub(1));
                 app.script_viewer.current_page = next;

@@ -175,6 +175,10 @@ pub struct UiState {
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
     pub go_cue_input: String,
 
+    /// Edit buffer for the script viewer's page-jump text field (persists across
+    /// frames while the operator is typing a page number).
+    pub page_jump_input: String,
+
     // Art-Net configuration UI state
     pub artnet_target_ip: String,
     pub artnet_universe: u16,
@@ -254,6 +258,7 @@ impl Default for UiState {
             renumber_step: 1.0,
             renumber_focus_pending: false,
             go_cue_input: String::new(),
+            page_jump_input: String::new(),
             goto_mode: false,
             artnet_target_ip: "255.255.255.255".to_string(),
             artnet_universe: 0,

@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-08-10T22:03:11.540937584+00:00",
+  "created": "2026-08-10T22:25:16.680647831+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -1932,6 +1932,426 @@
       "label": "transition",
       "number": 157.0,
       "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 192,
+      "label": "party",
+      "number": 158.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 193,
+      "label": "focus Stage",
+      "number": 159.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 194,
+      "label": "add Robbie",
+      "number": 160.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 195,
+      "label": "add Airplane",
+      "number": 161.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 196,
+      "label": "airplane out",
+      "number": 162.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 197,
+      "label": "rap chase",
+      "number": 163.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 198,
+      "label": "build",
+      "number": 164.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 199,
+      "label": "snap to Airline counter",
+      "number": 165.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 200,
+      "label": "restore RAP",
+      "number": 166.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 201,
+      "label": "snap to Airplane",
+      "number": 167.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 202,
+      "label": "restore RAP",
+      "number": 168.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 203,
+      "label": "break dance?",
+      "number": 169.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 204,
+      "label": "restore rap",
+      "number": 170.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 205,
+      "label": "punch!",
+      "number": 171.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 206,
+      "label": "scene",
+      "number": 172.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 207,
+      "label": "shift to Chapel",
+      "number": 173.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 208,
+      "label": "shift areas?",
+      "number": 174.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 209,
+      "label": "cheesy music",
+      "number": 175.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 210,
+      "label": "snap restore",
+      "number": 176.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 211,
+      "label": "slow focus in",
+      "number": 177.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 212,
+      "label": "fill a bit",
+      "number": 178.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 213,
+      "label": "slow isolate",
+      "number": 179.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 214,
+      "label": "warm up colours",
+      "number": 180.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 215,
+      "label": "transition",
+      "number": 181.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 216,
+      "label": "wedding",
+      "number": 182.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 217,
+      "label": "entrance highlight",
+      "number": 183.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 218,
+      "label": "big dance",
+      "number": 184.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 219,
+      "label": "snap isolate",
+      "number": 185.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 220,
+      "label": "big finish",
+      "number": 186.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 221,
+      "label": "punch",
+      "number": 187.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 222,
+      "label": "blackout",
+      "number": 188.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 223,
+      "label": "bows",
+      "number": 189.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 224,
+      "label": "finale dance",
+      "number": 190.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 225,
+      "label": "punch",
+      "number": 191.0,
+      "type": "Lighting"
+    },
+    {
+      "autofollow": null,
+      "data": {
+        "channel_values": {},
+        "fade_down": 3.0,
+        "fade_up": 3.0
+      },
+      "id": 226,
+      "label": "post-show",
+      "number": 192.0,
+      "type": "Lighting"
     }
   ],
   "description": "",
@@ -2450,8 +2870,8 @@
       }
     ]
   },
-  "modified": "2026-08-10T22:03:11.541470082+00:00",
-  "next_cue_id": 192,
+  "modified": "2026-08-10T22:25:16.680870914+00:00",
+  "next_cue_id": 227,
   "next_effect_id": 1,
   "patch": [
     {
@@ -3512,6 +3932,216 @@
         "page_index": 84,
         "x": 202.32212829589844,
         "y": 374.1307373046875
+      },
+      {
+        "cue_id": 192,
+        "page_index": 84,
+        "x": 209.22573852539062,
+        "y": 451.3507995605469
+      },
+      {
+        "cue_id": 193,
+        "page_index": 85,
+        "x": 291.3382263183594,
+        "y": 354.0180358886719
+      },
+      {
+        "cue_id": 194,
+        "page_index": 85,
+        "x": 322.6967468261719,
+        "y": 488.49267578125
+      },
+      {
+        "cue_id": 195,
+        "page_index": 85,
+        "x": 257.51666259765625,
+        "y": 593.1206665039062
+      },
+      {
+        "cue_id": 196,
+        "page_index": 86,
+        "x": 217.1073455810547,
+        "y": 319.2239685058594
+      },
+      {
+        "cue_id": 197,
+        "page_index": 86,
+        "x": 338.7270812988281,
+        "y": 602.6946411132812
+      },
+      {
+        "cue_id": 198,
+        "page_index": 87,
+        "x": 290.0268859863281,
+        "y": 205.36734008789062
+      },
+      {
+        "cue_id": 199,
+        "page_index": 87,
+        "x": 317.1064758300781,
+        "y": 448.4358825683594
+      },
+      {
+        "cue_id": 200,
+        "page_index": 88,
+        "x": 290.6917724609375,
+        "y": 333.8331604003906
+      },
+      {
+        "cue_id": 201,
+        "page_index": 88,
+        "x": 274.7543640136719,
+        "y": 570.9820556640625
+      },
+      {
+        "cue_id": 202,
+        "page_index": 89,
+        "x": 343.0448303222656,
+        "y": 245.21656799316406
+      },
+      {
+        "cue_id": 203,
+        "page_index": 90,
+        "x": 296.72882080078125,
+        "y": 42.50312423706055
+      },
+      {
+        "cue_id": 204,
+        "page_index": 90,
+        "x": 299.6157531738281,
+        "y": 120.38816833496094
+      },
+      {
+        "cue_id": 205,
+        "page_index": 90,
+        "x": 266.69342041015625,
+        "y": 494.3139343261719
+      },
+      {
+        "cue_id": 206,
+        "page_index": 90,
+        "x": 266.9000244140625,
+        "y": 585.3214111328125
+      },
+      {
+        "cue_id": 207,
+        "page_index": 91,
+        "x": 252.73756408691406,
+        "y": 408.7744445800781
+      },
+      {
+        "cue_id": 208,
+        "page_index": 92,
+        "x": 352.2422180175781,
+        "y": 205.48902893066406
+      },
+      {
+        "cue_id": 209,
+        "page_index": 93,
+        "x": 383.8912048339844,
+        "y": 491.25274658203125
+      },
+      {
+        "cue_id": 210,
+        "page_index": 93,
+        "x": 91.14340209960938,
+        "y": 617.6140747070312
+      },
+      {
+        "cue_id": 211,
+        "page_index": 94,
+        "x": 338.5976867675781,
+        "y": 44.43194580078125
+      },
+      {
+        "cue_id": 212,
+        "page_index": 94,
+        "x": 357.49896240234375,
+        "y": 445.9949951171875
+      },
+      {
+        "cue_id": 213,
+        "page_index": 95,
+        "x": 305.470703125,
+        "y": 220.9018096923828
+      },
+      {
+        "cue_id": 214,
+        "page_index": 95,
+        "x": 321.92401123046875,
+        "y": 308.3167419433594
+      },
+      {
+        "cue_id": 215,
+        "page_index": 96,
+        "x": 191.22509765625,
+        "y": 42.56710433959961
+      },
+      {
+        "cue_id": 216,
+        "page_index": 96,
+        "x": 208.41806030273438,
+        "y": 109.70465850830078
+      },
+      {
+        "cue_id": 217,
+        "page_index": 97,
+        "x": 301.3035888671875,
+        "y": 372.6199951171875
+      },
+      {
+        "cue_id": 218,
+        "page_index": 98,
+        "x": 209.1387176513672,
+        "y": 34.679447174072266
+      },
+      {
+        "cue_id": 219,
+        "page_index": 98,
+        "x": 214.335693359375,
+        "y": 283.077392578125
+      },
+      {
+        "cue_id": 220,
+        "page_index": 98,
+        "x": 225.8358612060547,
+        "y": 398.724853515625
+      },
+      {
+        "cue_id": 221,
+        "page_index": 98,
+        "x": 223.82455444335938,
+        "y": 446.78802490234375
+      },
+      {
+        "cue_id": 222,
+        "page_index": 98,
+        "x": 223.65660095214844,
+        "y": 478.4455871582031
+      },
+      {
+        "cue_id": 223,
+        "page_index": 98,
+        "x": 223.1973876953125,
+        "y": 528.69921875
+      },
+      {
+        "cue_id": 224,
+        "page_index": 98,
+        "x": 226.8865966796875,
+        "y": 556.9706420898438
+      },
+      {
+        "cue_id": 225,
+        "page_index": 99,
+        "x": 251.5274200439453,
+        "y": 127.47396087646484
+      },
+      {
+        "cue_id": 226,
+        "page_index": 99,
+        "x": 250.95761108398438,
+        "y": 201.28688049316406
       }
     ],
     "pdf_path": "/mnt/data/DRH_GDRIVE/projects/Wedding_Singer/script/the-wedding-singer.pdf"
