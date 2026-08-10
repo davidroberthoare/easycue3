@@ -173,6 +173,11 @@ pub struct ScriptViewer {
     /// View state.
     pub zoom: f32,
     pub pan: egui::Vec2,
+    /// Screen-y of the canvas top on the last rendered frame. Used to compensate
+    /// `pan.y` when the canvas shifts vertically (e.g. the marker-editor strip
+    /// appearing/disappearing above it), so page content — and a just-placed
+    /// marker — stays put on screen. `None` = no baseline yet.
+    last_canvas_top: Option<f32>,
 
     /// Edit / playback mode toggle.
     pub edit_mode: bool,
@@ -217,6 +222,7 @@ impl Default for ScriptViewer {
             current_page: 0,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
+            last_canvas_top: None,
             edit_mode: false,
             selected_marker: None,
             drag_marker: None,
@@ -250,6 +256,22 @@ impl ScriptViewer {
         Ok(pdfium)
     }
 
+    // ── View state ───────────────────────────────────────────────────────────
+
+    /// Compensate `pan.y` for a vertical shift of the canvas on screen (e.g. the
+    /// marker-editor strip appearing/disappearing above it) so page content — and
+    /// a just-placed marker — stays put. Call once per frame with the current
+    /// canvas top; the first call just establishes the baseline.
+    pub fn compensate_canvas_shift(&mut self, canvas_top: f32) {
+        if let Some(prev) = self.last_canvas_top {
+            let d = canvas_top - prev;
+            if d.abs() > 0.5 {
+                self.pan.y -= d;
+            }
+        }
+        self.last_canvas_top = Some(canvas_top);
+    }
+
     /// True when a PDF is loaded and at least the current page is rendered.
     pub fn is_loaded(&self) -> bool {
         self.document.is_some() && self.page_count > 0
@@ -271,7 +293,9 @@ impl ScriptViewer {
     pub fn load_pdf(&mut self, path: &std::path::Path, ctx: &egui::Context) -> Result<()> {
         let pdfium = self.pdfium()?;
 
-        // Drop the old document and cache before loading the new one.
+        // Drop the old document and cache before loading the new one. The zoom
+        // is deliberately kept: it's a persisted UI preference (restored by the
+        // app at startup), not per-document state. Pan resets to top-left.
         self.document = None;
         self.pages.clear();
         self.page_count = 0;
@@ -279,8 +303,8 @@ impl ScriptViewer {
         self.selected_marker = None;
         self.pending_add = None;
         self.popup_focus = None;
-        self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
+        self.last_canvas_top = None;
         self.pending_focus = None;
         self.pending_fit = false;
 
@@ -318,7 +342,8 @@ impl ScriptViewer {
 
     /// Drop all runtime state (loaded document, page textures, view) but keep
     /// the persisted `data`. Called when a different show is loaded so the
-    /// panel lazily re-loads the new show's script.
+    /// panel lazily re-loads the new show's script. The zoom is kept (persisted
+    /// UI preference); pan resets to top-left.
     pub fn reset_runtime(&mut self) {
         self.document = None;
         self.pages.clear();
@@ -328,8 +353,8 @@ impl ScriptViewer {
         self.pending_add = None;
         self.drag_marker = None;
         self.popup_focus = None;
-        self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
+        self.last_canvas_top = None;
         self.last_refine = None;
         self.pending_focus = None;
         self.pending_fit = false;

@@ -1231,6 +1231,7 @@ dependencies = [
  "qrcode",
  "rfd",
  "rodio",
+ "ron",
  "serde",
  "serde_json",
  "serialport",

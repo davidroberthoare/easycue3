@@ -181,11 +181,17 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
 
 /// Handle keyboard input for command-line operations
 fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
+    // Suppress command-line capture while any text field has focus, a
+    // dropdown/menu popup is open, or the script viewer's add-cue popup is
+    // active — keystrokes should go to that control, not leak into the
+    // command line (mirrors the hotkey gating in `EasyCueApp::update`).
     let is_text_focused = ctx.memory(|mem| mem.focused().is_some());
+    let popup_active = ctx.memory(|mem| mem.any_popup_open())
+        || app.script_viewer.pending_add.is_some();
 
     // Goto mode (Ctrl+G): active globally regardless of which pane is focused.
     if app.ui_state.goto_mode {
-        if !is_text_focused {
+        if !is_text_focused && !popup_active {
             ctx.input(|i| {
                 if i.key_pressed(egui::Key::Escape) {
                     app.ui_state.goto_mode = false;
@@ -216,7 +222,7 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
     }
 
     // Only process commands when no text field is focused.
-    if is_text_focused {
+    if is_text_focused || popup_active {
         return;
     }
 
@@ -385,7 +391,9 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.ui_state.selected_cue_id = None;
                     app.ui_state.selected_lighting_cue_id = None;
                     app.ui_state.selected_audio_cue_id = None;
+                    let script_zoom = app.script_viewer.zoom;
                     app.script_viewer = crate::scriptviewer::ScriptViewer::default();
+                    app.script_viewer.zoom = script_zoom;
                     app.ui_state.selected_channels.clear();
                     app.ui_state.channel_base_levels.clear();
                     app.ui_state.group_master = 100;

@@ -5,6 +5,16 @@ use egui_extras::{TableBuilder, Column};
 use crate::app::EasyCueApp;
 use egui_phosphor::regular as ph;
 
+// ── Panel geometry ─────────────────────────────────────────────────────────────
+//
+// `TableBuilder::max_scroll_height` only bounds the table *body* — the header row
+// renders above the scroll area (see egui_extras table.rs `header()` vs `body()`).
+// The footer reservation must therefore include the header height too, or the
+// table extends behind the footer and hides the last cue row.
+const FOOTER_HEIGHT: f32 = 48.0;
+const TABLE_HEADER_H: f32 = 20.0;
+const FOOTER_GAP: f32 = 4.0;
+
 // ── Drag-and-drop file classification ─────────────────────────────────────────
 
 /// Recognised cue type that can be created by dropping a file onto the cue list.
@@ -352,7 +362,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     ui.add_space(4.0);
 
     // ── Pre-compute display state ─────────────────────────────────────────────
-    let footer_reserved = 52.0;
+    let footer_reserved = FOOTER_HEIGHT + TABLE_HEADER_H + FOOTER_GAP;
     let available_height = (ui.available_height() - footer_reserved).max(0.0);
 
     let selected_id       = app.ui_state.selected_cue_id;
@@ -412,7 +422,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
     table.reset();
 
-    table.header(20.0, |mut h| {
+    table.header(TABLE_HEADER_H, |mut h| {
             h.col(|ui| { ui.strong(""); });
             h.col(|ui| { ui.strong(""); });
             h.col(|ui| { ui.strong("Q#"); });
@@ -768,7 +778,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
 fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
     let max_rect = ui.max_rect();
-    let footer_height = 48.0;
+    let footer_height = FOOTER_HEIGHT;
     let footer_rect = egui::Rect::from_min_max(
         egui::pos2(max_rect.left(), max_rect.bottom() - footer_height),
         egui::pos2(max_rect.right(), max_rect.bottom()),

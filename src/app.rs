@@ -365,6 +365,8 @@ pub struct EasyCueApp {
     last_persisted_dmx_backend: PersistedDmxBackend,
     /// Whether a DMX backend preference existed in persistent storage at startup.
     startup_had_saved_dmx_backend: bool,
+    /// Script-viewer zoom to restore on launch / show / New Show (persisted).
+    script_viewer_zoom: f32,
 
     /// Result of the most recent "check for updates" call (never persisted).
     pub update_state: crate::update::UpdateCheckState,
@@ -594,6 +596,14 @@ impl EasyCueApp {
         let last_update_check: Option<chrono::DateTime<chrono::Utc>> = cc.storage
             .and_then(|storage| eframe::get_value(storage, "last_update_check"));
 
+        // Script-viewer zoom persists across launches as a UI preference.
+        // Clamped to the panel's zoom range so a hand-edited storage value can't
+        // produce a degenerate view (see MIN_ZOOM / MAX_ZOOM in ui/script_viewer.rs).
+        let script_viewer_zoom: f32 = cc.storage
+            .and_then(|storage| eframe::get_value::<f32>(storage, "script_viewer_zoom"))
+            .unwrap_or(1.0)
+            .clamp(0.05, 8.0);
+
         let mut app = Self {
             universes,
             dmx_backend,
@@ -632,10 +642,12 @@ impl EasyCueApp {
             preferred_dmx_backend: saved_dmx_backend.clone().unwrap_or_default(),
             last_persisted_dmx_backend: saved_dmx_backend.unwrap_or_default(),
             startup_had_saved_dmx_backend: had_saved_dmx_backend,
+            script_viewer_zoom,
             update_state: crate::update::UpdateCheckState::Unknown,
             update_check_rx: None,
             last_update_check,
         };
+        app.script_viewer.zoom = script_viewer_zoom;
 
         app.restore_startup_dmx_backend();
 
@@ -1780,9 +1792,10 @@ impl EasyCueApp {
 }
 
 impl eframe::App for EasyCueApp {
-    /// Force-terminate the process on window close so that any background threads
-    /// stuck in blocking OS calls (e.g. IOKit serial-port enumeration on macOS)
-    /// don't keep the process alive after the user has quit.
+    /// Ordered shutdown: stop audio, auto-save the show, close the DMX backend.
+    /// Returns normally so eframe can finish flushing its persisted settings and
+    /// tear down the event loop — a forced `process::exit` here raced the
+    /// settings write and occasionally corrupted `app.ron`.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         let shutdown_start = std::time::Instant::now();
         log::warn!("[shutdown] on_exit invoked; beginning shutdown sequence");
@@ -1833,12 +1846,18 @@ impl eframe::App for EasyCueApp {
             }
         }
 
-        log::warn!(
-            "[shutdown] Forcing process exit after {:.2}ms total shutdown work",
+        log::info!(
+            "[shutdown] Shutdown sequence complete in {:.2}ms total",
             shutdown_start.elapsed().as_secs_f64() * 1000.0
         );
-        log::logger().flush();
-        std::process::exit(0);
+
+        // NOTE: we deliberately do NOT `std::process::exit` here. eframe's quit
+        // path flushes its persisted settings (app.ron) on a background thread and
+        // only joins that thread when its FileStorage is dropped, which happens
+        // after `on_exit` returns. Calling `exit` here used to race that write and
+        // occasionally leave a truncated settings file — which on the next launch
+        // silently reset the UI layout and the last-loaded show. Returning lets
+        // eframe finish the write, join the thread, and exit the process itself.
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -1857,19 +1876,24 @@ impl eframe::App for EasyCueApp {
             }
         }
 
-        // Suppress hotkeys while any text field (label editors, property boxes, etc.) has focus.
-        // Ctrl+R (record) is safe to allow regardless.
-        let text_focused = ctx.memory(|m| m.focused().is_some());
+        // Suppress hotkeys while any text field has focus, a dropdown/menu popup
+        // is open (combo boxes, context menus, colour pickers), or the script
+        // viewer's add-cue popup is showing — so e.g. arrow keys navigate that
+        // control instead of leaking out and changing the on-deck cue. Ctrl+R
+        // (record) is safe to allow regardless.
+        let keyboard_busy = ctx.memory(|m| m.focused().is_some())
+            || ctx.memory(|m| m.any_popup_open())
+            || self.script_viewer.pending_add.is_some();
         let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down, update) = ctx.input(|i| (
-            i.key_pressed(egui::Key::Space)     && !i.modifiers.any() && !text_focused,
-            i.key_pressed(egui::Key::S)         && !i.modifiers.any() && !text_focused,
+            i.key_pressed(egui::Key::Space)     && !i.modifiers.any() && !keyboard_busy,
+            i.key_pressed(egui::Key::S)         && !i.modifiers.any() && !keyboard_busy,
             i.key_pressed(egui::Key::R)         && i.modifiers.ctrl,
-            i.key_pressed(egui::Key::G)         && i.modifiers.ctrl && !text_focused,
+            i.key_pressed(egui::Key::G)         && i.modifiers.ctrl && !keyboard_busy,
             // Escape is a safety/pause key — works even when a text field has focus.
             i.key_pressed(egui::Key::Escape),
-            i.key_pressed(egui::Key::ArrowUp)   && !text_focused,
-            i.key_pressed(egui::Key::ArrowDown) && !text_focused,
-            i.key_pressed(egui::Key::U)         && i.modifiers.ctrl && !text_focused,
+            i.key_pressed(egui::Key::ArrowUp)   && !keyboard_busy,
+            i.key_pressed(egui::Key::ArrowDown) && !keyboard_busy,
+            i.key_pressed(egui::Key::U)         && i.modifiers.ctrl && !keyboard_busy,
         ));
 
         if stop {
@@ -2103,12 +2127,19 @@ impl eframe::App for EasyCueApp {
         let remote_settings_dirty = false;
         if self.current_file_path != self.last_persisted_file_path
             || self.preferred_dmx_backend != self.last_persisted_dmx_backend
+            || (self.script_viewer.zoom - self.script_viewer_zoom).abs() > 0.001
             || remote_settings_dirty
         {
             if let Some(storage) = frame.storage_mut() {
                 self.save(storage);
+                // Push to disk promptly so a Ctrl+C / crash loses at most the
+                // last few frames of UI state, not up to the 30s eframe autosave
+                // interval. `flush` only writes when something changed and joins
+                // the previous write thread, so writes are serialised.
+                storage.flush();
                 self.last_persisted_file_path = self.current_file_path.clone();
                 self.last_persisted_dmx_backend = self.preferred_dmx_backend.clone();
+                self.script_viewer_zoom = self.script_viewer.zoom;
                 #[cfg(feature = "remote")]
                 {
                     self.last_persisted_remote_settings = self.remote_settings.clone();
@@ -2117,9 +2148,21 @@ impl eframe::App for EasyCueApp {
         }
     }
 
+    /// Don't persist egui's internal memory (scroll positions, collapsed states,
+    /// transient window sizes). It's the bulk of the app.ron file (~100KB of
+    /// ~110KB) and its loss is never missed, but skipping it shrinks the settings
+    /// write to a few kilobytes — making it effectively instant and removing the
+    /// window in which a killed write could corrupt the file. The app's own
+    /// persisted state (dock layout, script zoom, last file, DMX/remote settings)
+    /// is unaffected.
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
+
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "dock_state", &self.dock_state);
         eframe::set_value(storage, "preferred_dmx_backend", &self.preferred_dmx_backend);
+        eframe::set_value(storage, "script_viewer_zoom", &self.script_viewer.zoom);
         #[cfg(feature = "remote")]
         eframe::set_value(storage, "remote_settings", &self.remote_settings);
         eframe::set_value(storage, "last_update_check", &self.last_update_check);

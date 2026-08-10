@@ -159,6 +159,12 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let available = ui.available_size();
     let (canvas_rect, canvas_response) = ui.allocate_exact_size(available, Sense::click_and_drag());
 
+    // Keep page content steady when the canvas shifts vertically on screen — the
+    // marker-editor strip appears above it the moment a marker is selected, which
+    // (without compensation) would shove the just-placed dot below the click point.
+    // The compensation keeps the page still, so the click lands at the dot's centre.
+    app.script_viewer.compensate_canvas_shift(canvas_rect.top());
+
     if !is_loaded {
         let painter = ui.painter_at(canvas_rect);
         painter.rect_filled(canvas_rect, 0.0, Color32::from_rgb(8, 22, 38));
@@ -247,7 +253,12 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     });
     let pointer_over_canvas =
         canvas_rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default()));
-    if pointer_over_canvas {
+    // Don't let the wheel pan/zoom the page while the add-cue popup is open or a
+    // dropdown/menu (combo box, colour picker, …) is showing — the scroll should
+    // go to that control, not to the PDF behind it.
+    let popup_active =
+        app.script_viewer.pending_add.is_some() || ui.memory(|m| m.any_popup_open());
+    if pointer_over_canvas && !popup_active {
         if ctrl_zoom != 1.0 {
             app.script_viewer.zoom = (app.script_viewer.zoom * ctrl_zoom).clamp(MIN_ZOOM, MAX_ZOOM);
         }
@@ -260,7 +271,7 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // Left/Right and PageUp/PageDown step through pages.
     let panel_active = app.ui_state.active_pane == Some(TabKind::ScriptViewer);
     let text_focused = ui.memory(|m| m.focused().is_some());
-    if panel_active && !text_focused {
+    if panel_active && !text_focused && !popup_active {
         let (left, right, page_up, page_down) = ui.input(|i| {
             (
                 i.key_pressed(egui::Key::ArrowLeft),
