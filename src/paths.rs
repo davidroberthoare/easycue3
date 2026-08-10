@@ -55,6 +55,23 @@ pub fn find_resource_file(relative_path: &Path) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Candidate locations for a bundled platform library (e.g. `libpdfium.so`).
+///
+/// Packaged builds keep libraries in a `lib/` subdirectory next to the
+/// executable so the bundle root stays tidy; development copies may sit
+/// directly next to the executable or in the working directory.
+pub fn bundled_library_candidates(library_file_name: &std::ffi::OsStr) -> Vec<PathBuf> {
+    candidate_roots()
+        .into_iter()
+        .flat_map(|root| {
+            [
+                root.join("lib").join(library_file_name),
+                root.join(library_file_name),
+            ]
+        })
+        .collect()
+}
+
 pub fn resolve_media_path(path: &Path) -> PathBuf {
     if path.is_absolute() || path.exists() {
         return path.to_path_buf();

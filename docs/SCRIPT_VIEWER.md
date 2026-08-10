@@ -64,17 +64,37 @@ libloading at runtime. The build needs no library and downloads nothing.
 Resolution order in `ScriptViewer::pdfium()` → `bind_pdfium_library()`:
 
 1. `PDFIUM_LIBRARY_PATH` env var (path to the library file)
-2. A bundled copy next to the executable / cwd
+2. A bundled copy in a `lib/` subdirectory next to the executable, then
+   directly next to the executable / cwd (`crate::paths::bundled_library_candidates`)
 3. System library search (`LD_LIBRARY_PATH`, standard paths)
 
-### Getting the library
+### Getting the library (development)
 
 ```bash
 # Debian/Ubuntu (or download from bblanchon/pdfium-binaries GitHub releases)
 # e.g. curl -L -o pdfium-linux-x64.tgz \
-#   https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-linux-x64.tgz
+#   https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7881/pdfium-linux-x64.tgz
 # then set:  export PDFIUM_LIBRARY_PATH=/path/to/libpdfium.so
 ```
+
+### Release packaging (users install nothing)
+
+The GitHub release workflow (`.github/workflows/release.yml`) downloads the
+matching prebuilt library from `bblanchon/pdfium-binaries` (pinned to
+`chromium/7881`, matching `pdfium-render` 0.9.3's `pdfium_7881` bindings) and
+ships it in a `lib/` subdirectory of each package, keeping the bundle root
+clean:
+
+```
+easycue3-linux-x86_64/
+├── easycue3
+├── lib/libpdfium.so        ← linux job (pdfium-linux-x64.tgz)
+├── media/  shows/  fixture_profiles/
+```
+
+`lib/pdfium.dll` (Windows, from `pdfium-win-x64.tgz`) and
+`lib/libpdfium.dylib` (macOS universal, from `pdfium-mac-univ.tgz`) follow the
+same layout.
 
 A clear error is shown in the panel if the library is missing.
 

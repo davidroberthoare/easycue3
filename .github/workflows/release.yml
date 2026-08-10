@@ -18,6 +18,11 @@ jobs:
   build-linux:
     name: Build Linux (x86_64)
     runs-on: ubuntu-latest
+    env:
+      # PDFium binaries from bblanchon/pdfium-binaries, pinned to chromium/7881
+      # to match pdfium-render 0.9.3's pdfium_7881 bindings. Bundled into the
+      # package's lib/ dir so users don't install anything.
+      PDFIUM_URL: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7881/pdfium-linux-x64.tgz
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,11 +46,17 @@ jobs:
       - name: Build
         run: cargo build --release --no-default-features --features audio,usb
 
+      - name: Download PDFium
+        run: |
+          curl -L -o pdfium.tgz "$PDFIUM_URL"
+          tar xzf pdfium.tgz lib/libpdfium.so
+
       - name: Package
         run: |
           PKG=easycue3-linux-x86_64
-          mkdir -p $PKG
+          mkdir -p $PKG/lib
           cp target/release/easycue3 $PKG/
+          cp lib/libpdfium.so $PKG/lib/
           cp -r media shows fixture_profiles $PKG/
           tar czf $PKG.tar.gz $PKG/
 
@@ -58,6 +69,8 @@ jobs:
   build-windows:
     name: Build Windows (x86_64)
     runs-on: windows-latest
+    env:
+      PDFIUM_URL: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7881/pdfium-win-x64.tgz
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,12 +91,20 @@ jobs:
       - name: Build
         run: cargo build --release --no-default-features --features audio,usb
 
+      - name: Download PDFium
+        shell: pwsh
+        run: |
+          curl.exe -L -o pdfium.tgz "$env:PDFIUM_URL"
+          tar -xzf pdfium.tgz bin/pdfium.dll
+
       - name: Package
         shell: pwsh
         run: |
           $PKG = "easycue3-windows-x86_64"
           New-Item -ItemType Directory -Path $PKG
           Copy-Item target\release\easycue3.exe $PKG\
+          New-Item -ItemType Directory -Path $PKG\lib
+          Copy-Item bin\pdfium.dll $PKG\lib\
           Copy-Item -Recurse media, shows, fixture_profiles $PKG\
           Compress-Archive -Path $PKG -DestinationPath "$PKG.zip"
 
@@ -96,6 +117,8 @@ jobs:
   build-macos:
     name: Build macOS (universal)
     runs-on: macos-latest
+    env:
+      PDFIUM_URL: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7881/pdfium-mac-univ.tgz
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,11 +150,17 @@ jobs:
             target/x86_64-apple-darwin/release/easycue3 \
             target/aarch64-apple-darwin/release/easycue3
 
+      - name: Download PDFium
+        run: |
+          curl -L -o pdfium.tgz "$PDFIUM_URL"
+          tar xzf pdfium.tgz lib/libpdfium.dylib
+
       - name: Package
         run: |
           PKG=easycue3-macos-universal
-          mkdir -p $PKG
+          mkdir -p $PKG/lib
           cp easycue3 $PKG/
+          cp lib/libpdfium.dylib $PKG/lib/
           cp -r media shows fixture_profiles $PKG/
           zip -r $PKG.zip $PKG/
 

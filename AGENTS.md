@@ -17,7 +17,7 @@ to save context tokens, I'll run manual tests myself. You can stop after doing a
 
 - `cargo test` has one pre-existing failure: `enttec_usb_pro::tests::test_protocol_message_format`. Unrelated to app logic — don't chase it.
 - `cargo fmt` is currently broken by a trailing-whitespace line in `src/command.rs:444` — use `rustfmt <files>` on the files you touched (or fix the whitespace) until the repo is cleaned.
-- Releasing: GitHub Action `.github/workflows/release.yml` builds on tag `v*` (with `--no-default-features --features audio,usb`) and packages `media`, `shows`, `fixture_profiles/` alongside the binary.
+- Releasing: GitHub Action `.github/workflows/release.yml` builds on tag `v*` (with `--no-default-features --features audio,usb`) and packages `media`, `shows`, `fixture_profiles/` alongside the binary — plus the bundled PDFium library in a `lib/` subdir (users install nothing).
 
 ## Hard constraints
 
@@ -30,7 +30,7 @@ to save context tokens, I'll run manual tests myself. You can stop after doing a
 - **Crate split:** `src/lib.rs` exports library modules (`dmx`, `cue`, `audio`, `effects`, `fixtures`, `paths`, `serde_helpers`); everything else (`app`, `ui`, `show`, `command`, `groups`, `magic_sheet`, `media`, `scriptviewer`, `remote`, `update`) is declared in `src/main.rs`. New modules must be registered in the right place.
 - **Universes:** `app.rs` creates 8 universes (IDs 1–8). `DmxBackend::send_universes()` default sends only the first; multi-universe backends (Art-Net) override it. USB Pro/Open DMX are single-universe.
 - **Art-Net is implemented** (`src/dmx/backends/artnet.rs`, wired into `app.rs:switch_to_artnet` and the settings UI) — `CLAUDE.md`'s "not yet implemented" is stale.
-- **Script viewer** (`src/scriptviewer/` + `src/ui/script_viewer.rs`): PDF scripts via `pdfium-render` (native `libpdfium.so` loaded at **runtime** — see `docs/SCRIPT_VIEWER.md` for install/`PDFIUM_LIBRARY_PATH`). Markers store `(page, x, y)` in PDF point space and reference cues by stable ID; annotations persist in the show file as `ShowFile::script_viewer`. No build-time PDFium dependency.
+- **Script viewer** (`src/scriptviewer/` + `src/ui/script_viewer.rs`): PDF scripts via `pdfium-render` (native `libpdfium.so` loaded at **runtime** — see `docs/SCRIPT_VIEWER.md`). Release packages bundle the library in a `lib/` subdir (downloaded in `.github/workflows/release.yml` from bblanchon/pdfium-binaries, pinned to `chromium/7881`); dev machines use `PDFIUM_LIBRARY_PATH` or a system install. Markers store `(page, x, y)` in PDF point space and reference cues by stable ID; annotations persist in the show file as `ShowFile::script_viewer`. No build-time PDFium dependency.
 - **Threading:** all UI/app state on the main thread (egui). Tokio for async file I/O. `rodio`/`lumina-video` own their threads. `Arc<Mutex<T>>` only when state crosses threads — note `copilot-instructions.md` is outdated here (claims a separate DMX thread; the code sends from the main loop in `app.rs`).
 - **Remote client** (`remote_client/`) is embedded at compile time via `include_bytes!` — rebuild to see PWA changes. `EASYCUE3_REMOTE=<port>[:<pin>]` env var force-enables the server for one run.
 

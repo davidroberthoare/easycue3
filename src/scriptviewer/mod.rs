@@ -21,8 +21,8 @@
 //! Rendering uses the `pdfium-render` crate. The PDFium native library
 //! (`libpdfium.so` / `libpdfium.dylib` / `pdfium.dll`) is loaded **at runtime**
 //! via libloading — the build itself needs no library. Resolution order:
-//! `PDFIUM_LIBRARY_PATH` env var → a bundled library next to the executable /
-//! cwd → system library search.
+//! `PDFIUM_LIBRARY_PATH` env var → a bundled library in a `lib/` subdirectory
+//! or next to the executable / cwd → system library search.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -526,9 +526,10 @@ fn bind_pdfium_library() -> Result<PdfiumLibraryBindingsDyn> {
         }
     }
 
-    // 2. Bundled copy next to the executable / working directory.
+    // 2. Bundled copy: `lib/` subdirectory (packaged builds) or next to the
+    //    executable / working directory (development).
     let lib_name = Pdfium::pdfium_platform_library_name();
-    if let Some(found) = crate::paths::find_resource_file(std::path::Path::new(&lib_name)) {
+    for found in crate::paths::bundled_library_candidates(&lib_name) {
         if let Ok(bindings) = Pdfium::bind_to_library(&found) {
             log::info!("[scriptviewer] Bound bundled PDFium at {}", found.display());
             return Ok(bindings);
@@ -543,8 +544,8 @@ fn bind_pdfium_library() -> Result<PdfiumLibraryBindingsDyn> {
     anyhow::bail!(
         "PDFium library not found. Install libpdfium.so (e.g. via a distro \
          package or the bblanchon/pdfium-binaries release) on the system \
-         library path, copy it next to the executable, or set \
-         PDFIUM_LIBRARY_PATH to its location."
+         library path, copy it next to the executable or into a `lib/` \
+         subdirectory, or set PDFIUM_LIBRARY_PATH to its location."
     )
 }
 
