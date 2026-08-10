@@ -115,6 +115,17 @@ pub enum NewCueKind {
     Adjustment,
 }
 
+/// Which control of the add-cue popup to give keyboard focus to when it opens.
+/// Remembered from the last completed popup action so a repeat double-click
+/// flow is a pure keyboard affair (Enter to confirm / open the dropdown).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupFocusTarget {
+    /// Focus the existing-cue combo box (Space/Enter opens the dropdown).
+    ExistingCombo,
+    /// Focus the "Create & link" button (Enter creates the cue immediately).
+    CreateButton,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Runtime state (never persisted)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,6 +185,12 @@ pub struct ScriptViewer {
     /// Transient UI state for the add-cue popup.
     pub popup_new_kind: NewCueKind,
     pub popup_existing_cue: Option<u32>,
+    /// True when the last completed popup action linked an existing cue (rather
+    /// than creating a new one). Drives which control is pre-focused next time.
+    pub popup_last_was_link: bool,
+    /// Which control the add-cue popup should focus on its next frame. Set when
+    /// `pending_add` is created and consumed by the popup's first render.
+    pub popup_focus: Option<PopupFocusTarget>,
 
     /// Timestamp of the last re-rasterization (debounces zoom refinement).
     last_refine: Option<Instant>,
@@ -206,6 +223,8 @@ impl Default for ScriptViewer {
             pending_add: None,
             popup_new_kind: NewCueKind::Lighting,
             popup_existing_cue: None,
+            popup_last_was_link: false,
+            popup_focus: None,
             last_refine: None,
             pending_focus: None,
             pending_fit: false,
@@ -259,6 +278,7 @@ impl ScriptViewer {
         self.current_page = 0;
         self.selected_marker = None;
         self.pending_add = None;
+        self.popup_focus = None;
         self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
         self.pending_focus = None;
@@ -307,6 +327,7 @@ impl ScriptViewer {
         self.selected_marker = None;
         self.pending_add = None;
         self.drag_marker = None;
+        self.popup_focus = None;
         self.zoom = 1.0;
         self.pan = egui::Vec2::ZERO;
         self.last_refine = None;

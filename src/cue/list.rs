@@ -187,6 +187,105 @@ impl CueList {
         Ok(())
     }
 
+    /// Re-number a contiguous slice of the cue list (by current list index, so
+    /// "all cues" or a number range) onto `new_start, new_start+step, …`.
+    ///
+    /// Care is taken with cross-references:
+    /// - **Adjust cues** target an audio cue *by cue number*
+    ///   (`AdjustData::target_audio_cue`); when a targeted audio cue is
+    ///   renumbered, its adjust cues are rewritten to follow it.
+    /// - **Script-viewer markers** reference cues by stable ID (`cue_id`), so
+    ///   they need no adjustment — they automatically track renumbered cues.
+    ///
+    /// Collisions with cues outside the slice are rejected (with an error) so
+    /// the renumber can't silently merge two cues onto one number.
+    ///
+    /// Returns the number of cues renumbered. The play head is preserved.
+    pub fn renumber_range(&mut self, from_idx: usize, to_idx: usize, new_start: f32, step: f32) -> Result<usize> {
+        if from_idx > to_idx || to_idx >= self.cues.len() {
+            anyhow::bail!("Invalid renumber range");
+        }
+        if !new_start.is_finite() || !step.is_finite() || step <= 0.0 {
+            anyhow::bail!("Start and step must be positive numbers");
+        }
+
+        let count = to_idx - from_idx + 1;
+        let new_numbers: Vec<f32> = (0..count).map(|i| new_start + i as f32 * step).collect();
+
+        // Duplicate numbers within the renumbered set (e.g. an oversized step).
+        for (i, n) in new_numbers.iter().enumerate() {
+            if new_numbers[..i].iter().any(|m| (m - n).abs() < 0.005) {
+                anyhow::bail!("Step is too small: numbers collide at {:.1}", n);
+            }
+        }
+        // Collisions with cues left outside the renumbered slice.
+        for cue in self.cues.iter().take(from_idx).chain(self.cues.iter().skip(to_idx + 1)) {
+            if let Some(n) = new_numbers.iter().find(|n| (cue.number - **n).abs() < 0.005) {
+                anyhow::bail!(
+                    "New number {:.1} collides with cue {:.1} outside the renumbered range",
+                    n,
+                    cue.number
+                );
+            }
+        }
+
+        // Rewrite adjust-cue targets: old number → new number for audio cues
+        // that were inside the slice.
+        #[cfg(feature = "audio")]
+        {
+            let old_to_new: Vec<(f32, f32)> = self.cues[from_idx..=to_idx]
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.is_audio())
+                .map(|(i, c)| (c.number, new_numbers[i]))
+                .collect();
+
+            for cue in self.cues.iter_mut() {
+                if let Some(d) = cue.adjust_data_mut() {
+                    if let Some(target) = d.target_audio_cue {
+                        if let Some((_, new_num)) = old_to_new.iter().find(|(old, _)| (old - target).abs() < 0.005) {
+                            d.target_audio_cue = Some(*new_num);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply the new numbers.
+        for (i, cue) in self.cues.iter_mut().enumerate() {
+            if (from_idx..=to_idx).contains(&i) {
+                cue.number = new_numbers[i - from_idx];
+            }
+        }
+
+        // Re-sort by number, preserving the play head.
+        let current_id = self.current.and_then(|i| self.cues.get(i)).map(|c| c.id);
+        self.cues.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(std::cmp::Ordering::Equal));
+        self.current = current_id.and_then(|id| self.cues.iter().position(|c| c.id == id));
+
+        Ok(count)
+    }
+
+    /// Re-number every cue whose number falls in `[from_num, to_num]`
+    /// (inclusive). The list is sorted by number, so this selects a contiguous
+    /// slice and delegates to [`Self::renumber_range`].
+    pub fn renumber_range_for_numbers(&mut self, from_num: f32, to_num: f32, new_start: f32, step: f32) -> Result<usize> {
+        if to_num < from_num {
+            anyhow::bail!("Range start {:.1} is after range end {:.1}", from_num, to_num);
+        }
+        let from_idx = self
+            .cues
+            .iter()
+            .position(|c| c.number >= from_num - 0.005)
+            .ok_or_else(|| anyhow::anyhow!("No cue at or above {:.1}", from_num))?;
+        let to_idx = self
+            .cues
+            .iter()
+            .rposition(|c| c.number <= to_num + 0.005)
+            .ok_or_else(|| anyhow::anyhow!("No cue at or below {:.1}", to_num))?;
+        self.renumber_range(from_idx, to_idx, new_start, step)
+    }
+
     // --- Tracking ---
 
     /// Replay all lighting cues from 0 through `idx` (inclusive) to produce the
@@ -242,5 +341,98 @@ impl CueList {
     pub fn clear(&mut self) {
         self.cues.clear();
         self.current = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lighting_list(numbers: &[f32]) -> CueList {
+        let mut list = CueList::new();
+        for n in numbers {
+            list.add_cue(Cue::new_lighting(*n));
+        }
+        list
+    }
+
+    fn numbers_of(list: &CueList) -> Vec<f32> {
+        list.cues().iter().map(|c| c.number).collect()
+    }
+
+    #[test]
+    fn renumber_all_reassigns_sequentially() {
+        let mut list = lighting_list(&[3.0, 1.5, 2.0]);
+        let n = list.renumber_range(0, 2, 1.0, 1.0).unwrap();
+        assert_eq!(n, 3);
+        assert_eq!(numbers_of(&list), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn renumber_respects_custom_start_and_step() {
+        let mut list = lighting_list(&[1.0, 2.0, 3.0, 4.0]);
+        // Renumber cues 3..4 (indices 2..3) to start at 10 step 0.5.
+        let n = list.renumber_range(2, 3, 10.0, 0.5).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(numbers_of(&list), vec![1.0, 2.0, 10.0, 10.5]);
+    }
+
+    #[test]
+    fn renumber_range_for_numbers_selects_by_number() {
+        let mut list = lighting_list(&[0.5, 0.8, 3.0, 5.0, 7.0]);
+        // Cues with numbers in [3,7] → renumber to 1.0, 2.0, 3.0.
+        let n = list.renumber_range_for_numbers(3.0, 7.0, 1.0, 1.0).unwrap();
+        assert_eq!(n, 3);
+        assert_eq!(numbers_of(&list), vec![0.5, 0.8, 1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn renumber_rejects_collision_outside_range() {
+        let mut list = lighting_list(&[1.0, 2.0, 3.0, 4.0]);
+        // Renumber cues 2..3 onto 0.5/1.0 — the 1.0 collides with the untouched
+        // cue 1.0 that sits outside the slice.
+        let err = list.renumber_range(1, 2, 0.5, 0.5).unwrap_err();
+        assert!(err.to_string().contains("collides"));
+    }
+
+    #[test]
+    fn renumber_rejects_invalid_parameters() {
+        let mut list = lighting_list(&[1.0, 2.0]);
+        assert!(list.renumber_range(1, 0, 1.0, 1.0).is_err());
+        assert!(list.renumber_range(0, 2, 1.0, 1.0).is_err());
+        assert!(list.renumber_range(0, 1, 1.0, 0.0).is_err());
+    }
+
+    #[cfg(feature = "audio")]
+    #[test]
+    fn renumber_rewrites_adjust_cue_targets() {
+        let mut list = CueList::new();
+        list.add_cue(Cue::new_lighting(1.0));
+        list.add_cue(Cue::new_audio(5.0, std::path::PathBuf::from("a.wav")));
+        list.add_cue(Cue::new_audio(6.0, std::path::PathBuf::from("b.wav")));
+
+        let mut adjust1 = Cue::new_adjust(7.0);
+        if let crate::cue::CueKind::Adjust(d) = &mut adjust1.kind {
+            d.target_audio_cue = Some(5.0);
+        }
+        let mut adjust2 = Cue::new_adjust(8.0);
+        if let crate::cue::CueKind::Adjust(d) = &mut adjust2.kind {
+            d.target_audio_cue = Some(6.0);
+        }
+        list.add_cue(adjust1);
+        list.add_cue(adjust2);
+
+        // Renumber everything 1.0 step 1.0: 1 lx, 2 audio, 3 audio, 4 adj, 5 adj.
+        let n = list.renumber_range(0, list.len() - 1, 1.0, 1.0).unwrap();
+        assert_eq!(n, 5);
+        assert_eq!(numbers_of(&list), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+
+        let targets: Vec<Option<f32>> = list
+            .cues()
+            .iter()
+            .filter(|c| c.is_adjust())
+            .map(|c| c.adjust_data().and_then(|d| d.target_audio_cue))
+            .collect();
+        assert_eq!(targets, vec![Some(2.0), Some(3.0)]);
     }
 }

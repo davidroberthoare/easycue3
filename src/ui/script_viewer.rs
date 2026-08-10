@@ -353,6 +353,15 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         x: px.clamp(0.0, width_pts),
                         y: py.clamp(0.0, height_pts),
                     });
+                    // Remembered action: focus the existing-cue combo if the last
+                    // popup used it, otherwise the "Create & link" button so a
+                    // repeat double-click is a keyboard-only flow.
+                    app.script_viewer.popup_focus =
+                        Some(if app.script_viewer.popup_last_was_link {
+                            crate::scriptviewer::PopupFocusTarget::ExistingCombo
+                        } else {
+                            crate::scriptviewer::PopupFocusTarget::CreateButton
+                        });
                 }
             }
         }
@@ -667,6 +676,13 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
 
     let mut close = false;
     let mut created_id: Option<u32> = None;
+    // True when the resolved cue was freshly created here (vs. linked to an
+    // existing one). New cues get selected + their label focused so the
+    // operator can start typing a name right away.
+    let mut created_new = false;
+
+    // Consumed on this frame so the focus request only applies once on open.
+    let focus_target = app.script_viewer.popup_focus.take();
 
     egui::Window::new("Add Cue Marker")
         .collapsible(false)
@@ -694,7 +710,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                 .and_then(|id| cue_choices.iter().find(|(cid, _)| *cid == id))
                 .map(|(_, l)| l.clone())
                 .unwrap_or_else(|| "(select cue)".to_string());
-            egui::ComboBox::from_id_salt("script_add_existing")
+            let existing_combo = egui::ComboBox::from_id_salt("script_add_existing")
                 .selected_text(existing_label)
                 .width(200.0)
                 .show_ui(ui, |ui| {
@@ -706,6 +722,9 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                         );
                     }
                 });
+            if focus_target == Some(crate::scriptviewer::PopupFocusTarget::ExistingCombo) {
+                existing_combo.response.request_focus();
+            }
             if ui
                 .add_enabled(
                     app.script_viewer.popup_existing_cue.is_some(),
@@ -762,10 +781,15 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
             }
 
             ui.horizontal(|ui| {
-                if ui.button("Create & link").clicked() {
+                let create_btn = ui.button("Create & link");
+                if focus_target == Some(crate::scriptviewer::PopupFocusTarget::CreateButton) {
+                    create_btn.request_focus();
+                }
+                if create_btn.clicked() {
                     match kind {
                         NewCueKind::Lighting => {
                             created_id = app.add_cue_of_kind(kind);
+                            created_new = created_id.is_some();
                             close = created_id.is_some();
                         }
                         #[cfg(feature = "audio")]
@@ -790,6 +814,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                                         }
                                     }
                                     created_id = Some(id);
+                                    created_new = true;
                                     close = true;
                                 }
                             }
@@ -797,6 +822,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                         #[cfg(feature = "audio")]
                         NewCueKind::Adjustment => {
                             created_id = app.add_cue_of_kind(kind);
+                            created_new = created_id.is_some();
                             close = created_id.is_some();
                         }
                         #[cfg(not(feature = "audio"))]
@@ -811,7 +837,17 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
 
     if close {
         app.script_viewer.pending_add = None;
-        app.script_viewer.popup_existing_cue = None;
+        // Remember what the operator did so the next popup can pre-select and
+        // pre-focus the same control. `popup_existing_cue` is intentionally
+        // kept so a repeat "link existing" flow shows the last linked cue.
+        if let Some(cid) = created_id {
+            if created_new {
+                app.script_viewer.popup_last_was_link = false;
+            } else {
+                app.script_viewer.popup_last_was_link = true;
+                app.script_viewer.popup_existing_cue = Some(cid);
+            }
+        }
     }
 
     // Attach a marker to the chosen cue once the popup resolves.
@@ -819,6 +855,12 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
         let marker = CueMarker::new(pending.page_index, pending.x, pending.y, cue_id);
         let idx = app.script_viewer.add_marker(marker);
         app.script_viewer.selected_marker = Some(idx);
+        // A freshly created cue gets selected and its label field focused so
+        // the operator can name it immediately (mirrors the "+LX" cue button).
+        if created_new {
+            app.select_cue(cue_id);
+            app.ui_state.focus_cue_edit = Some((cue_id, crate::app::CueEditField::Label));
+        }
         app.ui_state.status_message = format!("Marker linked to cue {}", cue_id);
     }
 }

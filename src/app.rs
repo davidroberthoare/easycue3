@@ -160,6 +160,18 @@ pub struct UiState {
     pub selected_usb_port: String,
     pub selected_open_dmx_port: String,
 
+    /// Re-number Cues dialog state (see the Edit menu).
+    pub show_renumber_cues: bool,
+    /// True = renumber all cues; false = renumber the number range below.
+    pub renumber_all: bool,
+    pub renumber_from: f32,
+    pub renumber_to: f32,
+    pub renumber_start: f32,
+    pub renumber_step: f32,
+    /// One-shot: focus the dialog's Apply button on its next render so Enter
+    /// applies immediately, without stealing focus back from the number fields.
+    pub renumber_focus_pending: bool,
+
     /// On-deck cue override: cue number typed by operator. Empty = use the default next cue.
     pub go_cue_input: String,
 
@@ -234,6 +246,13 @@ impl Default for UiState {
             autosave_path: None,
             selected_usb_port: String::new(),
             selected_open_dmx_port: String::new(),
+            show_renumber_cues: false,
+            renumber_all: true,
+            renumber_from: 1.0,
+            renumber_to: 1.0,
+            renumber_start: 1.0,
+            renumber_step: 1.0,
+            renumber_focus_pending: false,
             go_cue_input: String::new(),
             goto_mode: false,
             artnet_target_ip: "255.255.255.255".to_string(),
@@ -1581,6 +1600,64 @@ impl EasyCueApp {
         // its marker into view (no-op when it has no marker, or when it's
         // already visible on screen).
         self.follow_cue_in_script_view(id);
+    }
+
+    /// Open the Re-number Cues dialog, defaulting its fields from the current
+    /// cue list (whole-list scope, start at the first cue's number, step 1.0).
+    pub fn open_renumber_dialog(&mut self) {
+        let Some((first, last)) = self
+            .cue_list
+            .cues()
+            .first()
+            .zip(self.cue_list.cues().last())
+            .map(|(a, b)| (a.number, b.number))
+        else {
+            self.ui_state.status_message = "No cues to renumber".to_string();
+            return;
+        };
+        self.ui_state.renumber_all = true;
+        self.ui_state.renumber_from = first;
+        self.ui_state.renumber_to = last;
+        self.ui_state.renumber_start = first;
+        self.ui_state.renumber_step = 1.0;
+        self.ui_state.renumber_focus_pending = true;
+        self.ui_state.show_renumber_cues = true;
+    }
+
+    /// Apply the Re-number Cues dialog settings to the cue list. Keeps the
+    /// dialog open (and reports the error) when the renumber is rejected so the
+    /// operator can correct the parameters.
+    pub fn apply_renumber_cues(&mut self) {
+        let (from, to, start, step, all) = {
+            let st = &mut self.ui_state;
+            st.show_renumber_cues = false;
+            (
+                st.renumber_from,
+                st.renumber_to,
+                st.renumber_start,
+                st.renumber_step,
+                st.renumber_all,
+            )
+        };
+        let result = if all {
+            self.cue_list
+                .renumber_range(0, self.cue_list.len().saturating_sub(1), start, step)
+        } else {
+            self.cue_list
+                .renumber_range_for_numbers(from, to, start, step)
+        };
+        match result {
+            Ok(n) => {
+                self.ui_state.status_message = format!(
+                    "Renumbered {} cue(s) starting at {:.1} step {:.1}",
+                    n, start, step
+                );
+            }
+            Err(e) => {
+                self.ui_state.status_message = format!("Renumber failed: {}", e);
+                self.ui_state.show_renumber_cues = true;
+            }
+        }
     }
 
     /// Overwrite the lighting data of the cue at `upd_idx` with the current live

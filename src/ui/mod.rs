@@ -52,6 +52,7 @@ pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     render_quit_confirmation(ctx, app);
     render_device_selector(ctx, app);
     render_colour_settings(ctx, app);
+    render_renumber_cues(ctx, app);
     render_fixture_editor(ctx, app);
     render_help_shortcuts(ctx, app);
     render_help_about(ctx, app);
@@ -475,6 +476,15 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
             });
             
+            // Edit menu
+            ui.menu_button("Edit", |ui| {
+                if ui.button("Re-number Cues…").clicked() {
+                    app.open_renumber_dialog();
+                    ui.close_menu();
+                }
+                // (future Edit-menu items go here)
+            });
+
             // View menu - add panels to dock
             ui.menu_button("View", |ui| {
                 ui.label(egui::RichText::new("Add Panel:").strong());
@@ -1119,6 +1129,97 @@ fn render_colour_settings(ctx: &Context, app: &mut EasyCueApp) {
         });
     if !open {
         app.ui_state.show_colour_settings = false;
+    }
+}
+
+/// Render the Re-number Cues dialog (Edit menu). Lets the operator pick a
+/// scope (all cues or a #x–#y number range), a new start number and a step,
+/// then renumbers on Apply. Adjust-cue targets and script markers are handled
+/// by the backend renumber (see `CueList::renumber_range`).
+fn render_renumber_cues(ctx: &Context, app: &mut EasyCueApp) {
+    if !app.ui_state.show_renumber_cues {
+        return;
+    }
+
+    let mut open = true;
+    let mut cancelled = false;
+    let mut apply = false;
+    egui::Window::new("Re-number Cues")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .min_width(300.0)
+        .show(ctx, |ui| {
+            ui.label("Renumber existing cues onto a new sequence.");
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut app.ui_state.renumber_all, true, "All cues");
+                ui.radio_value(&mut app.ui_state.renumber_all, false, "Range");
+            });
+            ui.add_enabled_ui(!app.ui_state.renumber_all, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Cues from");
+                    ui.add(
+                        egui::DragValue::new(&mut app.ui_state.renumber_from)
+                            .speed(0.05)
+                            .max_decimals(1),
+                    );
+                    ui.label("to");
+                    ui.add(
+                        egui::DragValue::new(&mut app.ui_state.renumber_to)
+                            .speed(0.05)
+                            .max_decimals(1),
+                    );
+                });
+            });
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(6.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Start at");
+                ui.add(
+                    egui::DragValue::new(&mut app.ui_state.renumber_start)
+                        .speed(0.05)
+                        .max_decimals(1),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("Step");
+                ui.add(
+                    egui::DragValue::new(&mut app.ui_state.renumber_step)
+                        .speed(0.05)
+                        .min_decimals(1)
+                        .max_decimals(2),
+                );
+            });
+
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let apply_btn = ui.add(egui::Button::new(egui::RichText::new("Apply").strong()));
+                if apply_btn.clicked() {
+                    apply = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    cancelled = true;
+                }
+                // Focus Apply once on open so Enter applies immediately; never
+                // steal focus back while the operator edits the number fields.
+                if app.ui_state.renumber_focus_pending {
+                    app.ui_state.renumber_focus_pending = false;
+                    apply_btn.request_focus();
+                }
+            });
+        });
+
+    if !open || cancelled {
+        app.ui_state.show_renumber_cues = false;
+    }
+    if apply {
+        app.apply_renumber_cues();
     }
 }
 
