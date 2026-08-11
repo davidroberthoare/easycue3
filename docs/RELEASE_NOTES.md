@@ -1,5 +1,16 @@
 # Release Notes
 
+## v0.7.2
+
+- **Sleep/resume & device-loss recovery** — EasyCue3 now survives the machine going to sleep and hot-unplug/re-plug of audio and DMX hardware without a restart:
+  - **Audio survives sleep.** If an output device's stream dies on resume (ALSA `POLLERR` and friends), the app re-opens it automatically and re-attaches any playing cues at their current position — volume, pan and in-progress fades are preserved. Recovery retries with backoff (2s→5s→15s→60s) so a genuinely-removed device goes quiet instead of spamming the log, and it logs through the app's own logger rather than raw stderr.
+  - **USB DMX reconnects.** If an Enttec USB Pro / Open DMX device is lost (unplug, cable bump, sleep), the console falls back to Virtual (so the show keeps "outputting") while retrying the hardware in the background with backoff; when the device reappears it's swapped back in automatically — no more permanent Virtual until you restart. A "… reconnecting" indicator appears next to the DMX status. Manually choosing a backend cancels the retry.
+- **Settings-file corruption guard.** A crash or Ctrl+C that killed eframe's background settings write used to leave `app.ron` truncated, silently resetting your UI layout and last-loaded show on the next launch. The app now detects a corrupt settings file at startup, backs it up as `app.ron.corrupt-<timestamp>`, and starts clean.
+- **Script Viewer — dark mode.** New toggle (also remembered across launches) inverts the PDF page rendering for reading scripts in dark rooms; cue markers and the add-cue popup pick up the theme too.
+- **Script Viewer — page navigation box.** Type a page number directly and press Enter to jump straight to it (alongside the existing ←/→ and PageUp/PageDown navigation). The page indicator doubles as the input field.
+- **Script Viewer stability fixes**: page content stays put on screen when the marker-editor strip appears/disappears above the canvas (no more nudging a just-placed marker), the wheel no longer pans/zooms the PDF while a dropdown or the add-cue popup is open, and loading a new show resets pan while keeping your zoom.
+- Various cue-list, fixture-editor and properties-panel tweaks.
+
 ## v0.7.1
 
 - **Script Viewer quality-of-life**:
