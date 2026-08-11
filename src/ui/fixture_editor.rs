@@ -1,9 +1,9 @@
 //! Custom fixture profile editor popup
 
+use crate::app::EasyCueApp;
+use crate::fixtures::profiles::{FixtureParameter, FixtureProfile, ParameterMapping};
 use egui::Context;
 use egui_phosphor::regular as ph;
-use crate::app::EasyCueApp;
-use crate::fixtures::profiles::{FixtureProfile, FixtureParameter, ParameterMapping};
 
 /// Editable row for one parameter mapping
 #[derive(Clone)]
@@ -22,7 +22,12 @@ impl EditableParam {
         } else {
             String::new()
         };
-        Self { parameter: param, custom_name, offset_str: offset.to_string(), default_str: String::new() }
+        Self {
+            parameter: param,
+            custom_name,
+            offset_str: offset.to_string(),
+            default_str: String::new(),
+        }
     }
 
     fn from_mapping(m: &ParameterMapping) -> Self {
@@ -82,7 +87,11 @@ impl FixtureEditorState {
         self.edit_id = profile.id.clone();
         self.edit_manufacturer = profile.manufacturer.clone().unwrap_or_default();
         self.edit_notes = profile.notes.clone().unwrap_or_default();
-        self.edit_params = profile.parameters.iter().map(EditableParam::from_mapping).collect();
+        self.edit_params = profile
+            .parameters
+            .iter()
+            .map(EditableParam::from_mapping)
+            .collect();
         self.original_id = Some(profile.id.clone());
         self.is_new = false;
         self.message = None;
@@ -135,19 +144,28 @@ impl FixtureEditorState {
 
         let mut parameters = Vec::new();
         for (i, ep) in self.edit_params.iter().enumerate() {
-            let offset: u16 = ep.offset_str.trim().parse()
+            let offset: u16 = ep
+                .offset_str
+                .trim()
+                .parse()
                 .map_err(|_| format!("Row {}: offset must be a number", i + 1))?;
             if offset >= channel_count {
                 return Err(format!(
                     "Row {}: offset {} is out of range (channel count is {})",
-                    i + 1, offset, channel_count
+                    i + 1,
+                    offset,
+                    channel_count
                 ));
             }
             let default_value: Option<u8> = if ep.default_str.trim().is_empty() {
                 None
             } else {
-                Some(ep.default_str.trim().parse()
-                    .map_err(|_| format!("Row {}: default must be 0–100 or blank", i + 1))?)
+                Some(
+                    ep.default_str
+                        .trim()
+                        .parse()
+                        .map_err(|_| format!("Row {}: default must be 0–100 or blank", i + 1))?,
+                )
             };
             // Resolve Custom parameter with the live custom_name text
             let parameter = if matches!(ep.parameter, FixtureParameter::Custom(_)) {
@@ -159,7 +177,11 @@ impl FixtureEditorState {
             } else {
                 ep.parameter.clone()
             };
-            parameters.push(ParameterMapping { parameter, channel_offset: offset, default_value });
+            parameters.push(ParameterMapping {
+                parameter,
+                channel_offset: offset,
+                default_value,
+            });
         }
 
         Ok(FixtureProfile {
@@ -205,25 +227,25 @@ const STANDARD_PARAMETERS: &[FixtureParameter] = &[
 
 fn param_label(p: &FixtureParameter) -> &'static str {
     match p {
-        FixtureParameter::Intensity  => "Intensity",
-        FixtureParameter::Red        => "Red",
-        FixtureParameter::Green      => "Green",
-        FixtureParameter::Blue       => "Blue",
-        FixtureParameter::Amber      => "Amber",
-        FixtureParameter::White      => "White",
-        FixtureParameter::Uv         => "UV",
-        FixtureParameter::Strobe     => "Strobe",
-        FixtureParameter::Pan        => "Pan",
-        FixtureParameter::PanFine    => "Pan Fine",
-        FixtureParameter::Tilt       => "Tilt",
-        FixtureParameter::TiltFine   => "Tilt Fine",
-        FixtureParameter::Iris       => "Iris",
-        FixtureParameter::Focus      => "Focus",
-        FixtureParameter::Zoom       => "Zoom",
-        FixtureParameter::Prism      => "Prism",
-        FixtureParameter::Frost      => "Frost",
-        FixtureParameter::Gobo       => "Gobo",
-        FixtureParameter::Custom(_)  => "Other",
+        FixtureParameter::Intensity => "Intensity",
+        FixtureParameter::Red => "Red",
+        FixtureParameter::Green => "Green",
+        FixtureParameter::Blue => "Blue",
+        FixtureParameter::Amber => "Amber",
+        FixtureParameter::White => "White",
+        FixtureParameter::Uv => "UV",
+        FixtureParameter::Strobe => "Strobe",
+        FixtureParameter::Pan => "Pan",
+        FixtureParameter::PanFine => "Pan Fine",
+        FixtureParameter::Tilt => "Tilt",
+        FixtureParameter::TiltFine => "Tilt Fine",
+        FixtureParameter::Iris => "Iris",
+        FixtureParameter::Focus => "Focus",
+        FixtureParameter::Zoom => "Zoom",
+        FixtureParameter::Prism => "Prism",
+        FixtureParameter::Frost => "Frost",
+        FixtureParameter::Gobo => "Gobo",
+        FixtureParameter::Custom(_) => "Other",
     }
 }
 
@@ -274,7 +296,8 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                             .show(ui, |ui| {
                                 for id in &user_ids {
                                     let is_sel = state.selected_id.as_deref() == Some(id.as_str());
-                                    let profile_name = fixtures.get_profile(id)
+                                    let profile_name = fixtures
+                                        .get_profile(id)
                                         .map(|p| p.name.as_str())
                                         .unwrap_or(id.as_str());
                                     if ui.selectable_label(is_sel, profile_name).clicked() {
@@ -312,9 +335,11 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                         ui.add_space(16.0);
                         ui.vertical_centered(|ui| {
                             ui.label(
-                                egui::RichText::new("Select a profile to edit, or create a new one.")
-                                    .italics()
-                                    .color(egui::Color32::GRAY),
+                                egui::RichText::new(
+                                    "Select a profile to edit, or create a new one.",
+                                )
+                                .italics()
+                                .color(egui::Color32::GRAY),
                             );
                         });
                         return;
@@ -331,7 +356,8 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                                     .desired_width(220.0),
                             );
                             if name_resp.changed() && !state.name_changed {
-                                state.edit_id = FixtureEditorState::slug_from_name(&state.edit_name);
+                                state.edit_id =
+                                    FixtureEditorState::slug_from_name(&state.edit_name);
                             }
                             if name_resp.changed() {
                                 state.name_changed = true;
@@ -392,7 +418,7 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                         .striped(true)
                         .show(ui, |ui| {
                             ui.strong("Parameter");
-                            ui.strong("Name");   // custom name column — blank for standard params
+                            ui.strong("Name"); // custom name column — blank for standard params
                             ui.strong("Offset");
                             ui.strong("Default");
                             ui.strong(""); // remove button
@@ -409,13 +435,17 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                                     .show_ui(ui, |ui| {
                                         for p in STANDARD_PARAMETERS {
                                             let selected = &ep.parameter == p;
-                                            if ui.selectable_label(selected, param_label(p)).clicked() {
+                                            if ui
+                                                .selectable_label(selected, param_label(p))
+                                                .clicked()
+                                            {
                                                 ep.parameter = p.clone();
                                             }
                                         }
                                         ui.separator();
                                         if ui.selectable_label(is_custom, "Other…").clicked() {
-                                            ep.parameter = FixtureParameter::Custom(ep.custom_name.clone());
+                                            ep.parameter =
+                                                FixtureParameter::Custom(ep.custom_name.clone());
                                         }
                                     });
 
@@ -427,7 +457,8 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                                             .hint_text("e.g. Speed"),
                                     );
                                     if resp.changed() {
-                                        ep.parameter = FixtureParameter::Custom(ep.custom_name.clone());
+                                        ep.parameter =
+                                            FixtureParameter::Custom(ep.custom_name.clone());
                                     }
                                 } else {
                                     ui.label("");
@@ -454,9 +485,14 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                     }
 
                     ui.add_space(4.0);
-                    if ui.small_button(format!("{} Add Parameter", ph::PLUS)).clicked() {
+                    if ui
+                        .small_button(format!("{} Add Parameter", ph::PLUS))
+                        .clicked()
+                    {
                         let next_offset = state.edit_params.len() as u16;
-                        state.edit_params.push(EditableParam::new(FixtureParameter::Intensity, next_offset));
+                        state
+                            .edit_params
+                            .push(EditableParam::new(FixtureParameter::Intensity, next_offset));
                     }
 
                     ui.add_space(8.0);

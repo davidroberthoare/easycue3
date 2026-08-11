@@ -10,43 +10,45 @@ mod fixture_editor;
 mod groups;
 mod magic_sheet;
 mod pan_tilt_gizmo;
-mod properties;
 mod patching;
+mod properties;
 mod script_viewer;
 
-use egui::Context;
 use crate::app::{EasyCueApp, TabKind};
+use egui::Context;
 use egui_phosphor::regular as ph;
 
-pub use color_wheel::ColorWheel;
-pub use pan_tilt_gizmo::PanTiltGizmo;
 pub use channels::render_channels_panel;
+pub use color_wheel::ColorWheel;
 pub use cues::render_cues_panel;
 pub use effects::render_effects_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
 pub use groups::{render_groups_panel, GroupsPanelState};
 pub use magic_sheet::render_magic_sheet_panel;
-pub use properties::{render_cue_properties_panel, render_instrument_properties_panel, render_update_from_stage_modal};
+pub use pan_tilt_gizmo::PanTiltGizmo;
 pub use patching::{render_patching_panel, PatchingPanelState};
+pub use properties::{
+    render_cue_properties_panel, render_instrument_properties_panel, render_update_from_stage_modal,
+};
 pub use script_viewer::render_script_viewer_panel;
 
 /// Render the main UI
 pub fn render(ctx: &Context, app: &mut EasyCueApp) {
     // Handle global keyboard shortcuts (Cmd+S, Cmd+Q, etc.)
     handle_global_shortcuts(ctx, app);
-    
+
     // Handle keyboard input for command line (context-aware)
     handle_keyboard_input(ctx, app);
-    
+
     // Top panel - menu bar
     render_menu_bar(ctx, app);
-    
+
     // Bottom panel - status bar
     render_status_bar(ctx, app);
-    
+
     // Dockable panel layout
     render_dock_area(ctx, app);
-    
+
     // Modal dialogs (always on top)
     render_autosave_recovery(ctx, app);
     render_quit_confirmation(ctx, app);
@@ -69,31 +71,31 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
     let mut save_requested = false;
     let mut save_as_requested = false;
     let mut quit_requested = false;
-    
+
     ctx.input(|i| {
         let modifiers = i.modifiers;
-        
+
         // Cmd+O (Mac) or Ctrl+O (Linux/Windows) - Open
         if modifiers.command && i.key_pressed(egui::Key::O) {
             open_requested = true;
         }
-        
+
         // Cmd+S (Mac) or Ctrl+S (Linux/Windows) - Save
         if modifiers.command && !modifiers.shift && i.key_pressed(egui::Key::S) {
             save_requested = true;
         }
-        
+
         // Cmd+Shift+S - Save As
         if modifiers.command && modifiers.shift && i.key_pressed(egui::Key::S) {
             save_as_requested = true;
         }
-        
+
         // Cmd+Q (Mac) or Ctrl+Q (Linux/Windows) - Quit
         if modifiers.command && i.key_pressed(egui::Key::Q) {
             quit_requested = true;
         }
     });
-    
+
     // Execute actions AFTER releasing input state
     if open_requested {
         // Use native file dialog
@@ -114,7 +116,7 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
             }
         }
     }
-    
+
     if save_requested {
         // Save - use current file path if available, otherwise prompt
         if let Some(path) = &app.current_file_path.clone() {
@@ -150,7 +152,7 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
             }
         }
     }
-    
+
     if save_as_requested {
         // Save As - always show file dialog
         let title = app.show_title.clone();
@@ -172,7 +174,7 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
             }
         }
     }
-    
+
     if quit_requested {
         log::info!("Quit requested - showing confirmation");
         app.ui_state.show_quit_confirmation = true;
@@ -186,8 +188,8 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
     // active — keystrokes should go to that control, not leak into the
     // command line (mirrors the hotkey gating in `EasyCueApp::update`).
     let is_text_focused = ctx.memory(|mem| mem.focused().is_some());
-    let popup_active = ctx.memory(|mem| mem.any_popup_open())
-        || app.script_viewer.pending_add.is_some();
+    let popup_active =
+        ctx.memory(|mem| mem.any_popup_open()) || app.script_viewer.pending_add.is_some();
 
     // Goto mode (Ctrl+G): active globally regardless of which pane is focused.
     if app.ui_state.goto_mode {
@@ -263,15 +265,18 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
                     }
 
                     // Lighting channel commands — Lighting context only.
-                    if matches!(app.ui_state.command_context, crate::command::CommandContext::Lighting)
-                        && (ch.is_ascii_digit()
+                    if matches!(
+                        app.ui_state.command_context,
+                        crate::command::CommandContext::Lighting
+                    ) && (ch.is_ascii_digit()
                             || ch == 'a' || ch == '@'  // "at" operator
                             || ch == '+' || ch == ','  // addition
                             || ch == '-'               // range
                             || ch == 'g'               // group prefix
                             || ch == 'q'               // on-deck prefix
                             || ch == 't' || ch == 'h' || ch == 'r' || ch == 'u' // "thru"
-                            || ch == 'f' || ch == 'l' || ch == 'o') // "full", "out"
+                            || ch == 'f' || ch == 'l' || ch == 'o')
+                    // "full", "out"
                     {
                         app.ui_state.command_input.push(ch);
                     }
@@ -286,7 +291,8 @@ fn execute_goto(app: &mut EasyCueApp) {
     app.ui_state.goto_mode = false;
     app.ui_state.command_input.clear();
     // Strip any leading prefix that may have been added by Ctrl+G or typed by the user.
-    let num_str = input.strip_prefix("goto")
+    let num_str = input
+        .strip_prefix("goto")
         .or_else(|| input.strip_prefix("go"))
         .or_else(|| input.strip_prefix('g'))
         .unwrap_or(&input);
@@ -294,7 +300,9 @@ fn execute_goto(app: &mut EasyCueApp) {
         return;
     }
     match num_str.parse::<f32>() {
-        Ok(num) => { app.goto_cue_by_number(num); }
+        Ok(num) => {
+            app.goto_cue_by_number(num);
+        }
         Err(_) => {
             app.ui_state.status_message = format!("Invalid cue number: {}", num_str);
         }
@@ -304,25 +312,19 @@ fn execute_goto(app: &mut EasyCueApp) {
 /// Render the dockable area
 fn render_dock_area(ctx: &Context, app: &mut EasyCueApp) {
     // Custom frame with cobalt background
-    let frame = egui::Frame::central_panel(&ctx.style())
-        .fill(egui::Color32::from_rgb(10, 30, 55));  // Cobalt blue background
-    
-    egui::CentralPanel::default()
-        .frame(frame)
-        .show(ctx, |ui| {
-            // Temporarily take dock_state out to avoid borrow checker issues
-            let mut dock_state = std::mem::replace(
-                &mut app.dock_state,
-                egui_dock::DockState::new(vec![]),
-            );
-            
-            // Render with DockArea
-            egui_dock::DockArea::new(&mut dock_state)
-                .show_inside(ui, &mut MyTabViewer { app });
-            
-            // Put dock_state back
-            app.dock_state = dock_state;
-        });
+    let frame = egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_rgb(10, 30, 55)); // Cobalt blue background
+
+    egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+        // Temporarily take dock_state out to avoid borrow checker issues
+        let mut dock_state =
+            std::mem::replace(&mut app.dock_state, egui_dock::DockState::new(vec![]));
+
+        // Render with DockArea
+        egui_dock::DockArea::new(&mut dock_state).show_inside(ui, &mut MyTabViewer { app });
+
+        // Put dock_state back
+        app.dock_state = dock_state;
+    });
 }
 
 /// Wrapper struct for TabViewer
@@ -339,7 +341,7 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             self.app.ui_state.active_pane = Some(*tab);
             self.app.ui_state.update_command_context();
         }
-        
+
         match tab {
             TabKind::Channels => render_channels_panel(ui, self.app),
             TabKind::Cues => render_cues_panel(ui, self.app),
@@ -358,14 +360,16 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             TabKind::MagicSheet => render_magic_sheet_panel(ui, self.app),
             TabKind::Effects => render_effects_panel(ui, self.app),
             TabKind::ScriptViewer => render_script_viewer_panel(ui, self.app),
-            TabKind::Unknown => { ui.label("(unknown tab)"); }
+            TabKind::Unknown => {
+                ui.label("(unknown tab)");
+            }
         }
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         tab.to_string().into()
     }
-    
+
     // Enable horizontal scrolling, disable vertical
     fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
         [true, false] // [horizontal, vertical]
@@ -441,7 +445,10 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("EasyCue Show", &["json"])
                             .set_directory("./shows")
-                            .set_file_name(&format!("{}.json", title.to_lowercase().replace(' ', "_")))
+                            .set_file_name(&format!(
+                                "{}.json",
+                                title.to_lowercase().replace(' ', "_")
+                            ))
                             .save_file()
                         {
                             match app.save_show(&path) {
@@ -485,7 +492,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     ui.close_menu();
                 }
             });
-            
+
             // Edit menu
             ui.menu_button("Edit", |ui| {
                 if ui.button("Re-number Cues…").clicked() {
@@ -499,60 +506,85 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             ui.menu_button("View", |ui| {
                 ui.label(egui::RichText::new("Add Panel:").strong());
                 ui.separator();
-                
+
                 if ui.button("Channels").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Channels);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Channels);
                     ui.close_menu();
                 }
                 if ui.button("Cues").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Cues);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Cues);
                     ui.close_menu();
                 }
                 if ui.button("Patching").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Patching);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Patching);
                     ui.close_menu();
                 }
                 if ui.button("Groups").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Groups);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Groups);
                     ui.close_menu();
                 }
                 if ui.button("Cue Properties").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Properties);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Properties);
                     ui.close_menu();
                 }
                 if ui.button("Instrument Properties").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::InstrumentProperties);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::InstrumentProperties);
                     ui.close_menu();
                 }
                 if ui.button("Magic Sheet").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::MagicSheet);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::MagicSheet);
                     ui.close_menu();
                 }
                 if ui.button("Effects").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::Effects);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Effects);
                     ui.close_menu();
                 }
                 if ui.button("Script Viewer").clicked() {
-                    app.dock_state.main_surface_mut().push_to_focused_leaf(TabKind::ScriptViewer);
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::ScriptViewer);
                     ui.close_menu();
                 }
-                
+
                 ui.separator();
                 ui.label(egui::RichText::new("Layout:").strong());
-                
+
                 if ui.button("↺ Reset Layout").clicked() {
                     app.reset_dock_layout();
                     app.ui_state.status_message = "Layout reset to default".to_string();
                     ui.close_menu();
                 }
-                
+
                 ui.separator();
-                ui.checkbox(&mut app.ui_state.show_debug_ui, format!("{} Show Debug Info (FPS)", ph::BUG));
-                
+                ui.checkbox(
+                    &mut app.ui_state.show_debug_ui,
+                    format!("{} Show Debug Info (FPS)", ph::BUG),
+                );
+
                 ui.separator();
-                ui.label(egui::RichText::new(format!("{} Drag tabs to rearrange", ph::LIGHTBULB)).italics().small());
+                ui.label(
+                    egui::RichText::new(format!("{} Drag tabs to rearrange", ph::LIGHTBULB))
+                        .italics()
+                        .small(),
+                );
             });
-            
+
             // Settings menu
             ui.menu_button("Settings", |ui| {
                 if ui.button("DMX Device...").clicked() {
@@ -581,7 +613,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     }
                 }
             });
-            
+
             // Help menu
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard Shortcuts").clicked() {
@@ -609,8 +641,17 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 // Passive "update available" badge — only appears once the background
                 // check finds a newer release; clicking reuses that result (no re-fetch).
                 if let crate::update::UpdateCheckState::UpdateAvailable(info) = &app.update_state {
-                    let label = format!("{} Update Available: v{}", ph::ARROW_CIRCLE_UP, info.latest_version);
-                    if ui.button(egui::RichText::new(label).color(egui::Color32::from_rgb(255, 200, 0))).clicked() {
+                    let label = format!(
+                        "{} Update Available: v{}",
+                        ph::ARROW_CIRCLE_UP,
+                        info.latest_version
+                    );
+                    if ui
+                        .button(
+                            egui::RichText::new(label).color(egui::Color32::from_rgb(255, 200, 0)),
+                        )
+                        .clicked()
+                    {
                         app.ui_state.show_update_dialog = true;
                     }
                     ui.separator();
@@ -640,7 +681,11 @@ fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
                 ui.add_space(8.0);
 
                 ui.label(egui::RichText::new("Cue Navigation (cue list focused)").strong());
-                ui.label(format!("{}/{} — Move selection & set on-deck cue", ph::ARROW_UP, ph::ARROW_DOWN));
+                ui.label(format!(
+                    "{}/{} — Move selection & set on-deck cue",
+                    ph::ARROW_UP,
+                    ph::ARROW_DOWN
+                ));
                 ui.add_space(8.0);
 
                 ui.label(egui::RichText::new("Command Line").strong());
@@ -658,7 +703,12 @@ fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
                 ui.label("Ctrl+O — Open");
                 ui.add_space(10.0);
 
-                ui.label(egui::RichText::new("Tip: hotkeys are suppressed while a text field is focused.").small());
+                ui.label(
+                    egui::RichText::new(
+                        "Tip: hotkeys are suppressed while a text field is focused.",
+                    )
+                    .small(),
+                );
                 ui.add_space(10.0);
 
                 ui.horizontal(|ui| {
@@ -730,7 +780,10 @@ fn render_update_dialog(ctx: &Context, app: &mut EasyCueApp) {
                         ));
                     }
                     crate::update::UpdateCheckState::UpdateAvailable(info) => {
-                        ui.label(format!("A new version is available: v{}", info.latest_version));
+                        ui.label(format!(
+                            "A new version is available: v{}",
+                            info.latest_version
+                        ));
                         ui.label(format!("You are running v{}", env!("CARGO_PKG_VERSION")));
                         ui.add_space(6.0);
                         ui.hyperlink_to("View Release on GitHub", &info.html_url);
@@ -786,7 +839,8 @@ fn render_autosave_recovery(ctx: &Context, app: &mut EasyCueApp) {
                                     log::info!("User recovered autosave: {:?}", path);
                                 }
                                 Err(e) => {
-                                    app.ui_state.status_message = format!("Error loading autosave: {}", e);
+                                    app.ui_state.status_message =
+                                        format!("Error loading autosave: {}", e);
                                     log::error!("Failed to load autosave: {}", e);
                                 }
                             }
@@ -806,7 +860,7 @@ fn render_quit_confirmation(ctx: &Context, app: &mut EasyCueApp) {
     if !app.ui_state.show_quit_confirmation {
         return;
     }
-    
+
     egui::Window::new("Quit EasyCue3?")
         .collapsible(false)
         .resizable(false)
@@ -816,21 +870,21 @@ fn render_quit_confirmation(ctx: &Context, app: &mut EasyCueApp) {
                 ui.add_space(10.0);
                 ui.label("Are you sure you want to quit?");
                 ui.add_space(10.0);
-                
+
                 ui.horizontal(|ui| {
                     if ui.button("  Cancel  ").clicked() {
                         log::info!("Quit cancelled by user");
                         app.ui_state.show_quit_confirmation = false;
                     }
-                    
+
                     ui.add_space(10.0);
-                    
+
                     if ui.button("  Quit  ").clicked() {
                         log::info!("User confirmed quit");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
-                
+
                 ui.add_space(5.0);
             });
         });
@@ -853,28 +907,29 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                 ui.add_space(10.0);
                 ui.label("Select DMX output device:");
                 ui.add_space(10.0);
-                
+
                 // Virtual DMX (always available)
                 ui.horizontal(|ui| {
                     if ui.button("📋 Virtual DMX (Logging)").clicked() {
                         app.switch_to_virtual();
-                        app.ui_state.status_message = format!("✓ Switched to {}", app.dmx_backend.name());
+                        app.ui_state.status_message =
+                            format!("✓ Switched to {}", app.dmx_backend.name());
                         app.ui_state.show_device_selector = false;
                     }
                     ui.label("- Log output only, no hardware");
                 });
-                
+
                 ui.add_space(5.0);
-                
+
                 // Enttec USB Pro (if feature enabled)
                 #[cfg(feature = "usb")]
                 {
                     use crate::dmx::backends::EnttecUsbProBackend;
-                    
+
                     ui.horizontal(|ui| {
                         ui.label("🔌 Enttec DMXUSB Pro:");
                     });
-                    
+
                     ui.indent("enttec_ports", |ui| {
                         match EnttecUsbProBackend::list_recommended_ports() {
                             Ok(ports) if !ports.is_empty() => {
@@ -893,7 +948,11 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                                     .selected_text(&app.ui_state.selected_usb_port)
                                     .show_ui(ui, |ui| {
                                         for port in &ports {
-                                            ui.selectable_value(&mut app.ui_state.selected_usb_port, port.clone(), port);
+                                            ui.selectable_value(
+                                                &mut app.ui_state.selected_usb_port,
+                                                port.clone(),
+                                                port,
+                                            );
                                         }
                                     });
 
@@ -904,8 +963,12 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                                     let port = app.ui_state.selected_usb_port.clone();
                                     match app.switch_to_enttec(&port) {
                                         Ok(_) => {
-                                            app.ui_state.status_message = format!("✓ Connected to Enttec at {}", port);
-                                            log::info!("✓ Switched to Enttec DMXUSB Pro at {}", port);
+                                            app.ui_state.status_message =
+                                                format!("✓ Connected to Enttec at {}", port);
+                                            log::info!(
+                                                "✓ Switched to Enttec DMXUSB Pro at {}",
+                                                port
+                                            );
                                             app.ui_state.show_device_selector = false;
                                         }
                                         Err(e) => {
@@ -916,20 +979,31 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                                 }
                             }
                             Ok(_) => {
-                                ui.label(egui::RichText::new("No devices found").italics().color(egui::Color32::GRAY));
+                                ui.label(
+                                    egui::RichText::new("No devices found")
+                                        .italics()
+                                        .color(egui::Color32::GRAY),
+                                );
                             }
                             Err(e) => {
-                                ui.label(egui::RichText::new(format!("Error: {}", e)).color(egui::Color32::RED));
+                                ui.label(
+                                    egui::RichText::new(format!("Error: {}", e))
+                                        .color(egui::Color32::RED),
+                                );
                             }
                         }
                     });
                 }
-                
+
                 #[cfg(not(feature = "usb"))]
                 {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("🔌 Enttec USB Pro").strikethrough());
-                        ui.label(egui::RichText::new("(build with --features usb)").small().italics());
+                        ui.label(
+                            egui::RichText::new("(build with --features usb)")
+                                .small()
+                                .italics(),
+                        );
                     });
                 }
 
@@ -958,7 +1032,11 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                                     .selected_text(&app.ui_state.selected_open_dmx_port)
                                     .show_ui(ui, |ui| {
                                         for port in &ports {
-                                            ui.selectable_value(&mut app.ui_state.selected_open_dmx_port, port.clone(), port);
+                                            ui.selectable_value(
+                                                &mut app.ui_state.selected_open_dmx_port,
+                                                port.clone(),
+                                                port,
+                                            );
                                         }
                                     });
 
@@ -968,22 +1046,37 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                                     let port = app.ui_state.selected_open_dmx_port.clone();
                                     match app.switch_to_open_dmx(&port) {
                                         Ok(_) => {
-                                            app.ui_state.status_message = format!("✓ Connected to Open DMX USB at {}", port);
-                                            log::info!("✓ Switched to Enttec Open DMX USB at {}", port);
+                                            app.ui_state.status_message =
+                                                format!("✓ Connected to Open DMX USB at {}", port);
+                                            log::info!(
+                                                "✓ Switched to Enttec Open DMX USB at {}",
+                                                port
+                                            );
                                             app.ui_state.show_device_selector = false;
                                         }
                                         Err(e) => {
-                                            app.ui_state.status_message = format!("✗ Error: {:#}", e);
-                                            log::error!("Failed to switch to Open DMX USB: {:#}", e);
+                                            app.ui_state.status_message =
+                                                format!("✗ Error: {:#}", e);
+                                            log::error!(
+                                                "Failed to switch to Open DMX USB: {:#}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
                             }
                             Ok(_) => {
-                                ui.label(egui::RichText::new("No devices found").italics().color(egui::Color32::GRAY));
+                                ui.label(
+                                    egui::RichText::new("No devices found")
+                                        .italics()
+                                        .color(egui::Color32::GRAY),
+                                );
                             }
                             Err(e) => {
-                                ui.label(egui::RichText::new(format!("Error: {}", e)).color(egui::Color32::RED));
+                                ui.label(
+                                    egui::RichText::new(format!("Error: {}", e))
+                                        .color(egui::Color32::RED),
+                                );
                             }
                         }
                     });
@@ -993,7 +1086,11 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                 {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("🔌 Enttec Open DMX USB").strikethrough());
-                        ui.label(egui::RichText::new("(build with --features usb)").small().italics());
+                        ui.label(
+                            egui::RichText::new("(build with --features usb)")
+                                .small()
+                                .italics(),
+                        );
                     });
                 }
 
@@ -1041,12 +1138,14 @@ fn render_device_selector(ctx: &Context, app: &mut EasyCueApp) {
                         }
                     }
                     ui.label(
-                        egui::RichText::new("Broadcast 255.255.255.255 reaches all nodes on subnet")
-                            .small()
-                            .italics(),
+                        egui::RichText::new(
+                            "Broadcast 255.255.255.255 reaches all nodes on subnet",
+                        )
+                        .small()
+                        .italics(),
                     );
                 });
-                
+
                 ui.add_space(15.0);
                 ui.add_space(5.0);
             });
@@ -1078,23 +1177,27 @@ fn render_colour_settings(ctx: &Context, app: &mut EasyCueApp) {
                     ui.end_row();
 
                     ui.label("Fading / changing");
-                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_fading);
+                    let mut c =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_fading);
                     if ui.color_edit_button_srgba(&mut c).changed() {
                         app.cue_colors.status_fading = crate::app::EasyCueApp::rgba_from_color32(c);
                     }
                     ui.end_row();
 
                     ui.label("Active / playing");
-                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_active);
+                    let mut c =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_active);
                     if ui.color_edit_button_srgba(&mut c).changed() {
                         app.cue_colors.status_active = crate::app::EasyCueApp::rgba_from_color32(c);
                     }
                     ui.end_row();
 
                     ui.label("On-deck (next GO)");
-                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
+                    let mut c =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
                     if ui.color_edit_button_srgba(&mut c).changed() {
-                        app.cue_colors.status_on_deck = crate::app::EasyCueApp::rgba_from_color32(c);
+                        app.cue_colors.status_on_deck =
+                            crate::app::EasyCueApp::rgba_from_color32(c);
                     }
                     ui.end_row();
 
@@ -1106,21 +1209,24 @@ fn render_colour_settings(ctx: &Context, app: &mut EasyCueApp) {
                     ui.end_row();
 
                     ui.label("Lighting (idle)");
-                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_lighting);
+                    let mut c =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_lighting);
                     if ui.color_edit_button_srgba(&mut c).changed() {
                         app.cue_colors.base_lighting = crate::app::EasyCueApp::rgba_from_color32(c);
                     }
                     ui.end_row();
 
                     ui.label("Sound (idle)");
-                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_audio);
+                    let mut c =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_audio);
                     if ui.color_edit_button_srgba(&mut c).changed() {
                         app.cue_colors.base_audio = crate::app::EasyCueApp::rgba_from_color32(c);
                     }
                     ui.end_row();
 
                     ui.label("Adjust (idle)");
-                    let mut c = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_adjust);
+                    let mut c =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.base_adjust);
                     if ui.color_edit_button_srgba(&mut c).changed() {
                         app.cue_colors.base_adjust = crate::app::EasyCueApp::rgba_from_color32(c);
                     }
@@ -1252,7 +1358,8 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
             if let Some(next_idx) = app.cue_list.next_any_index() {
                 if let Some(c) = app.cue_list.get_cue(next_idx) {
                     ui.separator();
-                    let color = crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
+                    let color =
+                        crate::app::EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
                     ui.label(
                         egui::RichText::new(format!("On deck: Q{:.1} {}", c.number, c.label))
                             .color(color)
@@ -1260,43 +1367,43 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                     );
                 }
             }
-            
+
             // Right side: DMX backend and emergency controls
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Emergency controls (compact versions)
                 let panic_button = egui::Button::new("🚨 PANIC")
                     .fill(egui::Color32::from_rgb(140, 40, 40))
                     .min_size(egui::vec2(80.0, 20.0));
-                
+
                 if ui.add(panic_button).clicked() {
                     // Stop all playback
                     app.playback.stop();
                     app.effect_engine.stop_all(0.0);
                     #[cfg(feature = "audio")]
                     app.audio_playback.stop_all();
-                    
+
                     // Activate blackout
                     if !app.ui_state.blackout_active {
                         app.ui_state.previous_lighting_master = app.ui_state.lighting_master;
                         app.ui_state.lighting_master = 0.0;
                         app.ui_state.blackout_active = true;
                     }
-                    
+
                     // Activate audio mute
                     if !app.ui_state.audio_mute_active {
                         app.ui_state.previous_sound_master = app.ui_state.sound_master;
                         app.ui_state.sound_master = 0.0;
                         app.ui_state.audio_mute_active = true;
                     }
-                    
+
                     app.ui_state.status_message = "🚨 PANIC - All stopped".to_string();
                     log::warn!("PANIC button activated");
                 }
-                
+
                 let all_stop_button = egui::Button::new(format!("{} ALL STOP", ph::STOP))
                     .fill(egui::Color32::from_rgb(120, 50, 50))
                     .min_size(egui::vec2(95.0, 20.0));
-                
+
                 if ui.add(all_stop_button).clicked() {
                     app.playback.stop();
                     app.effect_engine.stop_all(0.0);
@@ -1305,14 +1412,22 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.ui_state.status_message = "ALL STOP".to_string();
                     log::info!("All Stop activated");
                 }
-                
+
                 ui.separator();
-                
+
                 ui.label(
                     egui::RichText::new(format!("DMX: {}", app.dmx_backend.name()))
                         .small()
-                        .color(egui::Color32::GRAY)
+                        .color(egui::Color32::GRAY),
                 );
+                #[cfg(feature = "usb")]
+                if app.dmx_reconnecting() {
+                    ui.label(
+                        egui::RichText::new("… reconnecting")
+                            .small()
+                            .color(egui::Color32::YELLOW),
+                    );
+                }
             });
         });
     });
@@ -1322,7 +1437,10 @@ fn render_status_bar(ctx: &Context, app: &mut EasyCueApp) {
 /// optional edit directive: the cue-property field to focus, plus a fade time for `i`.
 fn split_cue_edit_suffix(tail: &str) -> (String, Option<(crate::app::CueEditField, Option<f32>)>) {
     if let Some(rest) = tail.strip_suffix('l') {
-        return (rest.to_string(), Some((crate::app::CueEditField::Label, None)));
+        return (
+            rest.to_string(),
+            Some((crate::app::CueEditField::Label, None)),
+        );
     }
     if let Some(idx) = tail.find('i') {
         let num_part = &tail[..idx];
@@ -1332,7 +1450,10 @@ fn split_cue_edit_suffix(tail: &str) -> (String, Option<(crate::app::CueEditFiel
         } else {
             secs_part.parse::<f32>().ok()
         };
-        return (num_part.to_string(), Some((crate::app::CueEditField::FadeUp, secs)));
+        return (
+            num_part.to_string(),
+            Some((crate::app::CueEditField::FadeUp, secs)),
+        );
     }
     (tail.to_string(), None)
 }
@@ -1347,7 +1468,8 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
 
     // Goto-and-play command: go<number> or goto<number> — works from any context.
     // "goto" is checked first so "goto12".strip_prefix("go") = "to12" doesn't misfire.
-    let goto_num = input.strip_prefix("goto")
+    let goto_num = input
+        .strip_prefix("goto")
         .or_else(|| input.strip_prefix("go"));
     if let Some(num_str) = goto_num {
         if !num_str.is_empty() {
@@ -1368,7 +1490,10 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
         || input == "i"
         || (input.starts_with('i') && input[1..].chars().all(|c| c.is_ascii_digit() || c == '.'))
     {
-        let target = app.playback.current_cue_id().or(app.ui_state.selected_cue_id);
+        let target = app
+            .playback
+            .current_cue_id()
+            .or(app.ui_state.selected_cue_id);
         if let Some(target) = target {
             if input == "l" {
                 app.select_cue(target);
@@ -1397,7 +1522,10 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
             let (num_part, suffix) = split_cue_edit_suffix(num_str);
             if !num_part.is_empty() {
                 if let Ok(num) = num_part.parse::<f32>() {
-                    let abs_idx = app.cue_list.cues().iter()
+                    let abs_idx = app
+                        .cue_list
+                        .cues()
+                        .iter()
                         .position(|c| (c.number - num).abs() < 0.005);
                     if let Some(abs_idx) = abs_idx {
                         let id = app.cue_list.get_cue(abs_idx).map(|c| c.id);
@@ -1429,7 +1557,7 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
 
     // Use context-aware parsing
     let context = app.ui_state.command_context;
-    
+
     match context {
         crate::command::CommandContext::Lighting | crate::command::CommandContext::General => {
             match crate::command::parse_lighting_command_with_context(&input, context) {
@@ -1446,7 +1574,7 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
             app.ui_state.status_message = "Sound commands not yet implemented".to_string();
         }
     }
-    
+
     // Clear command input after execution
     app.ui_state.command_input.clear();
 }
@@ -1467,7 +1595,10 @@ fn render_remote_settings(ctx: &Context, app: &mut EasyCueApp) {
         .resizable(false)
         .default_width(360.0)
         .show(ctx, |ui| {
-            ui.checkbox(&mut app.remote_settings.enabled, "Enable remote control server");
+            ui.checkbox(
+                &mut app.remote_settings.enabled,
+                "Enable remote control server",
+            );
 
             ui.add_enabled_ui(app.remote_settings.enabled, |ui| {
                 egui::Grid::new("remote_settings_grid")
@@ -1475,20 +1606,26 @@ fn render_remote_settings(ctx: &Context, app: &mut EasyCueApp) {
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
                         ui.label("Port:");
-                        ui.add(egui::DragValue::new(&mut app.remote_settings.port)
-                            .range(1024..=65535));
+                        ui.add(
+                            egui::DragValue::new(&mut app.remote_settings.port).range(1024..=65535),
+                        );
                         ui.end_row();
 
                         ui.label("PIN (optional):");
-                        ui.add(egui::TextEdit::singleline(&mut app.remote_settings.pin)
-                            .hint_text("empty = no PIN")
-                            .desired_width(120.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut app.remote_settings.pin)
+                                .hint_text("empty = no PIN")
+                                .desired_width(120.0),
+                        );
                         ui.end_row();
                     });
             });
 
             ui.add_space(4.0);
-            if ui.button(format!("{} Apply / Restart Server", ph::ARROW_CLOCKWISE)).clicked() {
+            if ui
+                .button(format!("{} Apply / Restart Server", ph::ARROW_CLOCKWISE))
+                .clicked()
+            {
                 apply_clicked = true;
             }
 
@@ -1501,29 +1638,41 @@ fn render_remote_settings(ctx: &Context, app: &mut EasyCueApp) {
                         .unwrap_or_else(|| "127.0.0.1".to_string());
                     let url = format!("http://{}:{}", ip, server.port);
 
-                    ui.label(egui::RichText::new(format!(
-                        "{} Running — {} client(s) connected",
-                        ph::WIFI_HIGH,
-                        server.client_count()
-                    )).color(egui::Color32::from_rgb(0, 220, 120)));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} Running — {} client(s) connected",
+                            ph::WIFI_HIGH,
+                            server.client_count()
+                        ))
+                        .color(egui::Color32::from_rgb(0, 220, 120)),
+                    );
                     ui.add_space(4.0);
 
                     ui.horizontal(|ui| {
                         ui.label("Phone URL:");
                         ui.monospace(&url);
-                        if ui.small_button(ph::COPY).on_hover_text("Copy URL").clicked() {
+                        if ui
+                            .small_button(ph::COPY)
+                            .on_hover_text("Copy URL")
+                            .clicked()
+                        {
                             ui.ctx().copy_text(url.clone());
                         }
                     });
                     ui.label(
-                        egui::RichText::new(format!("also try: http://easycue3.local:{}", server.port))
-                            .small()
-                            .color(egui::Color32::GRAY),
+                        egui::RichText::new(format!(
+                            "also try: http://easycue3.local:{}",
+                            server.port
+                        ))
+                        .small()
+                        .color(egui::Color32::GRAY),
                     );
                     ui.add_space(6.0);
 
                     // QR code for pairing — regenerated only when the URL changes.
-                    let needs_qr = app.ui_state.remote_qr
+                    let needs_qr = app
+                        .ui_state
+                        .remote_qr
                         .as_ref()
                         .map(|(cached_url, _)| cached_url != &url)
                         .unwrap_or(true);
@@ -1544,24 +1693,26 @@ fn render_remote_settings(ctx: &Context, app: &mut EasyCueApp) {
                                 size: [size, size],
                                 pixels,
                             };
-                            let texture = ctx.load_texture(
-                                "remote_qr",
-                                image,
-                                egui::TextureOptions::NEAREST,
-                            );
+                            let texture =
+                                ctx.load_texture("remote_qr", image, egui::TextureOptions::NEAREST);
                             app.ui_state.remote_qr = Some((url.clone(), texture));
                         }
                     }
                     if let Some((_, texture)) = &app.ui_state.remote_qr {
                         ui.vertical_centered(|ui| {
-                            ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(180.0, 180.0)));
+                            ui.add(
+                                egui::Image::new(texture)
+                                    .fit_to_exact_size(egui::vec2(180.0, 180.0)),
+                            );
                             ui.label(egui::RichText::new("Scan with the phone camera").small());
                         });
                     }
                 }
                 None => {
-                    ui.label(egui::RichText::new(format!("{} Not running", ph::WIFI_SLASH))
-                        .color(egui::Color32::GRAY));
+                    ui.label(
+                        egui::RichText::new(format!("{} Not running", ph::WIFI_SLASH))
+                            .color(egui::Color32::GRAY),
+                    );
                     app.ui_state.remote_qr = None;
                 }
             }

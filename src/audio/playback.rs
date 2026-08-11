@@ -15,7 +15,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// A freshly-decoded source routed onto one stereo pair of a device stream.
+type RoutedDecoder = RouteSource<Decoder<std::io::BufReader<std::fs::File>>>;
+
 /// In-progress volume ramp on a single output-device route.
+#[derive(Clone, Copy)]
 struct RouteAdjust {
     start_vol: f32,
     target_vol: f32,
@@ -25,6 +29,7 @@ struct RouteAdjust {
 }
 
 /// In-progress pan sweep on a single output-device route.
+#[derive(Clone, Copy)]
 struct RoutePanAdjust {
     start_pan: f32,
     target_pan: f32,
@@ -173,6 +178,31 @@ impl AudioPlaybackEngine {
         true
     }
 
+    /// Open the file and build a `RouteSource` positioned at `seek_to`.
+    /// Shared by `join_device` (Adjust, starting from silence) and
+    /// `recover_device` (sleep/resume, preserving current position & volume).
+    fn build_route_source(
+        audio_path: &std::path::Path,
+        device_name: &str,
+        pan: f32,
+        device_channels: std::num::NonZero<u16>,
+        channel_offset: u16,
+        seek_to: std::time::Duration,
+    ) -> Option<(RoutedDecoder, Arc<AtomicU32>)> {
+        let file = File::open(audio_path).ok()?;
+        let raw = Decoder::try_from(file).ok()?;
+        let (mut routed, pan_ctrl) = RouteSource::new(raw, pan, device_channels, channel_offset);
+        if let Err(e) = rodio::Source::try_seek(&mut routed, seek_to) {
+            log::warn!(
+                "Audio: couldn't seek '{}' to {:.1}s (starting from 0): {}",
+                device_name,
+                seek_to.as_secs_f32(),
+                e
+            );
+        }
+        Some((routed, pan_ctrl))
+    }
+
     /// Open a new device sink on `stream` for an output (device + channel pair) it
     /// wasn't originally routed to, starting from silence at the same playback
     /// position as the stream's other sinks — so an Adjust cue can fade audio
@@ -188,23 +218,15 @@ impl AudioPlaybackEngine {
             return None;
         }
         let sink = player.new_player(device_name).ok()?;
-        let file = File::open(&stream.audio_path).ok()?;
-        let raw = Decoder::try_from(file).ok()?;
         let elapsed = stream.play_start.elapsed();
-        let (mut routed, pan_ctrl) = RouteSource::new(
-            raw,
+        let (routed, pan_ctrl) = Self::build_route_source(
+            &stream.audio_path,
+            device_name,
             0.0,
             player.device_channels(device_name),
             channel_offset,
-        );
-        if let Err(e) = rodio::Source::try_seek(&mut routed, elapsed) {
-            log::warn!(
-                "Adjust: joining '{}' couldn't seek to {:.1}s (starting from 0): {}",
-                device_name,
-                elapsed.as_secs_f32(),
-                e
-            );
-        }
+            elapsed,
+        )?;
         sink.set_volume(0.0);
         sink.append(routed);
         stream.device_sinks.push(DeviceSink {
@@ -226,6 +248,86 @@ impl AudioPlaybackEngine {
             elapsed.as_secs_f32()
         );
         Some(stream.device_sinks.len() - 1)
+    }
+
+    /// Re-attach every active stream's sinks routed to `device_name` after that
+    /// device's stream was lost and re-opened (e.g. system sleep).  Each sink is
+    /// rebuilt on the device's fresh mixer at its current playback position,
+    /// preserving volume, pan, and in-progress fades.
+    pub fn recover_device(&mut self, device_name: &str, player: &AudioPlayer) {
+        let mut reattached = 0usize;
+        for stream in self.streams.iter_mut() {
+            let elapsed = stream.play_start.elapsed();
+            let mut idx = 0;
+            while idx < stream.device_sinks.len() {
+                if stream.device_sinks[idx].device_name != device_name {
+                    idx += 1;
+                    continue;
+                }
+                // Pull the fields we need out of the old sink before rebuilding.
+                let old = &stream.device_sinks[idx];
+                let volume = old.volume;
+                let pan = old.pan;
+                let channel_offset = old.channel_offset;
+                let adjust = old.adjust;
+                let pan_adjust = old.pan_adjust;
+                let sink = match player.new_player(device_name) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::error!(
+                            "Audio: recovery could not create player on '{}': {}",
+                            device_name,
+                            e
+                        );
+                        idx += 1;
+                        continue;
+                    }
+                };
+                let (routed, pan_ctrl) = match Self::build_route_source(
+                    &stream.audio_path,
+                    device_name,
+                    pan,
+                    player.device_channels(device_name),
+                    channel_offset,
+                    elapsed,
+                ) {
+                    Some(r) => r,
+                    None => {
+                        log::error!(
+                            "Audio: recovery could not rebuild '{}' for cue {}",
+                            device_name,
+                            stream.cue_id
+                        );
+                        idx += 1;
+                        continue;
+                    }
+                };
+                sink.set_volume(volume);
+                sink.append(routed);
+                let ds = &mut stream.device_sinks[idx];
+                ds.sink.stop();
+                ds.sink = sink;
+                ds.pan_ctrl = pan_ctrl;
+                ds.adjust = adjust;
+                ds.pan_adjust = pan_adjust;
+                log::info!(
+                    "Audio: re-attached cue {} to recovered '{}' (ch {}-{})",
+                    stream.cue_id,
+                    device_name,
+                    channel_offset + 1,
+                    channel_offset + 2
+                );
+                reattached += 1;
+                idx += 1;
+            }
+        }
+        if reattached > 0 {
+            log::info!(
+                "Audio: recovery re-attached {} sink(s) to '{}'",
+                reattached,
+                device_name
+            );
+        }
     }
 
     /// Fade the per-route volume and/or pan for a specific output (device +

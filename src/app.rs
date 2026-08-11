@@ -1,24 +1,27 @@
 //! Main application state and logic
 
+use crate::command::CommandContext;
 use crate::cue::{Cue, CueList, PlaybackEngine};
-use crate::dmx::{Universe, backends::{DmxBackend, VirtualBackend}};
 #[cfg(feature = "usb")]
 use crate::dmx::backends::EnttecUsbProBackend;
-use crate::media::MediaManager;
+use crate::dmx::{
+    backends::{DmxBackend, VirtualBackend},
+    Universe,
+};
 use crate::fixtures::FixtureLibrary;
-use crate::show::{ShowFile, CueColorSettings, RgbaColor};
-use crate::command::CommandContext;
+use crate::media::MediaManager;
+use crate::show::{CueColorSettings, RgbaColor, ShowFile};
 use egui_dock::DockState;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "audio")]
-use crate::audio::{AudioPlayer, AudioPlaybackEngine};
+use crate::audio::{AudioPlaybackEngine, AudioPlayer};
 
 /// Panel types for the docking system
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TabKind {
     Channels,
-    Cues,       // unified lighting + audio cue list
+    Cues, // unified lighting + audio cue list
     Patching,
     Groups,
     Properties,
@@ -281,7 +284,9 @@ impl Default for UiState {
 impl UiState {
     pub fn update_command_context(&mut self) {
         self.command_context = match self.active_pane {
-            Some(TabKind::Channels) | Some(TabKind::Cues) | Some(TabKind::MagicSheet) => CommandContext::Lighting,
+            Some(TabKind::Channels) | Some(TabKind::Cues) | Some(TabKind::MagicSheet) => {
+                CommandContext::Lighting
+            }
             _ => CommandContext::General,
         };
     }
@@ -381,6 +386,13 @@ pub struct EasyCueApp {
     update_check_rx: Option<std::sync::mpsc::Receiver<crate::update::UpdateCheckState>>,
     /// When we last checked for updates, persisted to throttle the automatic startup check.
     last_update_check: Option<chrono::DateTime<chrono::Utc>>,
+
+    /// Auto-reconnect state for a lost DMX hardware device (None = not trying).
+    /// After the hardware backend reports loss, the app falls back to Virtual
+    /// but keeps re-attempting to open the saved device in the background and
+    /// swaps back in when it reappears (e.g. after sleep/resume).
+    #[cfg(feature = "usb")]
+    dmx_reconnect: Option<DmxReconnect>,
 }
 
 /// Tracks a timed fade of the sound master, driven by an Adjust cue.
@@ -391,8 +403,26 @@ pub struct SoundFadeState {
     pub fade_time: f32,
     pub start: std::time::Instant,
     pub stop_when_complete: bool,
-    /// Stable ID of the Adjust cue that triggered this fade (for row highlighting).
-    pub trigger_cue_id: u32,
+}
+
+/// Auto-reconnect attempt for a lost DMX hardware device.
+///
+/// When a USB backend reports loss the app falls back to Virtual (so the show
+/// keeps "outputting") but keeps retrying the saved hardware config in the
+/// background; when the device reappears (sleep/resume, re-plug) the hardware
+/// backend is swapped back in automatically.
+#[cfg(feature = "usb")]
+struct DmxReconnect {
+    /// The backend config we're trying to restore (snapshot of the saved
+    /// preference at the time of the loss — not dereferenced live, so the
+    /// operator's manual choices don't fight the retry).
+    target: PersistedDmxBackend,
+    /// Receiver for the background open attempt's result.
+    rx: std::sync::mpsc::Receiver<anyhow::Result<Box<dyn DmxBackend>>>,
+    /// When the next attempt may start (throttle/backoff).
+    next_attempt: std::time::Instant,
+    /// Consecutive failures, for exponential-ish backoff.
+    consecutive_failures: u32,
 }
 
 impl EasyCueApp {
@@ -534,38 +564,55 @@ impl EasyCueApp {
 
         let theme_start = std::time::Instant::now();
         Self::configure_cobalt_theme(&cc.egui_ctx);
-        log::info!("[startup] Theme configured in {:.2}ms", theme_start.elapsed().as_secs_f64() * 1000.0);
+        log::info!(
+            "[startup] Theme configured in {:.2}ms",
+            theme_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         let font_start = std::time::Instant::now();
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
-        log::info!("[startup] Fonts configured in {:.2}ms", font_start.elapsed().as_secs_f64() * 1000.0);
+        log::info!(
+            "[startup] Fonts configured in {:.2}ms",
+            font_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         let universe_start = std::time::Instant::now();
         // Create 8 universes (1-based IDs 1–8). Only those referenced by patched
         // fixtures will carry any output; the rest stay at zero and cost nothing.
         let universes: Vec<Universe> = (1..=8).map(Universe::new).collect();
-        log::info!("[startup] Universes created in {:.2}ms", universe_start.elapsed().as_secs_f64() * 1000.0);
+        log::info!(
+            "[startup] Universes created in {:.2}ms",
+            universe_start.elapsed().as_secs_f64() * 1000.0
+        );
 
-        let saved_dmx_backend = cc.storage
+        let saved_dmx_backend = cc
+            .storage
             .and_then(|storage| eframe::get_value(storage, "preferred_dmx_backend"));
         let had_saved_dmx_backend = saved_dmx_backend.is_some();
 
         let dmx_init_start = std::time::Instant::now();
         let dmx_backend: Box<dyn DmxBackend> = Box::new(VirtualBackend::new(true));
-        log::info!("[startup] DMX backend selected in {:.2}ms", dmx_init_start.elapsed().as_secs_f64() * 1000.0);
+        log::info!(
+            "[startup] DMX backend selected in {:.2}ms",
+            dmx_init_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         log::info!("EasyCue3 application initialized");
         log::info!("DMX Backend: {}", dmx_backend.name());
 
         let dock_load_start = std::time::Instant::now();
         let dock_state = if let Some(storage) = cc.storage {
-            eframe::get_value(storage, "dock_state").unwrap_or_else(|| Self::create_default_dock_layout())
+            eframe::get_value(storage, "dock_state")
+                .unwrap_or_else(|| Self::create_default_dock_layout())
         } else {
             Self::create_default_dock_layout()
         };
-        log::info!("[startup] Dock layout restored in {:.2}ms", dock_load_start.elapsed().as_secs_f64() * 1000.0);
+        log::info!(
+            "[startup] Dock layout restored in {:.2}ms",
+            dock_load_start.elapsed().as_secs_f64() * 1000.0
+        );
 
         #[cfg(feature = "audio")]
         let (audio_player, audio_playback) = {
@@ -596,21 +643,25 @@ impl EasyCueApp {
         };
 
         #[cfg(feature = "remote")]
-        let remote_settings: crate::remote::RemoteSettings = cc.storage
+        let remote_settings: crate::remote::RemoteSettings = cc
+            .storage
             .and_then(|storage| eframe::get_value(storage, "remote_settings"))
             .unwrap_or_default();
 
-        let last_update_check: Option<chrono::DateTime<chrono::Utc>> = cc.storage
+        let last_update_check: Option<chrono::DateTime<chrono::Utc>> = cc
+            .storage
             .and_then(|storage| eframe::get_value(storage, "last_update_check"));
 
         // Script-viewer zoom persists across launches as a UI preference.
         // Clamped to the panel's zoom range so a hand-edited storage value can't
         // produce a degenerate view (see MIN_ZOOM / MAX_ZOOM in ui/script_viewer.rs).
-        let script_viewer_zoom: f32 = cc.storage
+        let script_viewer_zoom: f32 = cc
+            .storage
             .and_then(|storage| eframe::get_value::<f32>(storage, "script_viewer_zoom"))
             .unwrap_or(1.0)
             .clamp(0.05, 8.0);
-        let script_viewer_dark_mode: bool = cc.storage
+        let script_viewer_dark_mode: bool = cc
+            .storage
             .and_then(|storage| eframe::get_value::<bool>(storage, "script_viewer_dark_mode"))
             .unwrap_or(false);
 
@@ -657,6 +708,8 @@ impl EasyCueApp {
             update_state: crate::update::UpdateCheckState::Unknown,
             update_check_rx: None,
             last_update_check,
+            #[cfg(feature = "usb")]
+            dmx_reconnect: None,
         };
         app.script_viewer.zoom = script_viewer_zoom;
         app.script_viewer.dark_mode = script_viewer_dark_mode;
@@ -664,7 +717,8 @@ impl EasyCueApp {
         app.restore_startup_dmx_backend();
 
         // Auto-check for updates at most once per day, fully in the background.
-        let should_auto_check_updates = app.last_update_check
+        let should_auto_check_updates = app
+            .last_update_check
             .map(|last| chrono::Utc::now() - last > chrono::Duration::hours(24))
             .unwrap_or(true);
         if should_auto_check_updates {
@@ -696,7 +750,8 @@ impl EasyCueApp {
         }
 
         let startup_show_load_start = std::time::Instant::now();
-        let last_file = cc.storage
+        let last_file = cc
+            .storage
             .and_then(|s| s.get_string("last_file"))
             .map(std::path::PathBuf::from)
             .filter(|p| p.exists());
@@ -713,7 +768,9 @@ impl EasyCueApp {
                 }
             }
         } else {
-            if let Some(default_path) = crate::paths::find_resource_file(std::path::Path::new("shows/default_show.json")) {
+            if let Some(default_path) =
+                crate::paths::find_resource_file(std::path::Path::new("shows/default_show.json"))
+            {
                 match app.load_show(&default_path) {
                     Ok(_) => {
                         log::info!("Loaded default show on startup");
@@ -805,17 +862,25 @@ impl EasyCueApp {
                 ) {
                     Ok(_) => log::debug!(
                         "Loaded patch: {} ({}) at U{}:{}",
-                        patch.label, patch.profile_id, patch.universe, patch.start_address
+                        patch.label,
+                        patch.profile_id,
+                        patch.universe,
+                        patch.start_address
                     ),
                     Err(e) => log::warn!("Failed to load patch '{}': {}", patch.label, e),
                 }
             } else {
-                log::warn!("Skipping patch '{}': profile '{}' not found", patch.label, patch.profile_id);
+                log::warn!(
+                    "Skipping patch '{}': profile '{}' not found",
+                    patch.label,
+                    patch.profile_id
+                );
             }
         }
 
         self.effect_engine.clear();
-        self.effect_list = crate::effects::EffectList::from_parts(show.effects, show.next_effect_id);
+        self.effect_list =
+            crate::effects::EffectList::from_parts(show.effects, show.next_effect_id);
         self.ui_state.selected_effect_id = None;
         self.ui_state.cue_props_effect_choice = None;
 
@@ -842,7 +907,8 @@ impl EasyCueApp {
             canvas_zoom: self.magic_sheet.canvas_zoom,
             ..MagicSheetState::default()
         };
-        self.show_title = path.file_stem()
+        self.show_title = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| "Untitled".to_string());
@@ -863,7 +929,8 @@ impl EasyCueApp {
 
     /// Save the current show to a file
     pub fn save_show(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
-        let title = path.file_stem()
+        let title = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled");
 
@@ -886,46 +953,60 @@ impl EasyCueApp {
         show.save(path)?;
         self.current_file_path = Some(path.to_path_buf());
         self.show_title = title.to_string();
-        log::info!("Saved show: {} ({} cues, {} fixtures)", title, show.cues.len(), show.patch.len());
+        log::info!(
+            "Saved show: {} ({} cues, {} fixtures)",
+            title,
+            show.cues.len(),
+            show.patch.len()
+        );
         Ok(())
     }
 
     /// Apply lighting master and blackout before DMX output.
     /// Returns a cloned Vec of universes with masters applied, ready to send.
     pub fn apply_masters(&self, universes: &[Universe]) -> Vec<Universe> {
-        universes.iter().map(|universe| {
-            let mut output = universe.clone();
-            if self.ui_state.blackout_active {
-                output.clear();
-                return output;
-            }
-            if self.ui_state.lighting_master < 1.0 {
-                for ch in 1..=512u16 {
-                    if let Ok(value) = universe.get_channel(ch) {
-                        if value > 0 {
-                            let scaled = (value as f32 * self.ui_state.lighting_master).round() as u8;
-                            let _ = output.set_channel(ch, scaled);
+        universes
+            .iter()
+            .map(|universe| {
+                let mut output = universe.clone();
+                if self.ui_state.blackout_active {
+                    output.clear();
+                    return output;
+                }
+                if self.ui_state.lighting_master < 1.0 {
+                    for ch in 1..=512u16 {
+                        if let Ok(value) = universe.get_channel(ch) {
+                            if value > 0 {
+                                let scaled =
+                                    (value as f32 * self.ui_state.lighting_master).round() as u8;
+                                let _ = output.set_channel(ch, scaled);
+                            }
                         }
                     }
                 }
-            }
-            output
-        }).collect()
+                output
+            })
+            .collect()
     }
 
     pub fn switch_to_virtual(&mut self) {
         self.activate_virtual_backend();
         self.preferred_dmx_backend = PersistedDmxBackend::Virtual;
+        #[cfg(feature = "usb")]
+        self.cancel_dmx_reconnect();
         log::info!("Switched to Virtual DMX backend");
     }
 
     #[cfg(feature = "usb")]
     pub fn switch_to_enttec(&mut self, port: &str) -> anyhow::Result<()> {
+        self.cancel_dmx_reconnect();
         self.activate_virtual_backend();
         let backend = EnttecUsbProBackend::new(port)?;
         self.dmx_backend = Box::new(backend);
         self.ui_state.selected_usb_port = port.to_string();
-        self.preferred_dmx_backend = PersistedDmxBackend::UsbPro { port: port.to_string() };
+        self.preferred_dmx_backend = PersistedDmxBackend::UsbPro {
+            port: port.to_string(),
+        };
         log::info!("Switched to Enttec USB Pro at {}", port);
         Ok(())
     }
@@ -933,6 +1014,7 @@ impl EasyCueApp {
     #[cfg(feature = "usb")]
     pub fn switch_to_open_dmx(&mut self, port: &str) -> anyhow::Result<()> {
         use crate::dmx::backends::{EnttecOpenDmxBackend, VirtualBackend};
+        self.cancel_dmx_reconnect();
         // Drop the current backend before opening the new port. If the current backend
         // is an Open DMX (or Pro), its Drop impl joins the output thread, which releases
         // the serial port FD — otherwise the open() below would fail with EBUSY.
@@ -940,7 +1022,9 @@ impl EasyCueApp {
         let backend = EnttecOpenDmxBackend::new(port)?;
         self.dmx_backend = Box::new(backend);
         self.ui_state.selected_open_dmx_port = port.to_string();
-        self.preferred_dmx_backend = PersistedDmxBackend::OpenDmx { port: port.to_string() };
+        self.preferred_dmx_backend = PersistedDmxBackend::OpenDmx {
+            port: port.to_string(),
+        };
         log::info!("Switched to Enttec Open DMX USB at {}", port);
         Ok(())
     }
@@ -949,6 +1033,8 @@ impl EasyCueApp {
     /// `universe` is the Art-Net universe number (0-based, 0–32767).
     pub fn switch_to_artnet(&mut self, target: &str, universe: u16) -> anyhow::Result<()> {
         use crate::dmx::backends::ArtNetBackend;
+        #[cfg(feature = "usb")]
+        self.cancel_dmx_reconnect();
         let backend = ArtNetBackend::new(target, universe)?;
         self.dmx_backend = Box::new(backend);
         self.ui_state.artnet_target_ip = target.to_string();
@@ -961,8 +1047,138 @@ impl EasyCueApp {
         Ok(())
     }
 
+    #[cfg(feature = "usb")]
+    fn cancel_dmx_reconnect(&mut self) {
+        if self.dmx_reconnect.is_some() {
+            log::info!("DMX reconnect: cancelled by manual backend switch");
+        }
+        self.dmx_reconnect = None;
+    }
+
     fn activate_virtual_backend(&mut self) {
         self.dmx_backend = Box::new(VirtualBackend::new(true));
+    }
+
+    /// Begin auto-reconnect for a lost DMX hardware device: spawn a background
+    /// thread that tries to reopen the saved hardware config.  The show keeps
+    /// running on Virtual meanwhile; `service_dmx_reconnect` swaps the real
+    /// backend back in when the open succeeds.
+    #[cfg(feature = "usb")]
+    fn begin_dmx_reconnect(&mut self) {
+        if self.dmx_reconnect.is_some() {
+            return; // already retrying
+        }
+        let target = self.preferred_dmx_backend.clone();
+        let is_hardware = matches!(
+            target,
+            PersistedDmxBackend::UsbPro { .. }
+                | PersistedDmxBackend::OpenDmx { .. }
+                | PersistedDmxBackend::ArtNet { .. }
+        );
+        if !is_hardware {
+            return; // nothing to reconnect (Virtual was the chosen backend)
+        }
+
+        log::info!("DMX reconnect: background attempt started for {:?}", target);
+        self.dmx_reconnect = Some(DmxReconnect {
+            rx: Self::spawn_dmx_reconnect_attempt(&target),
+            target,
+            next_attempt: std::time::Instant::now(),
+            consecutive_failures: 0,
+        });
+    }
+
+    /// Spawn a background thread that tries to open `target` as a DmxBackend,
+    /// returning a receiver for its result.  Serial opens can take ~100ms on a
+    /// missing device, so this must never run on the UI thread.
+    #[cfg(feature = "usb")]
+    fn spawn_dmx_reconnect_attempt(
+        target: &PersistedDmxBackend,
+    ) -> std::sync::mpsc::Receiver<anyhow::Result<Box<dyn DmxBackend>>> {
+        use crate::dmx::backends::{ArtNetBackend, EnttecOpenDmxBackend, EnttecUsbProBackend};
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let thread_target = target.clone();
+        std::thread::spawn(move || {
+            let result: anyhow::Result<Box<dyn DmxBackend>> = match &thread_target {
+                PersistedDmxBackend::UsbPro { port } => {
+                    EnttecUsbProBackend::new(port).map(|b| Box::new(b) as Box<dyn DmxBackend>)
+                }
+                PersistedDmxBackend::OpenDmx { port } => {
+                    EnttecOpenDmxBackend::new(port).map(|b| Box::new(b) as Box<dyn DmxBackend>)
+                }
+                PersistedDmxBackend::ArtNet { target, universe } => {
+                    ArtNetBackend::new(target, *universe)
+                        .map(|b| Box::new(b) as Box<dyn DmxBackend>)
+                }
+                PersistedDmxBackend::Virtual => anyhow::Result::<Box<dyn DmxBackend>>::Err(
+                    anyhow::anyhow!("Virtual has nothing to reconnect"),
+                ),
+            };
+            let _ = tx.send(result);
+        });
+        rx
+    }
+
+    /// Poll the in-flight reconnect attempt and, when the device is back, swap
+    /// the hardware backend in place of Virtual.  On failure, schedule another
+    /// attempt with backoff.  Called every frame from `update`.
+    #[cfg(feature = "usb")]
+    fn service_dmx_reconnect(&mut self) {
+        let Some(rec) = &mut self.dmx_reconnect else {
+            return;
+        };
+
+        // Not yet due for a new attempt?
+        if std::time::Instant::now() < rec.next_attempt {
+            return;
+        }
+
+        match rec.rx.try_recv() {
+            Ok(Ok(backend)) => {
+                let name = backend.name().to_string();
+                // Drop the Virtual fallback and install the real hardware
+                // backend (its Drop frees the old serial FD before this one
+                // becomes active — same ordering as switch_to_open_dmx).
+                self.dmx_backend = backend;
+                self.dmx_reconnect = None;
+                self.ui_state.status_message = format!("✓ DMX device reconnected ({})", name);
+                log::info!("DMX reconnect: hardware backend restored ({})", name);
+            }
+            Ok(Err(e)) => {
+                rec.consecutive_failures += 1;
+                let backoff = Self::dmx_reconnect_backoff(rec.consecutive_failures);
+                log::debug!(
+                    "DMX reconnect attempt {} failed ({}); retrying in {:.1}s",
+                    rec.consecutive_failures,
+                    e,
+                    backoff.as_secs_f32()
+                );
+                // Launch the next attempt in the background so the UI thread
+                // never blocks on a slow serial open.
+                let next_rx = Self::spawn_dmx_reconnect_attempt(&rec.target);
+                rec.rx = next_rx;
+                rec.next_attempt = std::time::Instant::now() + backoff;
+            }
+            Err(_) => {
+                // Still in flight — check again shortly.
+                rec.next_attempt =
+                    std::time::Instant::now() + std::time::Duration::from_millis(250);
+            }
+        }
+    }
+
+    /// Retry backoff after `failures` consecutive reconnect attempts.
+    #[cfg(feature = "usb")]
+    fn dmx_reconnect_backoff(failures: u32) -> std::time::Duration {
+        let secs = 2_u64.saturating_mul(1 << failures.min(5));
+        std::time::Duration::from_secs(secs.min(30))
+    }
+
+    /// Whether the DMX hardware reconnect loop is currently active.
+    #[cfg(feature = "usb")]
+    pub fn dmx_reconnecting(&self) -> bool {
+        self.dmx_reconnect.is_some()
     }
 
     fn sync_ui_dmx_selection_from_preference(&mut self) {
@@ -998,7 +1214,9 @@ impl EasyCueApp {
             PersistedDmxBackend::OpenDmx { port } => self.switch_to_open_dmx(port),
             #[cfg(not(feature = "usb"))]
             PersistedDmxBackend::OpenDmx { .. } => anyhow::bail!("USB support not enabled"),
-            PersistedDmxBackend::ArtNet { target, universe } => self.switch_to_artnet(target, *universe),
+            PersistedDmxBackend::ArtNet { target, universe } => {
+                self.switch_to_artnet(target, *universe)
+            }
         };
 
         if let Err(error) = restore_result {
@@ -1008,9 +1226,8 @@ impl EasyCueApp {
                 error
             );
             self.activate_virtual_backend();
-            self.ui_state.status_message = format!(
-                "Saved DMX device unavailable — using Virtual DMX instead"
-            );
+            self.ui_state.status_message =
+                format!("Saved DMX device unavailable — using Virtual DMX instead");
             return;
         }
 
@@ -1157,12 +1374,20 @@ impl EasyCueApp {
                 continue;
             };
             let Some(profile) = self.fixtures.get_profile(&patch.profile_id) else {
-                log::warn!("Effect fixture #{}: profile '{}' missing — skipping", id, patch.profile_id);
+                log::warn!(
+                    "Effect fixture #{}: profile '{}' missing — skipping",
+                    id,
+                    patch.profile_id
+                );
                 continue;
             };
             let universe_idx = (patch.universe as usize).saturating_sub(1);
             if universe_idx >= self.universes.len() {
-                log::warn!("Effect fixture #{}: universe {} not available — skipping", id, patch.universe);
+                log::warn!(
+                    "Effect fixture #{}: universe {} not available — skipping",
+                    id,
+                    patch.universe
+                );
                 continue;
             }
             let abs = |offset: u16| patch.start_address + offset;
@@ -1177,11 +1402,21 @@ impl EasyCueApp {
             resolved.push(crate::effects::EffectFixture {
                 fixture_id: id,
                 universe_idx,
-                intensity_ch: profile.get_parameter_offset(&FixtureParameter::Intensity).map(abs),
-                color_chs: profile.color_parameters().iter().map(|p| abs(p.channel_offset)).collect(),
+                intensity_ch: profile
+                    .get_parameter_offset(&FixtureParameter::Intensity)
+                    .map(abs),
+                color_chs: profile
+                    .color_parameters()
+                    .iter()
+                    .map(|p| abs(p.channel_offset))
+                    .collect(),
                 rgb_chs,
-                pan_ch: profile.get_parameter_offset(&FixtureParameter::Pan).map(abs),
-                tilt_ch: profile.get_parameter_offset(&FixtureParameter::Tilt).map(abs),
+                pan_ch: profile
+                    .get_parameter_offset(&FixtureParameter::Pan)
+                    .map(abs),
+                tilt_ch: profile
+                    .get_parameter_offset(&FixtureParameter::Tilt)
+                    .map(abs),
             });
         }
         resolved
@@ -1189,17 +1424,26 @@ impl EasyCueApp {
 
     /// Run a cue's effect actions: starts ramp in over the cue's fade-up,
     /// stops ramp out over its fade-down.
-    fn execute_effect_actions(&mut self, actions: &[crate::effects::EffectAction], fade_up: f32, fade_down: f32) {
+    fn execute_effect_actions(
+        &mut self,
+        actions: &[crate::effects::EffectAction],
+        fade_up: f32,
+        fade_down: f32,
+    ) {
         use crate::effects::EffectAction;
         for action in actions {
             match action {
-                EffectAction::Start { effect_id, fixtures } => {
+                EffectAction::Start {
+                    effect_id,
+                    fixtures,
+                } => {
                     if self.effect_list.find(*effect_id).is_none() {
                         log::warn!("Cue references missing effect {} — skipping", effect_id);
                         continue;
                     }
                     let resolved = self.resolve_effect_fixtures(fixtures);
-                    self.effect_engine.start(*effect_id, fixtures.clone(), resolved, fade_up);
+                    self.effect_engine
+                        .start(*effect_id, fixtures.clone(), resolved, fade_up);
                 }
                 EffectAction::Stop { effect_id } => self.effect_engine.stop(*effect_id, fade_down),
                 EffectAction::StopAll => self.effect_engine.stop_all(fade_down),
@@ -1213,7 +1457,12 @@ impl EasyCueApp {
     /// effect clock, so surviving effects never phase-snap.
     fn sync_effects_to_index(&mut self, idx: usize, fade: f32) {
         let desired = self.cue_list.effect_state_up_to(idx);
-        let running_ids: Vec<u32> = self.effect_engine.running().iter().map(|r| r.effect_id()).collect();
+        let running_ids: Vec<u32> = self
+            .effect_engine
+            .running()
+            .iter()
+            .map(|r| r.effect_id())
+            .collect();
         for id in running_ids {
             if !desired.iter().any(|(d, _)| *d == id) {
                 self.effect_engine.stop(id, fade);
@@ -1224,7 +1473,12 @@ impl EasyCueApp {
                 log::warn!("Tracked effect {} missing from library — skipping", id);
                 continue;
             }
-            let needs_start = match self.effect_engine.running().iter().find(|r| r.effect_id() == id) {
+            let needs_start = match self
+                .effect_engine
+                .running()
+                .iter()
+                .find(|r| r.effect_id() == id)
+            {
                 Some(r) => r.is_stopping() || r.fixture_ids() != fixture_ids.as_slice(),
                 None => true,
             };
@@ -1240,7 +1494,9 @@ impl EasyCueApp {
     /// Advance to the next cue of any kind (unified GO). Returns true if a cue fired.
     pub fn go_next(&mut self) -> bool {
         self.autofollow_timer = None;
-        let Some(next_idx) = self.cue_list.next_any_index() else { return false };
+        let Some(next_idx) = self.cue_list.next_any_index() else {
+            return false;
+        };
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
@@ -1250,9 +1506,7 @@ impl EasyCueApp {
                 true
             }
             #[cfg(feature = "audio")]
-            crate::cue::CueKind::Audio(_) => {
-                self.audio_playback.start(&cue, &self.audio_player)
-            }
+            crate::cue::CueKind::Audio(_) => self.audio_playback.start(&cue, &self.audio_player),
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Adjust(data) => {
                 self.fire_adjust_cue(cue.id, data.clone());
@@ -1276,21 +1530,22 @@ impl EasyCueApp {
     /// Return to the previous cue of any kind (unified BACK). Returns true if a cue fired.
     pub fn go_back(&mut self) -> bool {
         self.autofollow_timer = None;
-        let Some(prev_idx) = self.cue_list.previous_any_index() else { return false };
+        let Some(prev_idx) = self.cue_list.previous_any_index() else {
+            return false;
+        };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = match &cue.kind {
             crate::cue::CueKind::Lighting(data) => {
                 let tracked = self.cue_list.tracked_state_up_to(prev_idx);
                 let fade_time = data.fade_up;
-                self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
+                self.playback
+                    .start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
                 self.sync_effects_to_index(prev_idx, fade_time);
                 true
             }
             #[cfg(feature = "audio")]
-            crate::cue::CueKind::Audio(_) => {
-                self.audio_playback.start(&cue, &self.audio_player)
-            }
+            crate::cue::CueKind::Audio(_) => self.audio_playback.start(&cue, &self.audio_player),
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Adjust(data) => {
                 self.fire_adjust_cue(cue.id, data.clone());
@@ -1308,7 +1563,9 @@ impl EasyCueApp {
     /// Advance to the next lighting cue and start its fade. Returns true if a cue fired.
     #[allow(dead_code)]
     pub fn go_lighting(&mut self) -> bool {
-        let Some(next_idx) = self.cue_list.next_lighting_index() else { return false };
+        let Some(next_idx) = self.cue_list.next_lighting_index() else {
+            return false;
+        };
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
         self.playback.start(&cue, &self.universes);
@@ -1320,7 +1577,9 @@ impl EasyCueApp {
     /// Return to the previous lighting cue. Returns true if a cue fired.
     #[allow(dead_code)]
     pub fn go_back_lighting(&mut self) -> bool {
-        let Some(prev_idx) = self.cue_list.previous_lighting_index() else { return false };
+        let Some(prev_idx) = self.cue_list.previous_lighting_index() else {
+            return false;
+        };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
         self.playback.start(&cue, &self.universes);
@@ -1333,7 +1592,9 @@ impl EasyCueApp {
     #[cfg(feature = "audio")]
     #[allow(dead_code)]
     pub fn go_audio(&mut self) -> bool {
-        let Some(next_idx) = self.cue_list.next_audio_index() else { return false };
+        let Some(next_idx) = self.cue_list.next_audio_index() else {
+            return false;
+        };
         let cue = self.cue_list.get_cue(next_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = self.audio_playback.start(&cue, &self.audio_player);
@@ -1348,7 +1609,9 @@ impl EasyCueApp {
     #[cfg(feature = "audio")]
     #[allow(dead_code)]
     pub fn go_back_audio(&mut self) -> bool {
-        let Some(prev_idx) = self.cue_list.previous_audio_index() else { return false };
+        let Some(prev_idx) = self.cue_list.previous_audio_index() else {
+            return false;
+        };
         let cue = self.cue_list.get_cue(prev_idx).cloned();
         let Some(cue) = cue else { return false };
         let fired = self.audio_playback.start(&cue, &self.audio_player);
@@ -1378,14 +1641,13 @@ impl EasyCueApp {
             crate::cue::CueKind::Lighting(data) => {
                 let tracked = self.cue_list.tracked_state_up_to(abs_idx);
                 let fade_time = if instant { 0.0 } else { data.fade_up };
-                self.playback.start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
+                self.playback
+                    .start_to_state(&tracked, fade_time, Some(cue.id), &self.universes);
                 self.sync_effects_to_index(abs_idx, fade_time);
                 true
             }
             #[cfg(feature = "audio")]
-            crate::cue::CueKind::Audio(_) => {
-                self.audio_playback.start(&cue, &self.audio_player)
-            }
+            crate::cue::CueKind::Audio(_) => self.audio_playback.start(&cue, &self.audio_player),
             #[cfg(feature = "audio")]
             crate::cue::CueKind::Adjust(data) => {
                 self.fire_adjust_cue(cue.id, data.clone());
@@ -1412,7 +1674,10 @@ impl EasyCueApp {
             self.fade_to_black(3.0);
             return true;
         }
-        let idx = self.cue_list.cues().iter()
+        let idx = self
+            .cue_list
+            .cues()
+            .iter()
             .position(|c| (c.number - num).abs() < 0.005);
         if let Some(abs_idx) = idx {
             self.go_to_cue(abs_idx)
@@ -1426,7 +1691,8 @@ impl EasyCueApp {
     /// Fade all lighting channels across all universes to zero over `fade_seconds`
     /// and stop all audio immediately.
     pub fn fade_to_black(&mut self, fade_seconds: f32) {
-        self.playback.start_fade_to_black(&self.universes, fade_seconds);
+        self.playback
+            .start_fade_to_black(&self.universes, fade_seconds);
         // With the base fading to 0, a running intensity effect would keep
         // flashing 0→size in the black — Cue 0 stops effects with the fade.
         self.effect_engine.stop_all(fade_seconds);
@@ -1481,7 +1747,10 @@ impl EasyCueApp {
     /// The created cue follows the same numbering and auto-targeting conventions
     /// as the equivalent buttons in the Cues panel.
     pub fn add_cue_of_kind(&mut self, kind: crate::scriptviewer::NewCueKind) -> Option<u32> {
-        let next_number = self.cue_list.cues().iter()
+        let next_number = self
+            .cue_list
+            .cues()
+            .iter()
             .last()
             .map(|c| c.number.floor() + 1.0)
             .unwrap_or(1.0);
@@ -1502,7 +1771,10 @@ impl EasyCueApp {
             #[cfg(feature = "audio")]
             crate::scriptviewer::NewCueKind::Adjustment => {
                 // Auto-target the most recent audio cue, matching the Cues panel.
-                let prev_audio_num: Option<f32> = self.cue_list.cues().iter()
+                let prev_audio_num: Option<f32> = self
+                    .cue_list
+                    .cues()
+                    .iter()
                     .rev()
                     .find_map(|c| c.audio_data().map(|_| c.number));
                 let mut cue = Cue::new_adjust(next_number);
@@ -1513,7 +1785,8 @@ impl EasyCueApp {
                 self.cue_list.add_cue(cue);
             }
             #[cfg(not(feature = "audio"))]
-            crate::scriptviewer::NewCueKind::Sound | crate::scriptviewer::NewCueKind::Adjustment => {
+            crate::scriptviewer::NewCueKind::Sound
+            | crate::scriptviewer::NewCueKind::Adjustment => {
                 return None;
             }
         }
@@ -1529,7 +1802,9 @@ impl EasyCueApp {
     #[cfg(feature = "audio")]
     fn fire_adjust_cue(&mut self, _adjust_cue_id: u32, data: crate::cue::AdjustData) {
         let target_id: u32 = if let Some(target_num) = data.target_audio_cue {
-            self.cue_list.cues().iter()
+            self.cue_list
+                .cues()
+                .iter()
                 .find(|c| (c.number - target_num).abs() < 0.005)
                 .map(|c| c.id)
                 .unwrap_or_else(|| {
@@ -1556,16 +1831,24 @@ impl EasyCueApp {
         log::info!(
             "Adjust: {} fade(s) on {} over {:.1}s{}",
             data.output_fades.len(),
-            data.target_audio_cue.map(|n| format!("Q{:.1}", n)).unwrap_or_else(|| "all".into()),
+            data.target_audio_cue
+                .map(|n| format!("Q{:.1}", n))
+                .unwrap_or_else(|| "all".into()),
             data.fade_time,
-            if data.stop_when_complete { " then stop" } else { "" },
+            if data.stop_when_complete {
+                " then stop"
+            } else {
+                ""
+            },
         );
     }
 
     /// Record a new lighting cue from the current universe state.
     /// Returns the stable ID assigned to the new cue.
     pub fn record_cue(&mut self) -> u32 {
-        let next_number = self.cue_list.cues()
+        let next_number = self
+            .cue_list
+            .cues()
             .iter()
             .filter(|c| c.is_lighting())
             .last()
@@ -1602,17 +1885,28 @@ impl EasyCueApp {
             }
         }
 
-        let channel_count = cue.lighting_data().map(|d| d.channel_values.len()).unwrap_or(0);
+        let channel_count = cue
+            .lighting_data()
+            .map(|d| d.channel_values.len())
+            .unwrap_or(0);
         self.cue_list.add_cue(cue);
         self.ui_state.status_message = format!("Recorded cue {:.0}", next_number);
-        log::info!("Recorded cue {:.0} with {} channels", next_number, channel_count);
+        log::info!(
+            "Recorded cue {:.0} with {} channels",
+            next_number,
+            channel_count
+        );
         assigned_id
     }
 
     /// Select a cue by stable ID and keep the legacy per-kind selection fields in sync.
     pub fn select_cue(&mut self, id: u32) {
         self.ui_state.selected_cue_id = Some(id);
-        let is_lx = self.cue_list.find_by_id(id).map(|c| c.is_lighting()).unwrap_or(false);
+        let is_lx = self
+            .cue_list
+            .find_by_id(id)
+            .map(|c| c.is_lighting())
+            .unwrap_or(false);
         if is_lx {
             self.ui_state.selected_lighting_cue_id = Some(id);
             self.ui_state.selected_audio_cue_id = None;
@@ -1758,7 +2052,9 @@ impl EasyCueApp {
 
     /// Check if autosave exists, is more recent than the loaded show, and has different content.
     /// If so, offer to recover it.
-    fn check_autosave_recovery(loaded_path: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+    fn check_autosave_recovery(
+        loaded_path: Option<&std::path::Path>,
+    ) -> Option<std::path::PathBuf> {
         let autosave_path = std::path::PathBuf::from("shows/.autosave.json");
 
         if !autosave_path.exists() {
@@ -1785,7 +2081,10 @@ impl EasyCueApp {
         }
 
         // Compare file contents, ignoring timestamps
-        match (ShowFile::load(&autosave_path), loaded_path.and_then(|p| ShowFile::load(p).ok())) {
+        match (
+            ShowFile::load(&autosave_path),
+            loaded_path.and_then(|p| ShowFile::load(p).ok()),
+        ) {
             (Ok(autosave), Some(loaded)) => {
                 if !Self::shows_are_equivalent(&autosave, &loaded) {
                     log::info!("Autosave recovery: found newer, different autosave");
@@ -1896,17 +2195,19 @@ impl eframe::App for EasyCueApp {
         let keyboard_busy = ctx.memory(|m| m.focused().is_some())
             || ctx.memory(|m| m.any_popup_open())
             || self.script_viewer.pending_add.is_some();
-        let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down, update) = ctx.input(|i| (
-            i.key_pressed(egui::Key::Space)     && !i.modifiers.any() && !keyboard_busy,
-            i.key_pressed(egui::Key::S)         && !i.modifiers.any() && !keyboard_busy,
-            i.key_pressed(egui::Key::R)         && i.modifiers.ctrl,
-            i.key_pressed(egui::Key::G)         && i.modifiers.ctrl && !keyboard_busy,
-            // Escape is a safety/pause key — works even when a text field has focus.
-            i.key_pressed(egui::Key::Escape),
-            i.key_pressed(egui::Key::ArrowUp)   && !keyboard_busy,
-            i.key_pressed(egui::Key::ArrowDown) && !keyboard_busy,
-            i.key_pressed(egui::Key::U)         && i.modifiers.ctrl && !keyboard_busy,
-        ));
+        let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down, update) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::Space) && !i.modifiers.any() && !keyboard_busy,
+                i.key_pressed(egui::Key::S) && !i.modifiers.any() && !keyboard_busy,
+                i.key_pressed(egui::Key::R) && i.modifiers.ctrl,
+                i.key_pressed(egui::Key::G) && i.modifiers.ctrl && !keyboard_busy,
+                // Escape is a safety/pause key — works even when a text field has focus.
+                i.key_pressed(egui::Key::Escape),
+                i.key_pressed(egui::Key::ArrowUp) && !keyboard_busy,
+                i.key_pressed(egui::Key::ArrowDown) && !keyboard_busy,
+                i.key_pressed(egui::Key::U) && i.modifiers.ctrl && !keyboard_busy,
+            )
+        });
 
         if stop {
             self.playback.stop();
@@ -1956,7 +2257,9 @@ impl eframe::App for EasyCueApp {
             if cue_count > 0 {
                 // Prefer the currently selected cue as the movement origin; fall back to
                 // the current on-deck cue so arrows always move relative to what's next.
-                let current_sel = self.ui_state.selected_cue_id
+                let current_sel = self
+                    .ui_state
+                    .selected_cue_id
                     .and_then(|id| self.cue_list.cues().iter().position(|c| c.id == id))
                     .or_else(|| self.cue_list.next_any_index());
                 let new_idx = if arrow_up {
@@ -1966,15 +2269,13 @@ impl eframe::App for EasyCueApp {
                 };
                 if let Some(cue) = self.cue_list.get_cue(new_idx) {
                     let num = cue.number;
-                    let id  = cue.id;
+                    let id = cue.id;
                     // Move play head to just before this cue so next_any_index() points here.
                     let prev_idx = if new_idx > 0 { Some(new_idx - 1) } else { None };
-                    drop(cue);
                     self.cue_list.set_current_index(prev_idx);
                     self.select_cue(id);
                     self.ui_state.go_cue_input = format!("{:.1}", num);
-                }
-            }
+                }            }
         }
         if go {
             let pending_idx = {
@@ -1983,7 +2284,9 @@ impl eframe::App for EasyCueApp {
                     None
                 } else {
                     input.parse::<f32>().ok().and_then(|num| {
-                        self.cue_list.cues().iter()
+                        self.cue_list
+                            .cues()
+                            .iter()
                             .position(|c| (c.number - num).abs() < 0.005)
                     })
                 }
@@ -2035,9 +2338,8 @@ impl eframe::App for EasyCueApp {
                 if let Some(universe) = self.universes.get(uni_idx) {
                     if let Some(profile) = self.fixtures.get_profile(&patch.profile_id) {
                         if !profile.has_intensity() {
-                            self.virtual_intensity.update_from_universe(
-                                patch.id, universe, patch, profile,
-                            );
+                            self.virtual_intensity
+                                .update_from_universe(patch.id, universe, patch, profile);
                         }
                     }
                 }
@@ -2045,7 +2347,16 @@ impl eframe::App for EasyCueApp {
         }
 
         #[cfg(feature = "audio")]
-        self.audio_playback.update(self.ui_state.sound_master);
+        {
+            // Recover outputs whose stream died (e.g. system sleep). Re-opens the
+            // device and re-attaches any active cues routed to it. Throttled
+            // internally, so it's cheap to call every frame.
+            let recovered = self.audio_player.recover_dead_outputs();
+            for name in &recovered {
+                self.audio_playback.recover_device(name, &self.audio_player);
+            }
+            self.audio_playback.update(self.ui_state.sound_master);
+        }
 
         // Remote control: execute queued phone commands and publish state diffs.
         #[cfg(feature = "remote")]
@@ -2055,11 +2366,17 @@ impl eframe::App for EasyCueApp {
         if !self.dmx_backend.is_connected() {
             log::warn!("DMX device lost — falling back to Virtual DMX");
             self.ui_state.status_message = format!(
-                "DMX device lost — switched to Virtual (was: {})",
+                "DMX device lost — reconnecting… (was: {})",
                 self.dmx_backend.name()
             );
             self.activate_virtual_backend();
+            #[cfg(feature = "usb")]
+            self.begin_dmx_reconnect();
         }
+        // Service any in-flight DMX hardware reconnect attempt (swap the real
+        // backend back in when the device reappears).
+        #[cfg(feature = "usb")]
+        self.service_dmx_reconnect();
 
         let dmx_send_start = std::time::Instant::now();
         // Effects modulate a clone of the base look at output time only, then
@@ -2071,7 +2388,10 @@ impl eframe::App for EasyCueApp {
             let output = self.apply_masters(&staged);
             // Keep the pre-master staged look for UI readouts (panels always
             // show pre-master values, so FX display matches that convention).
-            self.effect_display = Some(crate::effects::EffectDisplay { universes: staged, footprint });
+            self.effect_display = Some(crate::effects::EffectDisplay {
+                universes: staged,
+                footprint,
+            });
             output
         } else {
             self.effect_display = None;
@@ -2092,20 +2412,44 @@ impl eframe::App for EasyCueApp {
                 .default_width(280.0)
                 .show(ctx, |ui| {
                     ui.label(format!("FPS: {:.1}", ctx.input(|i| 1.0 / i.stable_dt)));
-                    ui.label(format!("Frame time: {:.2}ms", ctx.input(|i| i.stable_dt * 1000.0)));
+                    ui.label(format!(
+                        "Frame time: {:.2}ms",
+                        ctx.input(|i| i.stable_dt * 1000.0)
+                    ));
                     ui.separator();
                     ui.label(egui::RichText::new("Performance:").strong());
-                    ui.label(format!("  DMX send: {:.2}ms", dmx_send_time.as_secs_f64() * 1000.0));
-                    ui.label(format!("  UI render: {:.2}ms", ui_render_time.as_secs_f64() * 1000.0));
+                    ui.label(format!(
+                        "  DMX send: {:.2}ms",
+                        dmx_send_time.as_secs_f64() * 1000.0
+                    ));
+                    ui.label(format!(
+                        "  UI render: {:.2}ms",
+                        ui_render_time.as_secs_f64() * 1000.0
+                    ));
                     ui.separator();
                     ui.label(format!("Total cues: {}", self.cue_list.len()));
                     #[cfg(feature = "audio")]
                     {
-                        let audio_count = self.cue_list.cues().iter().filter(|c| c.is_audio()).count();
-                        let lighting_count = self.cue_list.cues().iter().filter(|c| c.is_lighting()).count();
-                        ui.label(format!("  Lighting: {}  Audio: {}", lighting_count, audio_count));
-                        ui.label(format!("File cache: {} entries", self.ui_state.audio_file_cache.len()));
-                        ui.label(format!("Audio playing: {}", self.audio_playback.is_playing()));
+                        let audio_count =
+                            self.cue_list.cues().iter().filter(|c| c.is_audio()).count();
+                        let lighting_count = self
+                            .cue_list
+                            .cues()
+                            .iter()
+                            .filter(|c| c.is_lighting())
+                            .count();
+                        ui.label(format!(
+                            "  Lighting: {}  Audio: {}",
+                            lighting_count, audio_count
+                        ));
+                        ui.label(format!(
+                            "File cache: {} entries",
+                            self.ui_state.audio_file_cache.len()
+                        ));
+                        ui.label(format!(
+                            "Audio playing: {}",
+                            self.audio_playback.is_playing()
+                        ));
                     }
                     ui.label(format!("Lighting playing: {}", self.playback.is_playing()));
                     ui.separator();
@@ -2127,6 +2471,18 @@ impl eframe::App for EasyCueApp {
         #[cfg(feature = "audio")]
         if self.audio_playback.is_playing() {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+        // Keep the loop alive while an audio output is dead so the recovery
+        // scan re-runs even when no cues are playing or effect is animating.
+        // Slower than the 16ms playback cadence — recovery is throttled to 2s.
+        #[cfg(feature = "audio")]
+        if self.audio_player.any_output_failed() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        }
+        // Keep the loop alive while DMX hardware is being reconnected.
+        #[cfg(feature = "usb")]
+        if self.dmx_reconnecting() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
         if self.ui_state.show_debug_ui {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
@@ -2175,9 +2531,17 @@ impl eframe::App for EasyCueApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "dock_state", &self.dock_state);
-        eframe::set_value(storage, "preferred_dmx_backend", &self.preferred_dmx_backend);
+        eframe::set_value(
+            storage,
+            "preferred_dmx_backend",
+            &self.preferred_dmx_backend,
+        );
         eframe::set_value(storage, "script_viewer_zoom", &self.script_viewer.zoom);
-        eframe::set_value(storage, "script_viewer_dark_mode", &self.script_viewer.dark_mode);
+        eframe::set_value(
+            storage,
+            "script_viewer_dark_mode",
+            &self.script_viewer.dark_mode,
+        );
         #[cfg(feature = "remote")]
         eframe::set_value(storage, "remote_settings", &self.remote_settings);
         eframe::set_value(storage, "last_update_check", &self.last_update_check);

@@ -12,12 +12,24 @@ use anyhow::{Context, Result};
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 use std::num::NonZero;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 /// One physical (or virtual) audio output device held open.
 pub struct NamedOutput {
     pub name: String,
     /// Channel count the stream was actually opened with.
     pub channels: NonZero<u16>,
+    /// Set by the stream's error callback when the device is lost (e.g. after
+    /// system sleep the ALSA stream dies with POLLERR). Cleared when the
+    /// device is successfully re-opened.
+    failed: Arc<AtomicBool>,
+    /// Consecutive failed recovery attempts — drives exponential backoff and
+    /// quiets the log after the first couple.
+    recovery_failures: u32,
+    /// Don't attempt recovery for this output before this instant.
+    next_recovery_attempt: Option<std::time::Instant>,
     _sink: MixerDeviceSink,
 }
 
@@ -57,23 +69,23 @@ impl AudioPlayer {
     /// Open the default output only.  Call `open_all_outputs()` after
     /// construction if you want access to secondary devices.
     pub fn new() -> Result<Self> {
-        let device_sink = DeviceSinkBuilder::open_default_sink()
-            .context("Failed to open default audio output device")?;
-        let channels = device_sink.config().channel_count();
+        let host = rodio::cpal::default_host();
+        let name = host
+            .default_output_device()
+            .and_then(|d| d.description().ok())
+            .map(|desc| desc.name().to_string())
+            .unwrap_or_else(|| "Default".to_string());
 
-        let name = {
-            let host = rodio::cpal::default_host();
-            host.default_output_device()
-                .and_then(|d| d.description().ok())
-                .map(|desc| desc.name().to_string())
-                .unwrap_or_else(|| "Default".to_string())
-        };
+        let (device_sink, channels, failed) = Self::open_default_sink(&name)?;
 
         log::info!("Audio player: default device = '{}' ({}ch)", name, channels);
         Ok(Self {
             outputs: vec![NamedOutput {
                 name,
                 channels,
+                failed,
+                recovery_failures: 0,
+                next_recovery_attempt: None,
                 _sink: device_sink,
             }],
         })
@@ -117,20 +129,77 @@ impl AudioPlayer {
             .clamp(1, MAX_OUTPUT_CHANNELS)
     }
 
-    /// Open a stream on `device` at its preferred channel count, falling back
-    /// to whatever configuration the backend accepts.  Returns the sink and
-    /// the channel count it actually opened with.
-    fn open_device(device: rodio::cpal::Device) -> Result<(MixerDeviceSink, NonZero<u16>)> {
-        let want = Self::preferred_channels(&device);
-        let mut builder = DeviceSinkBuilder::from_device(device)?;
-        if want > 2 {
-            if let Some(nz) = NonZero::new(want) {
-                builder = builder.with_channels(nz);
+    /// Build a stream error callback for one output device.  Sets `failed`
+    /// (so the recovery loop can reopen the device) and logs through `log::`
+    /// instead of rodio's default stderr print.  Rate-limited: cpal's ALSA
+    /// worker keeps calling the callback on every poll while a stream is
+    /// broken, so without throttling one failure would flood the log.
+    fn stream_error_callback(
+        name: &str,
+        failed: Arc<AtomicBool>,
+    ) -> impl FnMut(rodio::cpal::StreamError) + Send + Clone + 'static {
+        let name = name.to_string();
+        let last_logged = Arc::new(AtomicU64::new(0));
+        move |err: rodio::cpal::StreamError| {
+            failed.store(true, Ordering::Relaxed);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let last = last_logged.load(Ordering::Relaxed);
+            if now.saturating_sub(last) >= 30 {
+                last_logged.store(now, Ordering::Relaxed);
+                log::error!("Audio stream error on '{}': {}", name, err);
             }
         }
-        let sink = builder.open_sink_or_fallback()?;
+    }
+
+    /// Open the default output device as a sink, with our stream-error
+    /// callback and drop-logging disabled.  Separate from `open_device`
+    /// because the default device (e.g. a PipeWire "Default Audio Device"
+    /// alias) is frequently *not* enumerable via `output_devices()` — it can
+    /// only be reached through `from_default_device()`.
+    fn open_default_sink(name: &str) -> Result<(MixerDeviceSink, NonZero<u16>, Arc<AtomicBool>)> {
+        let failed = Arc::new(AtomicBool::new(false));
+        // Build the sink manually so we can install our own stream-error
+        // callback (rodio's default prints to stderr; we route through `log::`
+        // and flag the output for recovery) and disable the "Dropping
+        // DeviceSink" drop spam.
+        let mut sink = DeviceSinkBuilder::from_default_device()
+            .context("Failed to open default audio output device")?
+            .with_error_callback(Self::stream_error_callback(name, Arc::clone(&failed)))
+            .open_sink_or_fallback()
+            .context("Failed to open default audio output device")?;
+        sink.log_on_drop(false);
         let channels = sink.config().channel_count();
-        Ok((sink, channels))
+        Ok((sink, channels, failed))
+    }
+
+    /// Open a stream on `device` at its preferred channel count, falling back
+    /// to whatever configuration the backend accepts.  Returns the sink, the
+    /// channel count it actually opened with, and the failure flag its error
+    /// callback writes to.
+    fn open_device(
+        device: rodio::cpal::Device,
+        name: &str,
+    ) -> Result<(MixerDeviceSink, NonZero<u16>, Arc<AtomicBool>)> {
+        let want = Self::preferred_channels(&device);
+        let failed = Arc::new(AtomicBool::new(false));
+        let builder = DeviceSinkBuilder::from_device(device)?
+            .with_error_callback(Self::stream_error_callback(name, Arc::clone(&failed)));
+        let builder = if want > 2 {
+            if let Some(nz) = NonZero::new(want) {
+                builder.with_channels(nz)
+            } else {
+                builder
+            }
+        } else {
+            builder
+        };
+        let mut sink = builder.open_sink_or_fallback()?;
+        sink.log_on_drop(false);
+        let channels = sink.config().channel_count();
+        Ok((sink, channels, failed))
     }
 
     /// Enumerate all output devices and open a stream for each one that isn't
@@ -173,8 +242,8 @@ impl AudioPlayer {
                 // device is initially opened at its default config).
                 let have = self.outputs[i].channels.get();
                 if Self::preferred_channels(&device) > have {
-                    match Self::open_device(device) {
-                        Ok((sink, channels)) if channels.get() > have => {
+                    match Self::open_device(device, &name) {
+                        Ok((sink, channels, failed)) if channels.get() > have => {
                             log::info!(
                                 "Audio: re-opened '{}' at {}ch (was {}ch)",
                                 name,
@@ -183,6 +252,7 @@ impl AudioPlayer {
                             );
                             self.outputs[i]._sink = sink;
                             self.outputs[i].channels = channels;
+                            self.outputs[i].failed = failed;
                         }
                         Ok(_) => {}
                         Err(e) => log::warn!("Audio: couldn't widen '{}': {}", name, e),
@@ -193,12 +263,15 @@ impl AudioPlayer {
             if !attempted.insert(lower) {
                 continue; // already failed once under another PCM alias
             }
-            match Self::open_device(device) {
-                Ok((sink, channels)) => {
+            match Self::open_device(device, &name) {
+                Ok((sink, channels, failed)) => {
                     log::info!("Audio: opened secondary device '{}' ({}ch)", name, channels);
                     self.outputs.push(NamedOutput {
                         name,
                         channels,
+                        failed,
+                        recovery_failures: 0,
+                        next_recovery_attempt: None,
                         _sink: sink,
                     });
                 }
@@ -210,6 +283,124 @@ impl AudioPlayer {
     /// Names of all currently open output devices.
     pub fn device_names(&self) -> Vec<String> {
         self.outputs.iter().map(|o| o.name.clone()).collect()
+    }
+
+    /// Whether any output's stream has reported an error since it was opened
+    /// or last recovered.  Drives the main-loop repaint so recovery runs even
+    /// when the app would otherwise be idle.
+    pub fn any_output_failed(&self) -> bool {
+        self.outputs
+            .iter()
+            .any(|o| o.failed.load(Ordering::Relaxed))
+    }
+
+    /// Re-open every output whose stream failed (e.g. after system sleep).
+    /// Per-output exponential backoff so a device that's genuinely gone (or
+    /// whose ALSA node isn't back yet) doesn't trigger a re-enumeration every
+    /// frame, and so the log doesn't spam after the first couple of failures.
+    /// Returns the names of outputs successfully re-opened this call.
+    pub fn recover_dead_outputs(&mut self) -> Vec<String> {
+        let mut recovered = Vec::new();
+        let host = rodio::cpal::default_host();
+
+        for (idx, out) in self.outputs.iter_mut().enumerate() {
+            if !out.failed.load(Ordering::Relaxed) {
+                continue;
+            }
+            // Backoff: wait 2s after the first failure, 5s after the second,
+            // then 15s, then 60s — a dead-but-enumerable device shouldn't be
+            // hammered, and a truly-gone one should quiet right down.
+            if let Some(next) = out.next_recovery_attempt {
+                if std::time::Instant::now() < next {
+                    continue;
+                }
+            }
+            let fail = out.recovery_failures;
+
+            let attempt: Result<(MixerDeviceSink, NonZero<u16>, Arc<AtomicBool>)> = if idx == 0 {
+                // The default output is often a virtual alias (e.g. PipeWire's
+                // "Default Audio Device") that is NOT enumerable through
+                // `output_devices()` — reopen it through the default path.
+                Self::open_default_sink(&out.name)
+            } else {
+                let devices = match host.output_devices() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        log::warn!("Audio: could not enumerate devices to recover: {}", e);
+                        break;
+                    }
+                };
+                // Match by name (case-insensitive), re-resolving a fresh
+                // `cpal::Device` handle — the stored one is stale after sleep.
+                let device = devices.into_iter().find(|d| {
+                    d.description()
+                        .map(|desc| desc.name().eq_ignore_ascii_case(&out.name))
+                        .unwrap_or(false)
+                });
+                match device {
+                    Some(device) => Self::open_device(device, &out.name),
+                    None => {
+                        out.recovery_failures += 1;
+                        out.next_recovery_attempt =
+                            Some(std::time::Instant::now() + Self::recovery_backoff(fail + 1));
+                        if fail == 0 {
+                            log::warn!(
+                                "Audio: output '{}' not currently enumerable — will retry",
+                                out.name
+                            );
+                        } else {
+                            log::debug!(
+                                "Audio: output '{}' still not enumerable — backing off",
+                                out.name
+                            );
+                        }
+                        continue;
+                    }
+                }
+            };
+
+            match attempt {
+                Ok((sink, channels, failed)) => {
+                    log::info!("Audio: recovered output '{}' ({}ch)", out.name, channels);
+                    out._sink = sink;
+                    out.channels = channels;
+                    out.failed = failed;
+                    out.recovery_failures = 0;
+                    out.next_recovery_attempt = None;
+                    recovered.push(out.name.clone());
+                }
+                Err(e) => {
+                    out.recovery_failures += 1;
+                    out.next_recovery_attempt =
+                        Some(std::time::Instant::now() + Self::recovery_backoff(fail + 1));
+                    if fail == 0 {
+                        log::warn!(
+                            "Audio: could not re-open '{}': {} — will retry",
+                            out.name,
+                            e
+                        );
+                    } else {
+                        log::debug!(
+                            "Audio: could not re-open '{}' (attempt {}): {} — backing off",
+                            out.name,
+                            fail + 1,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        recovered
+    }
+
+    /// Exponential recovery backoff: 2s, 5s, 15s, 60s, then capped at 60s.
+    fn recovery_backoff(failures: u32) -> Duration {
+        const BACKOFFS: [u64; 4] = [2, 5, 15, 60];
+        let secs = BACKOFFS
+            .get(failures.saturating_sub(1) as usize)
+            .copied()
+            .unwrap_or(60);
+        Duration::from_secs(secs)
     }
 
     /// All selectable outputs: one entry per stereo device, one per stereo

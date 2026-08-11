@@ -231,7 +231,10 @@ fn render_manual_controls(ui: &mut Ui, app: &mut EasyCueApp, id: u32) {
         }
 
         if ui
-            .add_enabled(running, egui::Button::new(format!("{} Stop Test", ph::STOP)))
+            .add_enabled(
+                running,
+                egui::Button::new(format!("{} Stop Test", ph::STOP)),
+            )
             .clicked()
         {
             app.effect_engine.stop(id, MANUAL_RAMP);

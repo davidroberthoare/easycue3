@@ -1,7 +1,7 @@
 //! Properties panels — cue properties and instrument properties
 
-use egui::Ui;
 use crate::app::EasyCueApp;
+use egui::Ui;
 use egui_phosphor::regular as ph;
 
 use egui::text_edit::TextEditOutput;
@@ -79,20 +79,29 @@ pub fn render_cue_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 pub fn render_update_from_stage_modal(ctx: &egui::Context, app: &mut EasyCueApp) {
     if let Some(upd_id) = app.ui_state.pending_update_cue_id {
         if let Some(upd_idx) = app.cue_list.cues().iter().position(|c| c.id == upd_id) {
-            let upd_number = app.cue_list.get_cue(upd_idx).map(|c| c.number).unwrap_or(0.0);
+            let upd_number = app
+                .cue_list
+                .get_cue(upd_idx)
+                .map(|c| c.number)
+                .unwrap_or(0.0);
             let mut confirmed = false;
             let mut cancelled = false;
             egui::Modal::new(egui::Id::new("update_cue_confirm")).show(ctx, |ui| {
                 ui.set_min_width(300.0);
                 ui.heading("Update Cue from Stage?");
                 ui.add_space(6.0);
-                ui.label(format!("Overwrite Q{:.1} with the current live output?", upd_number));
-                ui.label(egui::RichText::new("The existing channel data will be replaced.").color(egui::Color32::from_rgb(200, 140, 60)));
+                ui.label(format!(
+                    "Overwrite Q{:.1} with the current live output?",
+                    upd_number
+                ));
+                ui.label(
+                    egui::RichText::new("The existing channel data will be replaced.")
+                        .color(egui::Color32::from_rgb(200, 140, 60)),
+                );
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
-                    let update_btn = ui.add(
-                        egui::Button::new(egui::RichText::new("Update").strong()),
-                    );
+                    let update_btn =
+                        ui.add(egui::Button::new(egui::RichText::new("Update").strong()));
                     if update_btn.clicked() {
                         confirmed = true;
                     }
@@ -153,7 +162,11 @@ pub fn render_instrument_properties_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
 /// Render the editable cue-number row inside a 2-column grid.
 /// Returns Some(new_number) if the user committed a valid change, None otherwise.
-fn cue_number_row(ui: &mut egui::Ui, cue: &crate::cue::Cue, cue_list: &crate::cue::CueList) -> Option<f32> {
+fn cue_number_row(
+    ui: &mut egui::Ui,
+    cue: &crate::cue::Cue,
+    cue_list: &crate::cue::CueList,
+) -> Option<f32> {
     ui.label("Number:");
     let mut num = cue.number;
     let resp = ui.add(
@@ -164,7 +177,10 @@ fn cue_number_row(ui: &mut egui::Ui, cue: &crate::cue::Cue, cue_list: &crate::cu
             .custom_parser(|s| s.parse::<f64>().ok()),
     );
     if resp.changed() && (num - cue.number).abs() > 0.001 {
-        let duplicate = cue_list.cues().iter().any(|c| c.id != cue.id && (c.number - num).abs() < 0.005);
+        let duplicate = cue_list
+            .cues()
+            .iter()
+            .any(|c| c.id != cue.id && (c.number - num).abs() < 0.005);
         if !duplicate {
             return Some(num);
         }
@@ -172,7 +188,12 @@ fn cue_number_row(ui: &mut egui::Ui, cue: &crate::cue::Cue, cue_list: &crate::cu
     None
 }
 
-fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
+fn render_lighting_cue_properties(
+    ui: &mut Ui,
+    app: &mut EasyCueApp,
+    cue: &crate::cue::Cue,
+    abs_idx: Option<usize>,
+) {
     ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::LIGHTBULB, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
@@ -191,13 +212,16 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             ui.label("Label:");
             let mut label = cue.label.clone();
             let label_id = egui::Id::new(("lx_cue_label", cue.id));
-            let pending_label = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
+            let pending_label =
+                app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
             let mut label_output = egui::TextEdit::singleline(&mut label)
                 .id(label_id)
                 .desired_width(160.0)
                 .show(ui);
             if label_output.response.changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label.clone(); }
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    c.label = label.clone();
+                }
             }
             if pending_label {
                 app.ui_state.focus_cue_edit = None;
@@ -208,14 +232,16 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             ui.end_row();
 
             // Fade times (editable text fields, committed on lost focus / Enter)
-            let (fade_up, fade_down) = cue.lighting_data()
+            let (fade_up, fade_down) = cue
+                .lighting_data()
                 .map(|d| (d.fade_up, d.fade_down))
                 .unwrap_or((0.0, 0.0));
 
             // ui.label("Fade ↑:");
             ui.label(format!("Fade {}:", ph::ARROW_UP));
             let fu_id = egui::Id::new(("lx_fade_up", cue.id));
-            let pending_fu = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::FadeUp));
+            let pending_fu =
+                app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::FadeUp));
             // Sync the edit buffer from the cue unless the operator is typing in this field.
             if pending_fu || !ui.memory(|m| m.has_focus(fu_id)) {
                 app.ui_state.fade_up_edit = format!("{:.1}", fade_up);
@@ -232,7 +258,9 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             if fu_output.response.lost_focus() {
                 if let Ok(v) = app.ui_state.fade_up_edit.trim().parse::<f32>() {
                     if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                        if let Some(d) = c.lighting_data_mut() { d.fade_up = v.clamp(0.0, 30.0); }
+                        if let Some(d) = c.lighting_data_mut() {
+                            d.fade_up = v.clamp(0.0, 30.0);
+                        }
                     }
                 }
             }
@@ -261,7 +289,9 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             if fd_output.response.lost_focus() {
                 if let Ok(v) = app.ui_state.fade_down_edit.trim().parse::<f32>() {
                     if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                        if let Some(d) = c.lighting_data_mut() { d.fade_down = v.clamp(0.0, 30.0); }
+                        if let Some(d) = c.lighting_data_mut() {
+                            d.fade_down = v.clamp(0.0, 30.0);
+                        }
                     }
                 }
             }
@@ -281,7 +311,15 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
                     }
                 }
                 if af_enabled {
-                    if ui.add(egui::DragValue::new(&mut af_delay).speed(0.1).range(0.1..=300.0).suffix("s")).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut af_delay)
+                                .speed(0.1)
+                                .range(0.1..=300.0)
+                                .suffix("s"),
+                        )
+                        .changed()
+                    {
                         if let Some(c) = app.cue_list.get_cue_mut(idx) {
                             c.autofollow = Some(af_delay);
                         }
@@ -293,14 +331,21 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
             ui.end_row();
 
             // Channel count
-            let ch_count = cue.lighting_data().map(|d| d.channel_values.len()).unwrap_or(0);
+            let ch_count = cue
+                .lighting_data()
+                .map(|d| d.channel_values.len())
+                .unwrap_or(0);
             ui.label("Channels:");
             ui.label(ch_count.to_string());
             ui.end_row();
         });
 
     ui.add_space(6.0);
-    if ui.button("Update from Stage").on_hover_text("Overwrite cue with current live levels").clicked() {
+    if ui
+        .button("Update from Stage")
+        .on_hover_text("Overwrite cue with current live levels")
+        .clicked()
+    {
         app.ui_state.pending_update_cue_id = Some(cue.id);
     }
 
@@ -310,16 +355,25 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
     if let Some(data) = cue.lighting_data() {
         if !data.channel_values.is_empty() {
             ui.add_space(6.0);
-            ui.collapsing(format!("Channel Values ({})", data.channel_values.len()), |ui| {
-                let mut pairs: Vec<(u16, u8)> = data.channel_values.iter().map(|(&k, &v)| (k, v)).collect();
-                pairs.sort_by_key(|(ch, _)| *ch);
-                egui::Grid::new("lx_cue_ch").num_columns(4).spacing([6.0, 2.0]).show(ui, |ui| {
-                    for (i, (ch, val)) in pairs.iter().enumerate() {
-                        ui.label(format!("{}: {}", ch, val));
-                        if (i + 1) % 4 == 0 { ui.end_row(); }
-                    }
-                });
-            });
+            ui.collapsing(
+                format!("Channel Values ({})", data.channel_values.len()),
+                |ui| {
+                    let mut pairs: Vec<(u16, u8)> =
+                        data.channel_values.iter().map(|(&k, &v)| (k, v)).collect();
+                    pairs.sort_by_key(|(ch, _)| *ch);
+                    egui::Grid::new("lx_cue_ch")
+                        .num_columns(4)
+                        .spacing([6.0, 2.0])
+                        .show(ui, |ui| {
+                            for (i, (ch, val)) in pairs.iter().enumerate() {
+                                ui.label(format!("{}: {}", ch, val));
+                                if (i + 1) % 4 == 0 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                },
+            );
         }
     }
 }
@@ -331,7 +385,10 @@ fn render_lighting_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate
 fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, idx: usize) {
     use crate::effects::EffectAction;
 
-    let actions = cue.lighting_data().map(|d| d.effect_actions.clone()).unwrap_or_default();
+    let actions = cue
+        .lighting_data()
+        .map(|d| d.effect_actions.clone())
+        .unwrap_or_default();
     let effect_name = |app: &EasyCueApp, id: u32| -> String {
         match app.effect_list.find(id) {
             Some(e) if !e.label.is_empty() => e.label.clone(),
@@ -345,26 +402,38 @@ fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue
         let mut remove_at: Option<usize> = None;
         for (i, action) in actions.iter().enumerate() {
             ui.horizontal(|ui| {
-                if ui.small_button(ph::X).on_hover_text("Remove this action").clicked() {
+                if ui
+                    .small_button(ph::X)
+                    .on_hover_text("Remove this action")
+                    .clicked()
+                {
                     remove_at = Some(i);
                 }
                 let text = match action {
-                    EffectAction::Start { effect_id, fixtures } => format!(
+                    EffectAction::Start {
+                        effect_id,
+                        fixtures,
+                    } => format!(
                         "{} Start \"{}\" on {} fixture{}",
                         ph::PLAY,
                         effect_name(app, *effect_id),
                         fixtures.len(),
                         if fixtures.len() == 1 { "" } else { "s" },
                     ),
-                    EffectAction::Stop { effect_id } =>
-                        format!("{} Stop \"{}\"", ph::STOP, effect_name(app, *effect_id)),
+                    EffectAction::Stop { effect_id } => {
+                        format!("{} Stop \"{}\"", ph::STOP, effect_name(app, *effect_id))
+                    }
                     EffectAction::StopAll => format!("{} Stop all effects", ph::STOP),
                 };
                 ui.label(text);
             });
         }
         if let Some(i) = remove_at {
-            if let Some(d) = app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()) {
+            if let Some(d) = app
+                .cue_list
+                .get_cue_mut(idx)
+                .and_then(|c| c.lighting_data_mut())
+            {
                 if i < d.effect_actions.len() {
                     d.effect_actions.remove(i);
                 }
@@ -381,7 +450,9 @@ fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue
         }
 
         // Keep the cached combo choice valid.
-        if app.ui_state.cue_props_effect_choice
+        if app
+            .ui_state
+            .cue_props_effect_choice
             .is_none_or(|id| app.effect_list.find(id).is_none())
         {
             app.ui_state.cue_props_effect_choice = app.effect_list.effects().first().map(|e| e.id);
@@ -393,12 +464,18 @@ fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue
             egui::ComboBox::from_id_salt("cue_effect_choice")
                 .selected_text(chosen_text)
                 .show_ui(ui, |ui| {
-                    let options: Vec<(u32, String)> = app.effect_list.effects()
+                    let options: Vec<(u32, String)> = app
+                        .effect_list
+                        .effects()
                         .iter()
                         .map(|e| (e.id, effect_name(app, e.id)))
                         .collect();
                     for (id, name) in options {
-                        ui.selectable_value(&mut app.ui_state.cue_props_effect_choice, Some(id), name);
+                        ui.selectable_value(
+                            &mut app.ui_state.cue_props_effect_choice,
+                            Some(id),
+                            name,
+                        );
                     }
                 });
 
@@ -408,31 +485,47 @@ fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue
                     chosen.is_some() && sel_count > 0,
                     egui::Button::new(format!("+ Start on selection ({})", sel_count)),
                 )
-                .on_hover_text("Adds a Start action for the fixtures currently selected in the Channels panel")
+                .on_hover_text(
+                    "Adds a Start action for the fixtures currently selected in the Channels panel",
+                )
                 .clicked()
             {
                 if let (Some(effect_id), Some(d)) = (
                     chosen,
-                    app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()),
+                    app.cue_list
+                        .get_cue_mut(idx)
+                        .and_then(|c| c.lighting_data_mut()),
                 ) {
                     let mut fixtures: Vec<usize> =
                         app.ui_state.selected_fixtures.iter().copied().collect();
                     fixtures.sort_unstable();
-                    d.effect_actions.push(EffectAction::Start { effect_id, fixtures });
+                    d.effect_actions.push(EffectAction::Start {
+                        effect_id,
+                        fixtures,
+                    });
                 }
             }
 
-            if ui.add_enabled(chosen.is_some(), egui::Button::new("+ Stop")).clicked() {
+            if ui
+                .add_enabled(chosen.is_some(), egui::Button::new("+ Stop"))
+                .clicked()
+            {
                 if let (Some(effect_id), Some(d)) = (
                     chosen,
-                    app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()),
+                    app.cue_list
+                        .get_cue_mut(idx)
+                        .and_then(|c| c.lighting_data_mut()),
                 ) {
                     d.effect_actions.push(EffectAction::Stop { effect_id });
                 }
             }
 
             if ui.button("+ Stop All").clicked() {
-                if let Some(d) = app.cue_list.get_cue_mut(idx).and_then(|c| c.lighting_data_mut()) {
+                if let Some(d) = app
+                    .cue_list
+                    .get_cue_mut(idx)
+                    .and_then(|c| c.lighting_data_mut())
+                {
                     d.effect_actions.push(EffectAction::StopAll);
                 }
             }
@@ -441,16 +534,26 @@ fn render_cue_effect_actions(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue
 }
 
 #[cfg(feature = "audio")]
-fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
+fn render_audio_cue_properties(
+    ui: &mut Ui,
+    app: &mut EasyCueApp,
+    cue: &crate::cue::Cue,
+    abs_idx: Option<usize>,
+) {
     ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::SPEAKER_HIGH, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
 
-    let (path, fade_in, fade_out, length) = cue.audio_data()
+    let (path, fade_in, fade_out, length) = cue
+        .audio_data()
         .map(|d| (d.audio_path.clone(), d.fade_in, d.fade_out, d.length))
         .unwrap_or_default();
 
-    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("(none)").to_string();
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("(none)")
+        .to_string();
     let resolved = crate::cue::AudioData::new(path.clone()).resolved_path();
     let file_ok = resolved.exists();
 
@@ -466,13 +569,16 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             ui.label("Label:");
             let mut label = cue.label.clone();
             let label_id = egui::Id::new(("audio_cue_label", cue.id));
-            let pending_label = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
+            let pending_label =
+                app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
             let mut label_output = egui::TextEdit::singleline(&mut label)
                 .id(label_id)
                 .desired_width(160.0)
                 .show(ui);
             if label_output.response.changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label.clone(); }
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    c.label = label.clone();
+                }
             }
             if pending_label {
                 app.ui_state.focus_cue_edit = None;
@@ -484,11 +590,19 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
             ui.label("File:");
             ui.horizontal(|ui| {
-                let file_color = if file_ok { ui.style().visuals.text_color() } else { egui::Color32::RED };
+                let file_color = if file_ok {
+                    ui.style().visuals.text_color()
+                } else {
+                    egui::Color32::RED
+                };
                 ui.label(egui::RichText::new(&filename).color(file_color));
-                if ui.small_button("…").on_hover_text("Choose different file").clicked() {
+                if ui
+                    .small_button("…")
+                    .on_hover_text("Choose different file")
+                    .clicked()
+                {
                     if let Some(new_path) = rfd::FileDialog::new()
-                        .add_filter("Audio", &["mp3","wav","flac","ogg","aac","m4a"])
+                        .add_filter("Audio", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
                         .pick_file()
                     {
                         if let Some(c) = app.cue_list.get_cue_mut(idx) {
@@ -504,18 +618,38 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
             ui.label("Fade In:");
             let mut fi = fade_in;
-            if ui.add(egui::DragValue::new(&mut fi).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut fi)
+                        .speed(0.1)
+                        .range(0.0..=30.0)
+                        .suffix("s"),
+                )
+                .changed()
+            {
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.audio_data_mut() { d.fade_in = fi; }
+                    if let Some(d) = c.audio_data_mut() {
+                        d.fade_in = fi;
+                    }
                 }
             }
             ui.end_row();
 
             ui.label("Fade Out:");
             let mut fo = fade_out;
-            if ui.add(egui::DragValue::new(&mut fo).speed(0.1).range(0.0..=30.0).suffix("s")).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut fo)
+                        .speed(0.1)
+                        .range(0.0..=30.0)
+                        .suffix("s"),
+                )
+                .changed()
+            {
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.audio_data_mut() { d.fade_out = fo; }
+                    if let Some(d) = c.audio_data_mut() {
+                        d.fade_out = fo;
+                    }
                 }
             }
             ui.end_row();
@@ -532,9 +666,19 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     }
                 }
                 if len_enabled {
-                    if ui.add(egui::DragValue::new(&mut len_val).speed(0.5).range(0.1..=3600.0).suffix("s")).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut len_val)
+                                .speed(0.5)
+                                .range(0.1..=3600.0)
+                                .suffix("s"),
+                        )
+                        .changed()
+                    {
                         if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                            if let Some(d) = c.audio_data_mut() { d.length = Some(len_val); }
+                            if let Some(d) = c.audio_data_mut() {
+                                d.length = Some(len_val);
+                            }
                         }
                     }
                 } else {
@@ -553,7 +697,15 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     }
                 }
                 if af_enabled {
-                    if ui.add(egui::DragValue::new(&mut af_delay).speed(0.1).range(0.1..=300.0).suffix("s")).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut af_delay)
+                                .speed(0.1)
+                                .range(0.1..=300.0)
+                                .suffix("s"),
+                        )
+                        .changed()
+                    {
                         if let Some(c) = app.cue_list.get_cue_mut(idx) {
                             c.autofollow = Some(af_delay);
                         }
@@ -567,7 +719,8 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
     // ── Output routing (always visible, always at least one route) ─────────────
     let choices = app.audio_player.output_choices();
-    let routes: Vec<crate::cue::AudioOutputRoute> = cue.audio_data()
+    let routes: Vec<crate::cue::AudioOutputRoute> = cue
+        .audio_data()
         .map(|d| d.output_routes.clone())
         .unwrap_or_default();
 
@@ -581,7 +734,9 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
 
     let used_per_route: Vec<std::collections::HashSet<(String, u16)>> = (0..new_routes.len())
         .map(|i| {
-            new_routes.iter().enumerate()
+            new_routes
+                .iter()
+                .enumerate()
                 .filter(|(j, _)| *j != i)
                 .map(|(_, r)| (r.device_name.clone(), r.channel_offset))
                 .collect()
@@ -592,18 +747,27 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
         let used = &used_per_route[i];
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt(("route_dev", i))
-                .selected_text(output_choice_label(&choices, &route.device_name, route.channel_offset))
+                .selected_text(output_choice_label(
+                    &choices,
+                    &route.device_name,
+                    route.channel_offset,
+                ))
                 .width(120.0)
                 .show_ui(ui, |ui| {
                     if !used.contains(&(String::new(), 0)) {
-                        if ui.selectable_label(route.device_name.is_empty(), "Default").clicked() {
+                        if ui
+                            .selectable_label(route.device_name.is_empty(), "Default")
+                            .clicked()
+                        {
                             route.device_name.clear();
                             route.channel_offset = 0;
                             changed = true;
                         }
                     }
                     for c in &choices {
-                        if used.contains(&(c.device_name.clone(), c.channel_offset)) { continue; }
+                        if used.contains(&(c.device_name.clone(), c.channel_offset)) {
+                            continue;
+                        }
                         let selected = route.device_name == c.device_name
                             && route.channel_offset == c.channel_offset;
                         if ui.selectable_label(selected, &c.label).clicked() {
@@ -614,22 +778,37 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
                     }
                 });
             let mut vol_pct = (route.volume * 100.0) as i32;
-            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut vol_pct)
+                        .speed(1.0)
+                        .range(0..=100)
+                        .suffix("%"),
+                )
+                .changed()
+            {
                 route.volume = vol_pct as f32 / 100.0;
                 changed = true;
             }
             ui.label("Pan:");
             let mut pan_pct = (route.pan * 100.0).round() as i32;
-            if ui.add(
-                egui::DragValue::new(&mut pan_pct)
-                    .speed(1.0)
-                    .range(-100..=100)
-                    .custom_formatter(|n, _| {
-                        if n.abs() < 0.5 { "C".into() }
-                        else if n < 0.0 { format!("L{}", (-n).round() as i32) }
-                        else { format!("R{}", n.round() as i32) }
-                    })
-            ).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut pan_pct)
+                        .speed(1.0)
+                        .range(-100..=100)
+                        .custom_formatter(|n, _| {
+                            if n.abs() < 0.5 {
+                                "C".into()
+                            } else if n < 0.0 {
+                                format!("L{}", (-n).round() as i32)
+                            } else {
+                                format!("R{}", n.round() as i32)
+                            }
+                        }),
+                )
+                .changed()
+            {
                 route.pan = pan_pct as f32 / 100.0;
                 changed = true;
             }
@@ -639,7 +818,9 @@ fn render_audio_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::c
             }
         });
     }
-    if let Some(i) = remove_idx { new_routes.remove(i); }
+    if let Some(i) = remove_idx {
+        new_routes.remove(i);
+    }
 
     if ui.small_button("+ Add Output").clicked() {
         new_routes.push(crate::cue::AudioOutputRoute::default());
@@ -680,12 +861,18 @@ fn output_choice_label(
 }
 
 #[cfg(feature = "audio")]
-fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::cue::Cue, abs_idx: Option<usize>) {
+fn render_adjust_cue_properties(
+    ui: &mut Ui,
+    app: &mut EasyCueApp,
+    cue: &crate::cue::Cue,
+    abs_idx: Option<usize>,
+) {
     ui.label(egui::RichText::new(format!("{} Cue {:.1}", ph::SLIDERS, cue.number)).strong());
 
     let Some(idx) = abs_idx else { return };
 
-    let (target_audio_cue, fade_time, stop_when_complete) = cue.adjust_data()
+    let (target_audio_cue, fade_time, stop_when_complete) = cue
+        .adjust_data()
         .map(|d| (d.target_audio_cue, d.fade_time, d.stop_when_complete))
         .unwrap_or((None, 2.0, false));
 
@@ -701,13 +888,16 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             ui.label("Label:");
             let mut label = cue.label.clone();
             let label_id = egui::Id::new(("adjust_cue_label", cue.id));
-            let pending_label = app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
+            let pending_label =
+                app.ui_state.focus_cue_edit == Some((cue.id, crate::app::CueEditField::Label));
             let mut label_output = egui::TextEdit::singleline(&mut label)
                 .id(label_id)
                 .desired_width(160.0)
                 .show(ui);
             if label_output.response.changed() {
-                if let Some(c) = app.cue_list.get_cue_mut(idx) { c.label = label.clone(); }
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    c.label = label.clone();
+                }
             }
             if pending_label {
                 app.ui_state.focus_cue_edit = None;
@@ -724,7 +914,11 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                     .map(|n| format!("{:.1}", n))
                     .unwrap_or_default();
             }
-            let hint = if target_audio_cue.is_none() { "blank = all streams" } else { "cue number" };
+            let hint = if target_audio_cue.is_none() {
+                "blank = all streams"
+            } else {
+                "cue number"
+            };
             let target_output = egui::TextEdit::singleline(&mut app.ui_state.adjust_target_edit)
                 .id(target_id)
                 .desired_width(80.0)
@@ -733,7 +927,9 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             if target_output.response.lost_focus() {
                 let parsed = app.ui_state.adjust_target_edit.trim().parse::<f32>().ok();
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.adjust_data_mut() { d.target_audio_cue = parsed; }
+                    if let Some(d) = c.adjust_data_mut() {
+                        d.target_audio_cue = parsed;
+                    }
                 }
             }
             if target_output.response.gained_focus() {
@@ -744,9 +940,19 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             ui.label("Fade Time:");
             let mut ft = fade_time;
             ui.horizontal(|ui| {
-                if ui.add(egui::DragValue::new(&mut ft).speed(0.1).range(0.0..=60.0).suffix("s")).changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut ft)
+                            .speed(0.1)
+                            .range(0.0..=60.0)
+                            .suffix("s"),
+                    )
+                    .changed()
+                {
                     if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                        if let Some(d) = c.adjust_data_mut() { d.fade_time = ft; }
+                        if let Some(d) = c.adjust_data_mut() {
+                            d.fade_time = ft;
+                        }
                     }
                 }
                 if ft == 0.0 {
@@ -759,7 +965,9 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             let mut stop = stop_when_complete;
             if ui.checkbox(&mut stop, "").changed() {
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
-                    if let Some(d) = c.adjust_data_mut() { d.stop_when_complete = stop; }
+                    if let Some(d) = c.adjust_data_mut() {
+                        d.stop_when_complete = stop;
+                    }
                 }
             }
             ui.end_row();
@@ -774,7 +982,15 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                     }
                 }
                 if af_enabled {
-                    if ui.add(egui::DragValue::new(&mut af_delay).speed(0.1).range(0.1..=300.0).suffix("s")).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut af_delay)
+                                .speed(0.1)
+                                .range(0.1..=300.0)
+                                .suffix("s"),
+                        )
+                        .changed()
+                    {
                         if let Some(c) = app.cue_list.get_cue_mut(idx) {
                             c.autofollow = Some(af_delay);
                         }
@@ -788,7 +1004,8 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
 
     // ── Output fades (always visible, always at least one) ────────────────────
     let choices = app.audio_player.output_choices();
-    let output_fades: Vec<crate::cue::OutputFade> = cue.adjust_data()
+    let output_fades: Vec<crate::cue::OutputFade> = cue
+        .adjust_data()
         .map(|d| d.output_fades.clone())
         .unwrap_or_default();
 
@@ -803,10 +1020,17 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
     for (i, fade) in new_fades.iter_mut().enumerate() {
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt(("ofade_dev", i))
-                .selected_text(output_choice_label(&choices, &fade.device_name, fade.channel_offset))
+                .selected_text(output_choice_label(
+                    &choices,
+                    &fade.device_name,
+                    fade.channel_offset,
+                ))
                 .width(120.0)
                 .show_ui(ui, |ui| {
-                    if ui.selectable_label(fade.device_name.is_empty(), "Default").clicked() {
+                    if ui
+                        .selectable_label(fade.device_name.is_empty(), "Default")
+                        .clicked()
+                    {
                         fade.device_name.clear();
                         fade.channel_offset = 0;
                         changed = true;
@@ -822,7 +1046,15 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
                     }
                 });
             let mut vol_pct = (fade.target_volume * 100.0) as i32;
-            if ui.add(egui::DragValue::new(&mut vol_pct).speed(1.0).range(0..=100).suffix("%")).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut vol_pct)
+                        .speed(1.0)
+                        .range(0..=100)
+                        .suffix("%"),
+                )
+                .changed()
+            {
                 fade.target_volume = vol_pct as f32 / 100.0;
                 changed = true;
             }
@@ -834,16 +1066,23 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             }
             if let Some(ref mut tp) = fade.target_pan {
                 let mut pan_pct = (*tp * 100.0).round() as i32;
-                if ui.add(
-                    egui::DragValue::new(&mut pan_pct)
-                        .speed(1.0)
-                        .range(-100..=100)
-                        .custom_formatter(|n, _| {
-                            if n.abs() < 0.5 { "C".into() }
-                            else if n < 0.0 { format!("L{}", (-n).round() as i32) }
-                            else { format!("R{}", n.round() as i32) }
-                        })
-                ).changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut pan_pct)
+                            .speed(1.0)
+                            .range(-100..=100)
+                            .custom_formatter(|n, _| {
+                                if n.abs() < 0.5 {
+                                    "C".into()
+                                } else if n < 0.0 {
+                                    format!("L{}", (-n).round() as i32)
+                                } else {
+                                    format!("R{}", n.round() as i32)
+                                }
+                            }),
+                    )
+                    .changed()
+                {
                     *tp = pan_pct as f32 / 100.0;
                     changed = true;
                 }
@@ -854,7 +1093,9 @@ fn render_adjust_cue_properties(ui: &mut Ui, app: &mut EasyCueApp, cue: &crate::
             }
         });
     }
-    if let Some(i) = to_remove { new_fades.remove(i); }
+    if let Some(i) = to_remove {
+        new_fades.remove(i);
+    }
 
     if ui.small_button("+ Add Device Fade").clicked() {
         new_fades.push(crate::cue::OutputFade::default());
@@ -885,28 +1126,31 @@ fn render_single_channel_properties(ui: &mut Ui, app: &mut EasyCueApp, channel: 
                     .map(|profile| (patch.clone(), profile.clone()))
             })
     };
-    
+
     if let Some((patch, profile)) = fixture_data {
         // Channel is part of a fixture - show fixture properties
         render_fixture_properties(ui, app, &patch, &profile, channel);
         return;
     }
-    
+
     // Fall back to raw channel display if not patched
     ui.label(egui::RichText::new(format!("Channel {}", channel)).strong());
     ui.label(egui::RichText::new("(Unpatched)").small().italics());
-    
+
     if let Some(universe) = app.universes.first_mut() {
         let mut value = universe.get_channel(channel).unwrap_or(0);
-        
+
         ui.add_space(6.0);
-        
+
         egui::Grid::new("channel_props")
             .num_columns(2)
             .spacing([10.0, 6.0])
             .show(ui, |ui| {
                 ui.label("Value:");
-                if ui.add(egui::DragValue::new(&mut value).range(0..=100)).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut value).range(0..=100))
+                    .changed()
+                {
                     let _ = universe.set_channel(channel, value);
                     // Update base level when manually changed
                     app.ui_state.channel_base_levels.insert(channel, value);
@@ -935,63 +1179,123 @@ fn render_fixture_properties(
 
     // Live values are shown in the Channels panel; sliders here stay on the
     // base look so editing never fights the modulation.
-    if app.effect_display.as_ref().is_some_and(|d| d.footprint.fixtures.contains(&patch.id)) {
+    if app
+        .effect_display
+        .as_ref()
+        .is_some_and(|d| d.footprint.fixtures.contains(&patch.id))
+    {
         ui.label(
-            egui::RichText::new(format!("{} Effect running — these controls edit the base look", ph::WAVE_SINE))
-                .small()
-                .color(egui::Color32::from_rgb(0, 220, 255)),
+            egui::RichText::new(format!(
+                "{} Effect running — these controls edit the base look",
+                ph::WAVE_SINE
+            ))
+            .small()
+            .color(egui::Color32::from_rgb(0, 220, 255)),
         );
     }
 
-    let Some(universe) = app.universes.first_mut() else { return };
+    let Some(universe) = app.universes.first_mut() else {
+        return;
+    };
 
     // ── Collect channel addresses + current values (immutable reads) ──────────
-    let has_int    = profile.get_parameter_offset(&FixtureParameter::Intensity).is_some();
-    let int_ch     = profile.get_parameter_offset(&FixtureParameter::Intensity)
-                        .map(|off| patch.start_address + off);
-    let int_raw    = int_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let vi_val     = if !has_int && profile.is_rgb() {
-        app.virtual_intensity.get_intensity(patch.id)
-            .unwrap_or_else(|| app.virtual_intensity.calculate_intensity(patch.id, universe, patch, profile))
-    } else { 1.0 };
+    let has_int = profile
+        .get_parameter_offset(&FixtureParameter::Intensity)
+        .is_some();
+    let int_ch = profile
+        .get_parameter_offset(&FixtureParameter::Intensity)
+        .map(|off| patch.start_address + off);
+    let int_raw = int_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let vi_val = if !has_int && profile.is_rgb() {
+        app.virtual_intensity
+            .get_intensity(patch.id)
+            .unwrap_or_else(|| {
+                app.virtual_intensity
+                    .calculate_intensity(patch.id, universe, patch, profile)
+            })
+    } else {
+        1.0
+    };
 
-    let is_rgb    = profile.is_rgb();
-    let r_ch      = profile.get_parameter_offset(&FixtureParameter::Red  ).map(|o| patch.start_address + o);
-    let g_ch      = profile.get_parameter_offset(&FixtureParameter::Green).map(|o| patch.start_address + o);
-    let b_ch      = profile.get_parameter_offset(&FixtureParameter::Blue ).map(|o| patch.start_address + o);
-    let amber_ch  = profile.get_parameter_offset(&FixtureParameter::Amber).map(|o| patch.start_address + o);
-    let white_ch  = profile.get_parameter_offset(&FixtureParameter::White).map(|o| patch.start_address + o);
-    let uv_ch     = profile.get_parameter_offset(&FixtureParameter::Uv   ).map(|o| patch.start_address + o);
+    let is_rgb = profile.is_rgb();
+    let r_ch = profile
+        .get_parameter_offset(&FixtureParameter::Red)
+        .map(|o| patch.start_address + o);
+    let g_ch = profile
+        .get_parameter_offset(&FixtureParameter::Green)
+        .map(|o| patch.start_address + o);
+    let b_ch = profile
+        .get_parameter_offset(&FixtureParameter::Blue)
+        .map(|o| patch.start_address + o);
+    let amber_ch = profile
+        .get_parameter_offset(&FixtureParameter::Amber)
+        .map(|o| patch.start_address + o);
+    let white_ch = profile
+        .get_parameter_offset(&FixtureParameter::White)
+        .map(|o| patch.start_address + o);
+    let uv_ch = profile
+        .get_parameter_offset(&FixtureParameter::Uv)
+        .map(|o| patch.start_address + o);
 
-    let r     = r_ch    .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let g     = g_ch    .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let b     = b_ch    .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let amber = amber_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let white = white_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let uv    = uv_ch   .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let r = r_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let g = g_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let b = b_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let amber = amber_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let white = white_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let uv = uv_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
 
     // Position channels
-    let pan_ch   = profile.get_parameter_offset(&FixtureParameter::Pan ).map(|o| patch.start_address + o);
-    let tilt_ch  = profile.get_parameter_offset(&FixtureParameter::Tilt).map(|o| patch.start_address + o);
-    let pan_val  = pan_ch .and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
-    let tilt_val = tilt_ch.and_then(|ch| universe.get_channel(ch).ok()).unwrap_or(0);
+    let pan_ch = profile
+        .get_parameter_offset(&FixtureParameter::Pan)
+        .map(|o| patch.start_address + o);
+    let tilt_ch = profile
+        .get_parameter_offset(&FixtureParameter::Tilt)
+        .map(|o| patch.start_address + o);
+    let pan_val = pan_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
+    let tilt_val = tilt_ch
+        .and_then(|ch| universe.get_channel(ch).ok())
+        .unwrap_or(0);
     let has_position = pan_ch.is_some() || tilt_ch.is_some();
 
     // Extra channels: any parameter not already handled above.
     // Intensity is always shown; colour parameters are shown in the colour section
     // when is_rgb — otherwise they fall through here so nothing is silently dropped.
     // Pan/Tilt coarse are shown in the gizmo when has_position; fine channels remain here.
-    let extra_channels: Vec<(String, u16, u8)> = profile.parameters.iter()
+    let extra_channels: Vec<(String, u16, u8)> = profile
+        .parameters
+        .iter()
         .filter(|pm| {
-            if matches!(pm.parameter, FixtureParameter::Intensity) { return false; }
-            if is_rgb && pm.parameter.is_color()                   { return false; }
-            if has_position && matches!(pm.parameter, FixtureParameter::Pan | FixtureParameter::Tilt) {
+            if matches!(pm.parameter, FixtureParameter::Intensity) {
+                return false;
+            }
+            if is_rgb && pm.parameter.is_color() {
+                return false;
+            }
+            if has_position
+                && matches!(pm.parameter, FixtureParameter::Pan | FixtureParameter::Tilt)
+            {
                 return false;
             }
             true
         })
         .map(|pm| {
-            let ch  = patch.start_address + pm.channel_offset;
+            let ch = patch.start_address + pm.channel_offset;
             let val = universe.get_channel(ch).unwrap_or(0);
             (pm.parameter.short_label().to_string(), ch, val)
         })
@@ -1006,17 +1310,17 @@ fn render_fixture_properties(
     }
 
     // ── Pending changes collected during rendering, applied after ─────────────
-    let mut apply_int_raw  : Option<u8>       = None;
-    let mut apply_int_vi   : Option<f32>      = None;
-    let mut apply_wheel    : bool             = false;
-    let mut apply_pan_tilt : Option<(u8, u8)> = None;
-    let mut apply_channels : Vec<(u16, u8)>   = Vec::new();
+    let mut apply_int_raw: Option<u8> = None;
+    let mut apply_int_vi: Option<f32> = None;
+    let mut apply_wheel: bool = false;
+    let mut apply_pan_tilt: Option<(u8, u8)> = None;
+    let mut apply_channels: Vec<(u16, u8)> = Vec::new();
 
     // ── Horizontal scroll area ────────────────────────────────────────────────
     egui::ScrollArea::horizontal()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let avail_h  = ui.available_height().max(60.0);
+            let avail_h = ui.available_height().max(60.0);
             let slider_h = (avail_h - 24.0).max(40.0);
             let wheel_size = slider_h.min(220.0);
 
@@ -1030,30 +1334,50 @@ fn render_fixture_properties(
                     egui::vec2(COL_W, slider_h + 20.0),
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                            ui.label("Int");
-                        });
+                        ui.with_layout(
+                            egui::Layout::top_down_justified(egui::Align::Center),
+                            |ui| {
+                                ui.label("Int");
+                            },
+                        );
                         if has_int {
                             let mut v = int_raw;
-                            if ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut v, 0..=100).vertical().show_value(false)).changed() {
+                            if ui
+                                .add_sized(
+                                    [COL_W - 8.0, slider_h],
+                                    egui::Slider::new(&mut v, 0..=100)
+                                        .vertical()
+                                        .show_value(false),
+                                )
+                                .changed()
+                            {
                                 apply_int_raw = Some(v);
                             }
-                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                ui.label(format!("{}", int_raw));
-                            });
+                            ui.with_layout(
+                                egui::Layout::top_down_justified(egui::Align::Center),
+                                |ui| {
+                                    ui.label(format!("{}", int_raw));
+                                },
+                            );
                         } else if is_rgb {
                             let mut v = vi_val;
-                            if ui.add_sized(
-                                [COL_W - 8.0, slider_h],
-                                egui::Slider::new(&mut v, 0.0..=1.0)
-                                    .vertical()
-                                    .show_value(false),
-                            ).changed() {
+                            if ui
+                                .add_sized(
+                                    [COL_W - 8.0, slider_h],
+                                    egui::Slider::new(&mut v, 0.0..=1.0)
+                                        .vertical()
+                                        .show_value(false),
+                                )
+                                .changed()
+                            {
                                 apply_int_vi = Some(v);
                             }
-                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                ui.label(format!("{:.0}", vi_val * 100.0));
-                            });
+                            ui.with_layout(
+                                egui::Layout::top_down_justified(egui::Align::Center),
+                                |ui| {
+                                    ui.label(format!("{:.0}", vi_val * 100.0));
+                                },
+                            );
                         }
                     },
                 );
@@ -1080,31 +1404,42 @@ fn render_fixture_properties(
                                     egui::vec2(COL_W, slider_h + 20.0),
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
-                                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                            ui.label($label);
-                                        });
+                                        ui.with_layout(
+                                            egui::Layout::top_down_justified(egui::Align::Center),
+                                            |ui| {
+                                                ui.label($label);
+                                            },
+                                        );
                                         let mut v = $init;
-                                        if ui.add_sized(
-                                            [COL_W - 8.0, slider_h],
-                                            egui::Slider::new(&mut v, 0..=100).vertical().show_value(false),
-                                        ).changed() {
+                                        if ui
+                                            .add_sized(
+                                                [COL_W - 8.0, slider_h],
+                                                egui::Slider::new(&mut v, 0..=100)
+                                                    .vertical()
+                                                    .show_value(false),
+                                            )
+                                            .changed()
+                                        {
                                             apply_channels.push((ch, v));
                                             let _ = needs_vi;
                                         }
-                                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                            ui.label(format!("{}", $init));
-                                        });
+                                        ui.with_layout(
+                                            egui::Layout::top_down_justified(egui::Align::Center),
+                                            |ui| {
+                                                ui.label(format!("{}", $init));
+                                            },
+                                        );
                                     },
                                 );
                             }
                         };
                     }
-                    col_slider!("R",  r_ch,     r    );
-                    col_slider!("G",  g_ch,     g    );
-                    col_slider!("B",  b_ch,     b    );
-                    col_slider!("A",  amber_ch, amber);
-                    col_slider!("W",  white_ch, white);
-                    col_slider!("UV", uv_ch,    uv   );
+                    col_slider!("R", r_ch, r);
+                    col_slider!("G", g_ch, g);
+                    col_slider!("B", b_ch, b);
+                    col_slider!("A", amber_ch, amber);
+                    col_slider!("W", white_ch, white);
+                    col_slider!("UV", uv_ch, uv);
                 }
 
                 // Pan/Tilt gizmo
@@ -1113,14 +1448,13 @@ fn render_fixture_properties(
                     let gizmo_size = wheel_size;
                     ui.vertical(|ui| {
                         ui.label("Pos");
-                        if let Some(result) = crate::ui::PanTiltGizmo::new().show(
-                            ui, pan_val, tilt_val, gizmo_size,
-                        ) {
+                        if let Some(result) =
+                            crate::ui::PanTiltGizmo::new().show(ui, pan_val, tilt_val, gizmo_size)
+                        {
                             apply_pan_tilt = Some(result);
                         }
                         ui.label(
-                            egui::RichText::new(format!("P:{} T:{}", pan_val, tilt_val))
-                                .small(),
+                            egui::RichText::new(format!("P:{} T:{}", pan_val, tilt_val)).small(),
                         );
                     });
                 }
@@ -1133,19 +1467,30 @@ fn render_fixture_properties(
                             egui::vec2(COL_W, slider_h + 20.0),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
-                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                    ui.label(label.as_str());
-                                });
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(label.as_str());
+                                    },
+                                );
                                 let mut v = *init_val;
-                                if ui.add_sized(
-                                    [COL_W - 8.0, slider_h],
-                                    egui::Slider::new(&mut v, 0..=100).vertical().show_value(false),
-                                ).changed() {
+                                if ui
+                                    .add_sized(
+                                        [COL_W - 8.0, slider_h],
+                                        egui::Slider::new(&mut v, 0..=100)
+                                            .vertical()
+                                            .show_value(false),
+                                    )
+                                    .changed()
+                                {
                                     apply_channels.push((*ch, v));
                                 }
-                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                    ui.label(format!("{}", *init_val));
-                                });
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(format!("{}", *init_val));
+                                    },
+                                );
                             },
                         );
                     }
@@ -1155,7 +1500,9 @@ fn render_fixture_properties(
 
     // ── Apply changes (universe now exclusively available) ────────────────────
     if let Some(v) = apply_int_raw {
-        if let Some(ch) = int_ch { let _ = universe.set_channel(ch, v); }
+        if let Some(ch) = int_ch {
+            let _ = universe.set_channel(ch, v);
+        }
         // When raising intensity on an intensity+RGB fixture whose colors are all
         // zero (uninitialized), apply each color channel's profile default (or 100
         // = white if the profile doesn't specify one).
@@ -1164,14 +1511,20 @@ fn render_fixture_properties(
         }
     }
     if let Some(v) = apply_int_vi {
-        let p = patch.clone(); let pr = profile.clone();
-        if let Err(e) = app.virtual_intensity.set_intensity(patch.id, v, universe, &p, &pr) {
+        let p = patch.clone();
+        let pr = profile.clone();
+        if let Err(e) = app
+            .virtual_intensity
+            .set_intensity(patch.id, v, universe, &p, &pr)
+        {
             log::error!("Failed to set virtual intensity: {}", e);
         }
     }
     if apply_wheel {
         let (fr, fg, fb) = app.ui_state.color_wheel.selected_color();
-        let intensity = if has_int { 1.0_f32 } else {
+        let intensity = if has_int {
+            1.0_f32
+        } else {
             app.virtual_intensity.get_intensity(patch.id).unwrap_or(1.0)
         };
         let new_r = (fr * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
@@ -1184,21 +1537,30 @@ fn render_fixture_properties(
         }
         if !has_int {
             let mut cv = std::collections::HashMap::new();
-            cv.insert(FixtureParameter::Red,   new_r);
+            cv.insert(FixtureParameter::Red, new_r);
             cv.insert(FixtureParameter::Green, new_g);
-            cv.insert(FixtureParameter::Blue,  new_b);
+            cv.insert(FixtureParameter::Blue, new_b);
             for pm in profile.color_parameters() {
-                if !matches!(pm.parameter, FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue) {
+                if !matches!(
+                    pm.parameter,
+                    FixtureParameter::Red | FixtureParameter::Green | FixtureParameter::Blue
+                ) {
                     let ch = patch.start_address + pm.channel_offset;
-                    if let Ok(val) = universe.get_channel(ch) { cv.insert(pm.parameter.clone(), val); }
+                    if let Ok(val) = universe.get_channel(ch) {
+                        cv.insert(pm.parameter.clone(), val);
+                    }
                 }
             }
             app.virtual_intensity.set_color(patch.id, cv);
         }
     }
     if let Some((np, nt)) = apply_pan_tilt {
-        if let Some(ch) = pan_ch  { let _ = universe.set_channel(ch, np); }
-        if let Some(ch) = tilt_ch { let _ = universe.set_channel(ch, nt); }
+        if let Some(ch) = pan_ch {
+            let _ = universe.set_channel(ch, np);
+        }
+        if let Some(ch) = tilt_ch {
+            let _ = universe.set_channel(ch, nt);
+        }
     }
     if !apply_channels.is_empty() {
         let needs_vi = !has_int;
@@ -1206,8 +1568,10 @@ fn render_fixture_properties(
             let _ = universe.set_channel(ch, v);
         }
         if needs_vi {
-            let p = patch.clone(); let pr = profile.clone();
-            app.virtual_intensity.update_from_universe(patch.id, universe, &p, &pr);
+            let p = patch.clone();
+            let pr = profile.clone();
+            app.virtual_intensity
+                .update_from_universe(patch.id, universe, &p, &pr);
         }
     }
 }
@@ -1215,7 +1579,7 @@ fn render_fixture_properties(
 /// Render properties for multiple selected channels
 fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     let channel_count = app.ui_state.selected_channels.len();
-    
+
     // Check if all selected channels belong to the same fixture
     let fixture_data: Option<(crate::fixtures::Patch, crate::fixtures::FixtureProfile, u16)> = {
         let channel_counts = app.fixtures.get_channel_counts();
@@ -1230,7 +1594,7 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     .map(|p| p.id)
             })
             .collect();
-        
+
         // If all channels belong to the same fixture, collect the data
         if !patch_ids.is_empty()
             && patch_ids.len() == channel_count
@@ -1238,7 +1602,7 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         {
             let fixture_id = patch_ids[0];
             let first_channel = *app.ui_state.selected_channels.iter().next().unwrap();
-            
+
             // Collect patch and profile data
             app.fixtures
                 .patch_list()
@@ -1254,24 +1618,26 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
             None
         }
     };
-    
+
     // If we found fixture data, render fixture properties
     if let Some((patch, profile, first_channel)) = fixture_data {
         render_fixture_properties(ui, app, &patch, &profile, first_channel);
         return;
     }
-    
+
     // Fall back to multi-channel display for mixed/unpatched channels
     ui.label(egui::RichText::new(format!("{} Channels Selected", channel_count)).strong());
-    
+
     if let Some(universe) = app.universes.first_mut() {
         // Get all selected channel values
-        let mut channel_values: Vec<(u16, u8)> = app.ui_state.selected_channels
+        let mut channel_values: Vec<(u16, u8)> = app
+            .ui_state
+            .selected_channels
             .iter()
             .map(|&ch| (ch, universe.get_channel(ch).unwrap_or(0)))
             .collect();
         channel_values.sort_by_key(|(ch, _)| *ch);
-        
+
         // Calculate statistics
         let max_value = channel_values.iter().map(|(_, v)| *v).max().unwrap_or(0);
         let min_value = channel_values.iter().map(|(_, v)| *v).min().unwrap_or(0);
@@ -1280,9 +1646,9 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         } else {
             0
         } as u8;
-        
+
         ui.add_space(6.0);
-        
+
         egui::Grid::new("multi_channel_props")
             .num_columns(2)
             .spacing([10.0, 6.0])
@@ -1290,40 +1656,47 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                 ui.label("Channels:");
                 ui.label(format!("{}", channel_count));
                 ui.end_row();
-                
+
                 ui.label("Range:");
                 ui.label(format!("{}-{}", min_value, max_value));
                 ui.end_row();
-                
+
                 ui.label("Average:");
                 ui.label(format!("{}", avg_value));
                 ui.end_row();
             });
-        
+
         ui.add_space(10.0);
-        
+
         // Master slider for proportional control using O_i = M * L_i formula
         ui.label(egui::RichText::new("Group Master (Proportional)").strong());
         ui.add_space(4.0);
-        
+
         let mut master_value = app.ui_state.group_master;
-        let slider_changed = ui.add(
-            egui::Slider::new(&mut master_value, 0..=100)
-                .text("M")
-        ).changed();
-        
+        let slider_changed = ui
+            .add(egui::Slider::new(&mut master_value, 0..=100).text("M"))
+            .changed();
+
         if slider_changed {
             app.ui_state.group_master = master_value;
-            
+
             // Find the max base level for normalization
-            let max_base = app.ui_state.channel_base_levels.values().copied().max().unwrap_or(100);
-            
+            let max_base = app
+                .ui_state
+                .channel_base_levels
+                .values()
+                .copied()
+                .max()
+                .unwrap_or(100);
+
             if max_base > 0 {
                 // Apply O_i = M * (L_i / L_max) formula to all selected channels
                 for &ch in &app.ui_state.selected_channels {
                     if let Some(&base_level) = app.ui_state.channel_base_levels.get(&ch) {
                         // O_i = M * (L_i / L_max)
-                        let output = ((master_value as f32) * (base_level as f32) / (max_base as f32)).round() as u8;
+                        let output = ((master_value as f32) * (base_level as f32)
+                            / (max_base as f32))
+                            .round() as u8;
                         let _ = universe.set_channel(ch, output.min(100));
                     }
                 }
@@ -1334,12 +1707,13 @@ fn render_multi_channel_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                 }
             }
         }
-        
+
         // Show base levels for reference
         ui.add_space(6.0);
         ui.label(egui::RichText::new("Base Levels (L_i):").small().italics());
         ui.horizontal_wrapped(|ui| {
-            let mut sorted_channels: Vec<u16> = app.ui_state.selected_channels.iter().copied().collect();
+            let mut sorted_channels: Vec<u16> =
+                app.ui_state.selected_channels.iter().copied().collect();
             sorted_channels.sort();
             for &ch in &sorted_channels {
                 if let Some(&base) = app.ui_state.channel_base_levels.get(&ch) {
@@ -1358,13 +1732,13 @@ fn render_selected_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp, fixture
         return;
     };
     let patch = patch.clone();
-    
+
     let Some(profile) = app.fixtures.get_profile(&patch.profile_id) else {
         ui.label(format!("Profile '{}' not found", patch.profile_id));
         return;
     };
     let profile = profile.clone();
-    
+
     // Render full fixture properties
     render_fixture_properties(ui, app, &patch, &profile, patch.start_address);
 }
@@ -1409,14 +1783,30 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                 .get_parameter_offset(&FixtureParameter::Intensity)
                 .map(|off| addr + off)
                 .unwrap_or(0);
-            let r_ch = profile.get_parameter_offset(&FixtureParameter::Red).map(|off| addr + off);
-            let g_ch = profile.get_parameter_offset(&FixtureParameter::Green).map(|off| addr + off);
-            let b_ch = profile.get_parameter_offset(&FixtureParameter::Blue).map(|off| addr + off);
-            let amber_ch = profile.get_parameter_offset(&FixtureParameter::Amber).map(|off| addr + off);
-            let white_ch = profile.get_parameter_offset(&FixtureParameter::White).map(|off| addr + off);
-            let uv_ch    = profile.get_parameter_offset(&FixtureParameter::Uv   ).map(|off| addr + off);
-            let pan_ch   = profile.get_parameter_offset(&FixtureParameter::Pan  ).map(|off| addr + off);
-            let tilt_ch  = profile.get_parameter_offset(&FixtureParameter::Tilt ).map(|off| addr + off);
+            let r_ch = profile
+                .get_parameter_offset(&FixtureParameter::Red)
+                .map(|off| addr + off);
+            let g_ch = profile
+                .get_parameter_offset(&FixtureParameter::Green)
+                .map(|off| addr + off);
+            let b_ch = profile
+                .get_parameter_offset(&FixtureParameter::Blue)
+                .map(|off| addr + off);
+            let amber_ch = profile
+                .get_parameter_offset(&FixtureParameter::Amber)
+                .map(|off| addr + off);
+            let white_ch = profile
+                .get_parameter_offset(&FixtureParameter::White)
+                .map(|off| addr + off);
+            let uv_ch = profile
+                .get_parameter_offset(&FixtureParameter::Uv)
+                .map(|off| addr + off);
+            let pan_ch = profile
+                .get_parameter_offset(&FixtureParameter::Pan)
+                .map(|off| addr + off);
+            let tilt_ch = profile
+                .get_parameter_offset(&FixtureParameter::Tilt)
+                .map(|off| addr + off);
             let is_rgb_only = profile.is_rgb() && !has_intensity;
             Some(FxInfo {
                 id,
@@ -1445,15 +1835,18 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     }
 
     // Determine if all selected fixtures share pan and/or tilt (show gizmo if both).
-    let all_pan      = fix_infos.iter().all(|fi| fi.pan_ch.is_some());
-    let all_tilt     = fix_infos.iter().all(|fi| fi.tilt_ch.is_some());
+    let all_pan = fix_infos.iter().all(|fi| fi.pan_ch.is_some());
+    let all_tilt = fix_infos.iter().all(|fi| fi.tilt_ch.is_some());
     let all_position = all_pan && all_tilt;
 
     // Parameters present in every selected fixture that aren't Intensity or standard
     // colour channels (those are handled above).  Pan/Tilt coarse are shown in the
     // gizmo when all_position; fine channels remain here.
     // Vec of (label, per-fixture channel).
-    let extra_common: Vec<(String, Vec<u16>)> = fix_infos[0].profile.parameters.iter()
+    let extra_common: Vec<(String, Vec<u16>)> = fix_infos[0]
+        .profile
+        .parameters
+        .iter()
         .filter(|pm| {
             !matches!(
                 pm.parameter,
@@ -1464,12 +1857,15 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     | FixtureParameter::Amber
                     | FixtureParameter::White
                     | FixtureParameter::Uv
-            )
-            && !(all_position && matches!(pm.parameter, FixtureParameter::Pan | FixtureParameter::Tilt))
-            && fix_infos[1..].iter().all(|fi| fi.profile.has_parameter(&pm.parameter))
+            ) && !(all_position
+                && matches!(pm.parameter, FixtureParameter::Pan | FixtureParameter::Tilt))
+                && fix_infos[1..]
+                    .iter()
+                    .all(|fi| fi.profile.has_parameter(&pm.parameter))
         })
         .map(|pm| {
-            let channels: Vec<u16> = fix_infos.iter()
+            let channels: Vec<u16> = fix_infos
+                .iter()
                 .map(|fi| {
                     fi.patch.start_address
                         + fi.profile.get_parameter_offset(&pm.parameter).unwrap_or(0)
@@ -1497,9 +1893,7 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
 
     {
         let universe = app.universes.first();
-        let get = |ch: u16| -> u8 {
-            universe.and_then(|u| u.get_channel(ch).ok()).unwrap_or(0)
-        };
+        let get = |ch: u16| -> u8 { universe.and_then(|u| u.get_channel(ch).ok()).unwrap_or(0) };
 
         intensities = fix_infos
             .iter()
@@ -1507,14 +1901,15 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                 if fi.has_intensity {
                     get(fi.intensity_ch)
                 } else if fi.is_rgb_only {
-                    let vi = app.virtual_intensity.get_intensity(fi.id).unwrap_or_else(|| {
-                        match (fi.r_ch, fi.g_ch, fi.b_ch) {
+                    let vi = app
+                        .virtual_intensity
+                        .get_intensity(fi.id)
+                        .unwrap_or_else(|| match (fi.r_ch, fi.g_ch, fi.b_ch) {
                             (Some(r), Some(g), Some(b)) => {
                                 (get(r).max(get(g)).max(get(b)) as f32) / 100.0
                             }
                             _ => 0.0,
-                        }
-                    });
+                        });
                     (vi * 100.0).round() as u8
                 } else {
                     0
@@ -1530,12 +1925,30 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
         all_uv = all_rgb && fix_infos.iter().all(|fi| fi.uv_ch.is_some());
 
         if all_rgb {
-            rs = fix_infos.iter().map(|fi| fi.r_ch.map(get).unwrap_or(0)).collect();
-            gs = fix_infos.iter().map(|fi| fi.g_ch.map(get).unwrap_or(0)).collect();
-            bs = fix_infos.iter().map(|fi| fi.b_ch.map(get).unwrap_or(0)).collect();
-            ambers = fix_infos.iter().map(|fi| fi.amber_ch.map(get).unwrap_or(0)).collect();
-            whites = fix_infos.iter().map(|fi| fi.white_ch.map(get).unwrap_or(0)).collect();
-            uvs = fix_infos.iter().map(|fi| fi.uv_ch.map(get).unwrap_or(0)).collect();
+            rs = fix_infos
+                .iter()
+                .map(|fi| fi.r_ch.map(get).unwrap_or(0))
+                .collect();
+            gs = fix_infos
+                .iter()
+                .map(|fi| fi.g_ch.map(get).unwrap_or(0))
+                .collect();
+            bs = fix_infos
+                .iter()
+                .map(|fi| fi.b_ch.map(get).unwrap_or(0))
+                .collect();
+            ambers = fix_infos
+                .iter()
+                .map(|fi| fi.amber_ch.map(get).unwrap_or(0))
+                .collect();
+            whites = fix_infos
+                .iter()
+                .map(|fi| fi.white_ch.map(get).unwrap_or(0))
+                .collect();
+            uvs = fix_infos
+                .iter()
+                .map(|fi| fi.uv_ch.map(get).unwrap_or(0))
+                .collect();
         } else {
             rs = vec![];
             gs = vec![];
@@ -1545,19 +1958,27 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
             uvs = vec![];
         }
 
-        extra_vals = extra_common.iter()
+        extra_vals = extra_common
+            .iter()
             .map(|(_, channels)| {
-                channels.iter()
+                channels
+                    .iter()
                     .map(|&ch| universe.and_then(|u| u.get_channel(ch).ok()).unwrap_or(0))
                     .collect()
             })
             .collect();
 
         if all_position {
-            pan_vals  = fix_infos.iter().map(|fi| fi.pan_ch .map(get).unwrap_or(0)).collect();
-            tilt_vals = fix_infos.iter().map(|fi| fi.tilt_ch.map(get).unwrap_or(0)).collect();
+            pan_vals = fix_infos
+                .iter()
+                .map(|fi| fi.pan_ch.map(get).unwrap_or(0))
+                .collect();
+            tilt_vals = fix_infos
+                .iter()
+                .map(|fi| fi.tilt_ch.map(get).unwrap_or(0))
+                .collect();
         } else {
-            pan_vals  = vec![];
+            pan_vals = vec![];
             tilt_vals = vec![];
         }
     }
@@ -1575,16 +1996,16 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     };
 
     // ── Changes to apply after rendering ─────────────────────────────────────
-    let mut apply_intensity : Option<u8>       = None;
-    let mut apply_wheel_color: bool            = false;
-    let mut apply_pan_tilt  : Option<(u8, u8)> = None;
-    let mut apply_r         : Option<u8>       = None;
-    let mut apply_g         : Option<u8>       = None;
-    let mut apply_b         : Option<u8>       = None;
-    let mut apply_amber     : Option<u8>       = None;
-    let mut apply_white     : Option<u8>       = None;
-    let mut apply_uv        : Option<u8>       = None;
-    let mut apply_extra     : Vec<Option<u8>>  = vec![None; extra_common.len()];
+    let mut apply_intensity: Option<u8> = None;
+    let mut apply_wheel_color: bool = false;
+    let mut apply_pan_tilt: Option<(u8, u8)> = None;
+    let mut apply_r: Option<u8> = None;
+    let mut apply_g: Option<u8> = None;
+    let mut apply_b: Option<u8> = None;
+    let mut apply_amber: Option<u8> = None;
+    let mut apply_white: Option<u8> = None;
+    let mut apply_uv: Option<u8> = None;
+    let mut apply_extra: Vec<Option<u8>> = vec![None; extra_common.len()];
 
     // ── Render header ─────────────────────────────────────────────────────────
     ui.label(egui::RichText::new(format!("{} Fixtures Selected", fix_infos.len())).strong());
@@ -1595,7 +2016,9 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     if all_rgb {
         let color_uniform = is_uniform(&rs) && is_uniform(&gs) && is_uniform(&bs);
         if color_uniform {
-            app.ui_state.color_wheel.set_from_srgb_100(rs[0], gs[0], bs[0]);
+            app.ui_state
+                .color_wheel
+                .set_from_srgb_100(rs[0], gs[0], bs[0]);
         }
     }
 
@@ -1603,7 +2026,7 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     egui::ScrollArea::horizontal()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let avail_h  = ui.available_height().max(60.0);
+            let avail_h = ui.available_height().max(60.0);
             let slider_h = (avail_h - 24.0).max(40.0);
             let wheel_size = slider_h.min(220.0);
 
@@ -1618,25 +2041,44 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     egui::vec2(COL_W, col_h),
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                            ui.label("Int");
-                        });
+                        ui.with_layout(
+                            egui::Layout::top_down_justified(egui::Align::Center),
+                            |ui| {
+                                ui.label("Int");
+                            },
+                        );
                         let resp = if int_uniform {
-                            ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical().show_value(false))
+                            ui.add_sized(
+                                [COL_W - 8.0, slider_h],
+                                egui::Slider::new(&mut int_val, 0..=100)
+                                    .vertical()
+                                    .show_value(false),
+                            )
                         } else {
                             ui.scope(|ui| {
                                 gray_visuals(ui);
-                                ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut int_val, 0..=100).vertical().show_value(false))
-                            }).inner
+                                ui.add_sized(
+                                    [COL_W - 8.0, slider_h],
+                                    egui::Slider::new(&mut int_val, 0..=100)
+                                        .vertical()
+                                        .show_value(false),
+                                )
+                            })
+                            .inner
                         };
-                        if resp.changed() { apply_intensity = Some(int_val); }
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                            if int_uniform {
-                                ui.label(format!("{}", intensities[0]));
-                            } else {
-                                ui.colored_label(mixed_col, "≠");
-                            }
-                        });
+                        if resp.changed() {
+                            apply_intensity = Some(int_val);
+                        }
+                        ui.with_layout(
+                            egui::Layout::top_down_justified(egui::Align::Center),
+                            |ui| {
+                                if int_uniform {
+                                    ui.label(format!("{}", intensities[0]));
+                                } else {
+                                    ui.colored_label(mixed_col, "≠");
+                                }
+                            },
+                        );
                     },
                 );
 
@@ -1650,7 +2092,9 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                         if app.ui_state.color_wheel.show(ui, wheel_size) {
                             apply_wheel_color = true;
                         }
-                        if !color_uniform { ui.colored_label(mixed_col, "≠"); }
+                        if !color_uniform {
+                            ui.colored_label(mixed_col, "≠");
+                        }
                     });
 
                     ui.separator();
@@ -1663,36 +2107,61 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                                 egui::vec2(COL_W, col_h),
                                 egui::Layout::top_down(egui::Align::Center),
                                 |ui| {
-                                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                        ui.label($label);
-                                    });
+                                    ui.with_layout(
+                                        egui::Layout::top_down_justified(egui::Align::Center),
+                                        |ui| {
+                                            ui.label($label);
+                                        },
+                                    );
                                     let resp = if uniform {
-                                        ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
+                                        ui.add_sized(
+                                            [COL_W - 8.0, slider_h],
+                                            egui::Slider::new(&mut val, 0..=100)
+                                                .vertical()
+                                                .show_value(false),
+                                        )
                                     } else {
                                         ui.scope(|ui| {
                                             gray_visuals(ui);
-                                            ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
-                                        }).inner
+                                            ui.add_sized(
+                                                [COL_W - 8.0, slider_h],
+                                                egui::Slider::new(&mut val, 0..=100)
+                                                    .vertical()
+                                                    .show_value(false),
+                                            )
+                                        })
+                                        .inner
                                     };
-                                    if resp.changed() { $apply = Some(val); }
-                                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                        if uniform {
-                                            ui.label(format!("{}", $vals[0]));
-                                        } else {
-                                            ui.colored_label(mixed_col, "≠");
-                                        }
-                                    });
+                                    if resp.changed() {
+                                        $apply = Some(val);
+                                    }
+                                    ui.with_layout(
+                                        egui::Layout::top_down_justified(egui::Align::Center),
+                                        |ui| {
+                                            if uniform {
+                                                ui.label(format!("{}", $vals[0]));
+                                            } else {
+                                                ui.colored_label(mixed_col, "≠");
+                                            }
+                                        },
+                                    );
                                 },
                             );
                         }};
                     }
 
-                    ch_slider!("R",  rs,     apply_r    );
-                    ch_slider!("G",  gs,     apply_g    );
-                    ch_slider!("B",  bs,     apply_b    );
-                    if all_amber { ch_slider!("A",  ambers, apply_amber); }
-                    if all_white { ch_slider!("W",  whites, apply_white); }
-                    if all_uv    { ch_slider!("UV", uvs,    apply_uv   ); }
+                    ch_slider!("R", rs, apply_r);
+                    ch_slider!("G", gs, apply_g);
+                    ch_slider!("B", bs, apply_b);
+                    if all_amber {
+                        ch_slider!("A", ambers, apply_amber);
+                    }
+                    if all_white {
+                        ch_slider!("W", whites, apply_white);
+                    }
+                    if all_uv {
+                        ch_slider!("UV", uvs, apply_uv);
+                    }
                 }
 
                 // Pan/Tilt gizmo (when every selected fixture has both channels)
@@ -1700,19 +2169,18 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     ui.separator();
                     let gizmo_size = wheel_size;
                     let pos_uniform = is_uniform(&pan_vals) && is_uniform(&tilt_vals);
-                    let pan_v  = pan_vals[0];
+                    let pan_v = pan_vals[0];
                     let tilt_v = tilt_vals[0];
                     ui.vertical(|ui| {
                         ui.label("Pos");
-                        if let Some(result) = crate::ui::PanTiltGizmo::new().show(
-                            ui, pan_v, tilt_v, gizmo_size,
-                        ) {
+                        if let Some(result) =
+                            crate::ui::PanTiltGizmo::new().show(ui, pan_v, tilt_v, gizmo_size)
+                        {
                             apply_pan_tilt = Some(result);
                         }
                         if pos_uniform {
                             ui.label(
-                                egui::RichText::new(format!("P:{} T:{}", pan_v, tilt_v))
-                                    .small(),
+                                egui::RichText::new(format!("P:{} T:{}", pan_v, tilt_v)).small(),
                             );
                         } else {
                             ui.colored_label(mixed_col, "≠");
@@ -1731,25 +2199,44 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                             egui::vec2(COL_W, col_h),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
-                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                    ui.label(label.as_str());
-                                });
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(label.as_str());
+                                    },
+                                );
                                 let resp = if uniform {
-                                    ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
+                                    ui.add_sized(
+                                        [COL_W - 8.0, slider_h],
+                                        egui::Slider::new(&mut val, 0..=100)
+                                            .vertical()
+                                            .show_value(false),
+                                    )
                                 } else {
                                     ui.scope(|ui| {
                                         gray_visuals(ui);
-                                        ui.add_sized([COL_W - 8.0, slider_h], egui::Slider::new(&mut val, 0..=100).vertical().show_value(false))
-                                    }).inner
+                                        ui.add_sized(
+                                            [COL_W - 8.0, slider_h],
+                                            egui::Slider::new(&mut val, 0..=100)
+                                                .vertical()
+                                                .show_value(false),
+                                        )
+                                    })
+                                    .inner
                                 };
-                                if resp.changed() { apply_extra[i] = Some(val); }
-                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                    if uniform {
-                                        ui.label(format!("{}", vals[0]));
-                                    } else {
-                                        ui.colored_label(mixed_col, "≠");
-                                    }
-                                });
+                                if resp.changed() {
+                                    apply_extra[i] = Some(val);
+                                }
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::Center),
+                                    |ui| {
+                                        if uniform {
+                                            ui.label(format!("{}", vals[0]));
+                                        } else {
+                                            ui.colored_label(mixed_col, "≠");
+                                        }
+                                    },
+                                );
                             },
                         );
                     }
@@ -1766,13 +2253,21 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                 if let Some(u) = app.universes.first_mut() {
                     let _ = u.set_channel(fi.intensity_ch, new_val);
                     if new_val > 0 && fi.profile.is_rgb() {
-                        crate::fixtures::intensity::init_color_defaults_if_dark(u, &fi.patch, &fi.profile);
+                        crate::fixtures::intensity::init_color_defaults_if_dark(
+                            u,
+                            &fi.patch,
+                            &fi.profile,
+                        );
                     }
                 }
             } else if fi.is_rgb_only {
                 if let Some(u) = app.universes.first_mut() {
                     let _ = app.virtual_intensity.set_intensity(
-                        fi.id, new_val as f32 / 100.0, u, &fi.patch, &fi.profile,
+                        fi.id,
+                        new_val as f32 / 100.0,
+                        u,
+                        &fi.patch,
+                        &fi.profile,
                     );
                 }
             }
@@ -1783,13 +2278,16 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     if apply_wheel_color {
         let (fr, fg, fb) = app.ui_state.color_wheel.selected_color();
         // Collect per-fixture intensities before mutably borrowing universes.
-        let intensities: Vec<f32> = fix_infos.iter().map(|fi| {
-            if fi.has_intensity {
-                1.0_f32
-            } else {
-                app.virtual_intensity.get_intensity(fi.id).unwrap_or(1.0)
-            }
-        }).collect();
+        let intensities: Vec<f32> = fix_infos
+            .iter()
+            .map(|fi| {
+                if fi.has_intensity {
+                    1.0_f32
+                } else {
+                    app.virtual_intensity.get_intensity(fi.id).unwrap_or(1.0)
+                }
+            })
+            .collect();
         for (fi, intensity) in fix_infos.iter().zip(intensities.iter()) {
             let nr = (fr * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
             let ng = (fg * intensity * 100.0).round().clamp(0.0, 100.0) as u8;
@@ -1805,9 +2303,15 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
                     cv.insert(FixtureParameter::Red, nr);
                     cv.insert(FixtureParameter::Green, ng);
                     cv.insert(FixtureParameter::Blue, nb);
-                    if let Some(ac) = fi.amber_ch { cv.insert(FixtureParameter::Amber, u.get_channel(ac).unwrap_or(0)); }
-                    if let Some(wc) = fi.white_ch { cv.insert(FixtureParameter::White, u.get_channel(wc).unwrap_or(0)); }
-                    if let Some(uc) = fi.uv_ch   { cv.insert(FixtureParameter::Uv,    u.get_channel(uc).unwrap_or(0)); }
+                    if let Some(ac) = fi.amber_ch {
+                        cv.insert(FixtureParameter::Amber, u.get_channel(ac).unwrap_or(0));
+                    }
+                    if let Some(wc) = fi.white_ch {
+                        cv.insert(FixtureParameter::White, u.get_channel(wc).unwrap_or(0));
+                    }
+                    if let Some(uc) = fi.uv_ch {
+                        cv.insert(FixtureParameter::Uv, u.get_channel(uc).unwrap_or(0));
+                    }
                     app.virtual_intensity.set_color(fi.id, cv);
                 }
             }
@@ -1815,21 +2319,50 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     }
 
     // Individual colour channel sliders
-    let has_ch_change = apply_r.is_some() || apply_g.is_some() || apply_b.is_some()
-        || apply_amber.is_some() || apply_white.is_some() || apply_uv.is_some();
+    let has_ch_change = apply_r.is_some()
+        || apply_g.is_some()
+        || apply_b.is_some()
+        || apply_amber.is_some()
+        || apply_white.is_some()
+        || apply_uv.is_some();
     if has_ch_change {
         for fi in &fix_infos {
             if let Some(u) = app.universes.first_mut() {
-                if let Some(v) = apply_r     { if let Some(ch) = fi.r_ch     { let _ = u.set_channel(ch, v); } }
-                if let Some(v) = apply_g     { if let Some(ch) = fi.g_ch     { let _ = u.set_channel(ch, v); } }
-                if let Some(v) = apply_b     { if let Some(ch) = fi.b_ch     { let _ = u.set_channel(ch, v); } }
-                if let Some(v) = apply_amber { if let Some(ch) = fi.amber_ch { let _ = u.set_channel(ch, v); } }
-                if let Some(v) = apply_white { if let Some(ch) = fi.white_ch { let _ = u.set_channel(ch, v); } }
-                if let Some(v) = apply_uv   { if let Some(ch) = fi.uv_ch    { let _ = u.set_channel(ch, v); } }
+                if let Some(v) = apply_r {
+                    if let Some(ch) = fi.r_ch {
+                        let _ = u.set_channel(ch, v);
+                    }
+                }
+                if let Some(v) = apply_g {
+                    if let Some(ch) = fi.g_ch {
+                        let _ = u.set_channel(ch, v);
+                    }
+                }
+                if let Some(v) = apply_b {
+                    if let Some(ch) = fi.b_ch {
+                        let _ = u.set_channel(ch, v);
+                    }
+                }
+                if let Some(v) = apply_amber {
+                    if let Some(ch) = fi.amber_ch {
+                        let _ = u.set_channel(ch, v);
+                    }
+                }
+                if let Some(v) = apply_white {
+                    if let Some(ch) = fi.white_ch {
+                        let _ = u.set_channel(ch, v);
+                    }
+                }
+                if let Some(v) = apply_uv {
+                    if let Some(ch) = fi.uv_ch {
+                        let _ = u.set_channel(ch, v);
+                    }
+                }
                 if !fi.has_intensity {
                     let p = fi.patch.clone();
                     let pr = fi.profile.clone();
-                    app.virtual_intensity.update_from_universe(fi.id, u, &p, &pr);
+                    app.virtual_intensity
+                        .update_from_universe(fi.id, u, &p, &pr);
                 }
             }
         }
@@ -1839,8 +2372,12 @@ fn render_multi_fixture_properties(ui: &mut Ui, app: &mut EasyCueApp) {
     if let Some((np, nt)) = apply_pan_tilt {
         if let Some(u) = app.universes.first_mut() {
             for fi in &fix_infos {
-                if let Some(ch) = fi.pan_ch  { let _ = u.set_channel(ch, np); }
-                if let Some(ch) = fi.tilt_ch { let _ = u.set_channel(ch, nt); }
+                if let Some(ch) = fi.pan_ch {
+                    let _ = u.set_channel(ch, np);
+                }
+                if let Some(ch) = fi.tilt_ch {
+                    let _ = u.set_channel(ch, nt);
+                }
             }
         }
     }

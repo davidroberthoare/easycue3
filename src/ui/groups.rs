@@ -27,10 +27,18 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
 
         ui.separator();
 
-        ui.label(egui::RichText::new(
-            format!("{} group{}", app.groups.groups.len(),
-                if app.groups.groups.len() == 1 { "" } else { "s" })
-        ).color(Color32::GRAY));
+        ui.label(
+            egui::RichText::new(format!(
+                "{} group{}",
+                app.groups.groups.len(),
+                if app.groups.groups.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            ))
+            .color(Color32::GRAY),
+        );
     });
 
     ui.separator();
@@ -38,9 +46,10 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
     // Ensure the fixture input buffers are in sync with the group list.
     // Add missing entries; stale entries from deleted groups are harmless.
     for group in &app.groups.groups {
-        state.fixture_inputs.entry(group.id).or_insert_with(|| {
-            Group::fixtures_to_string(&group.fixture_ids)
-        });
+        state
+            .fixture_inputs
+            .entry(group.id)
+            .or_insert_with(|| Group::fixtures_to_string(&group.fixture_ids));
     }
 
     let mut to_remove: Option<u32> = None;
@@ -51,15 +60,23 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
             .striped(true)
             .resizable(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(egui_extras::Column::exact(45.0))           // Group #
+            .column(egui_extras::Column::exact(45.0)) // Group #
             .column(egui_extras::Column::initial(120.0).at_least(80.0)) // Label
-            .column(egui_extras::Column::remainder().at_least(120.0))   // Fixtures
-            .column(egui_extras::Column::exact(80.0))           // Actions
+            .column(egui_extras::Column::remainder().at_least(120.0)) // Fixtures
+            .column(egui_extras::Column::exact(80.0)) // Actions
             .header(20.0, |mut header| {
-                header.col(|ui| { ui.strong("Group #"); });
-                header.col(|ui| { ui.strong("Label"); });
-                header.col(|ui| { ui.strong("Fixtures (comma-separated)"); });
-                header.col(|ui| { ui.strong(""); });
+                header.col(|ui| {
+                    ui.strong("Group #");
+                });
+                header.col(|ui| {
+                    ui.strong("Label");
+                });
+                header.col(|ui| {
+                    ui.strong("Fixtures (comma-separated)");
+                });
+                header.col(|ui| {
+                    ui.strong("");
+                });
             })
             .body(|mut body| {
                 // Snapshot IDs so we can mutate inside the loop.
@@ -78,7 +95,7 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
                                 let response = ui.add(
                                     egui::TextEdit::singleline(&mut group.label)
                                         .desired_width(ui.available_width())
-                                        .hint_text("(label)")
+                                        .hint_text("(label)"),
                                 );
                                 let _ = response;
                             }
@@ -91,7 +108,7 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
                                 egui::TextEdit::singleline(buf)
                                     .desired_width(ui.available_width())
                                     .hint_text("e.g. 1, 2, 3")
-                                    .code_editor()
+                                    .code_editor(),
                             );
                             if response.changed() || response.lost_focus() {
                                 // Commit parsed IDs back into the group.
@@ -111,7 +128,9 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
                         // ── Actions ───────────────────────────────────────────
                         row.col(|ui| {
                             ui.horizontal(|ui| {
-                                let fixture_ids = app.groups.get_group(gid)
+                                let fixture_ids = app
+                                    .groups
+                                    .get_group(gid)
                                     .map(|g| g.fixture_ids.clone())
                                     .unwrap_or_default();
 
@@ -125,9 +144,13 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
                                 }
 
                                 if ui
-                                    .add(egui::Button::new(
-                                        RichText::new(ph::TRASH).color(Color32::from_rgb(200, 80, 80))
-                                    ).small())
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new(ph::TRASH)
+                                                .color(Color32::from_rgb(200, 80, 80)),
+                                        )
+                                        .small(),
+                                    )
                                     .on_hover_text("Delete group")
                                     .clicked()
                                 {
@@ -152,8 +175,11 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
         for fid in &fixture_ids {
             app.ui_state.selected_fixtures.insert(*fid);
         }
-        app.ui_state.status_message = format!("Selected {} fixture{}", fixture_ids.len(),
-            if fixture_ids.len() == 1 { "" } else { "s" });
+        app.ui_state.status_message = format!(
+            "Selected {} fixture{}",
+            fixture_ids.len(),
+            if fixture_ids.len() == 1 { "" } else { "s" }
+        );
     }
 
     // ── Usage hint ─────────────────────────────────────────────────────────────
@@ -162,9 +188,19 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
         ui.vertical_centered(|ui| {
             ui.label(RichText::new("No groups yet.").color(Color32::GRAY));
             ui.add_space(4.0);
-            ui.label(RichText::new("Click \"+ Add Group\" to create one.").color(Color32::GRAY).small());
+            ui.label(
+                RichText::new("Click \"+ Add Group\" to create one.")
+                    .color(Color32::GRAY)
+                    .small(),
+            );
             ui.add_space(4.0);
-            ui.label(RichText::new("In the Channels or Magic Sheet panel, type \"g1@50\" to set Group 1 to 50%.").color(Color32::GRAY).small());
+            ui.label(
+                RichText::new(
+                    "In the Channels or Magic Sheet panel, type \"g1@50\" to set Group 1 to 50%.",
+                )
+                .color(Color32::GRAY)
+                .small(),
+            );
         });
     }
 }

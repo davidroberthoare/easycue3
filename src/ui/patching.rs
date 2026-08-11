@@ -35,7 +35,9 @@ impl PatchingPanelState {
         self.fixture_number_input = next_fixture_id.to_string();
         self.quantity = 1;
         self.error_message.clear();
-        if self.universe_input == 0 { self.universe_input = 1; }
+        if self.universe_input == 0 {
+            self.universe_input = 1;
+        }
     }
 
     pub fn close_dialog(&mut self) {
@@ -45,7 +47,11 @@ impl PatchingPanelState {
 }
 
 /// Render the patching panel
-pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut PatchingPanelState) {
+pub fn render_patching_panel(
+    ui: &mut egui::Ui,
+    app: &mut EasyCueApp,
+    state: &mut PatchingPanelState,
+) {
     ui.heading("Fixture Patch");
 
     ui.horizontal(|ui| {
@@ -58,7 +64,10 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
         ui.separator();
 
         if ui
-            .add(egui::Button::new(egui::RichText::new(format!("{} 1-to-1", ph::ARROWS_HORIZONTAL)).color(egui::Color32::RED)))
+            .add(egui::Button::new(
+                egui::RichText::new(format!("{} 1-to-1", ph::ARROWS_HORIZONTAL))
+                    .color(egui::Color32::RED),
+            ))
             .clicked()
         {
             state.show_one_to_one_dialog = true;
@@ -67,7 +76,9 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
         }
 
         if ui
-            .add(egui::Button::new(egui::RichText::new(format!("{} Clear Patch", ph::TRASH)).color(egui::Color32::RED)))
+            .add(egui::Button::new(
+                egui::RichText::new(format!("{} Clear Patch", ph::TRASH)).color(egui::Color32::RED),
+            ))
             .clicked()
         {
             state.show_clear_confirm = true;
@@ -140,12 +151,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                             .map(|p| p.name.clone())
                             .unwrap_or_else(|| format!("⚠ {}", patch.profile_id));
                         let profile_missing = profile.is_none();
-                        (
-                            patch.clone(),
-                            profile_name,
-                            profile_missing,
-                            channel_count,
-                        )
+                        (patch.clone(), profile_name, profile_missing, channel_count)
                     })
                     .collect();
 
@@ -161,9 +167,8 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                         // ID (editable)
                         row.col(|ui| {
                             let mut id_val = patch.id as i32;
-                            let resp = ui.add(
-                                egui::DragValue::new(&mut id_val).range(1..=9999).speed(1.0)
-                            );
+                            let resp = ui
+                                .add(egui::DragValue::new(&mut id_val).range(1..=9999).speed(1.0));
                             if resp.changed() && id_val >= 1 {
                                 id_updates.push((patch.id, id_val as usize));
                             }
@@ -174,7 +179,7 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                             let mut new_label = patch.label.clone();
                             let response = ui.add(
                                 egui::TextEdit::singleline(&mut new_label)
-                                    .desired_width(ui.available_width())
+                                    .desired_width(ui.available_width()),
                             );
                             if response.changed() {
                                 label_updates.push((patch.id, new_label));
@@ -192,7 +197,9 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                             egui::ComboBox::from_id_salt(format!("patch_type_{}", patch.id))
                                 .selected_text(selected_text)
                                 .show_ui(ui, |ui| {
-                                    for (option_profile_id, option_name, option_channels) in &profile_options {
+                                    for (option_profile_id, option_name, option_channels) in
+                                        &profile_options
+                                    {
                                         let is_selected = patch.profile_id == *option_profile_id;
                                         if ui.selectable_label(is_selected, option_name).clicked() {
                                             profile_updates.push((
@@ -212,10 +219,12 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                                 let response = ui.add(
                                     egui::DragValue::new(&mut start_address)
                                         .range(1..=512)
-                                        .speed(1.0)
+                                        .speed(1.0),
                                 );
 
-                                let end_address = (u32::from(start_address) + u32::from(channel_count) - 1) as u16;
+                                let end_address = (u32::from(start_address)
+                                    + u32::from(channel_count)
+                                    - 1) as u16;
                                 ui.label(format!("-{}", end_address));
 
                                 if response.changed() {
@@ -227,9 +236,8 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                         // Universe (1-based)
                         row.col(|ui| {
                             let mut uni = patch.universe.max(1) as i32;
-                            let resp = ui.add(
-                                egui::DragValue::new(&mut uni).range(1..=16).speed(1.0)
-                            );
+                            let resp =
+                                ui.add(egui::DragValue::new(&mut uni).range(1..=16).speed(1.0));
                             if resp.changed() && uni >= 1 {
                                 universe_updates.push((patch.id, uni as u16));
                             }
@@ -258,12 +266,15 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                         .map(|p| p.start_address);
 
                     if let Some(start_address) = current_start {
-                        match app
-                            .fixtures
-                            .update_patch_address(id, start_address, new_channel_count)
-                        {
+                        match app.fixtures.update_patch_address(
+                            id,
+                            start_address,
+                            new_channel_count,
+                        ) {
                             Ok(()) => {
-                                if let Some(target_patch) = app.fixtures.patch_list_mut().get_patch_mut(id) {
+                                if let Some(target_patch) =
+                                    app.fixtures.patch_list_mut().get_patch_mut(id)
+                                {
                                     target_patch.profile_id = new_profile_id;
                                 }
                             }
@@ -275,9 +286,9 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
                 }
 
                 for (id, new_start_address, channel_count) in address_updates {
-                    if let Err(e) = app
-                        .fixtures
-                        .update_patch_address(id, new_start_address, channel_count)
+                    if let Err(e) =
+                        app.fixtures
+                            .update_patch_address(id, new_start_address, channel_count)
                     {
                         app.ui_state.status_message = format!("Error: {}", e);
                     }
@@ -322,7 +333,10 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ui.ctx(), |ui| {
                 ui.set_min_width(300.0);
-                ui.label(RichText::new("This will delete all patched fixtures.").color(egui::Color32::RED));
+                ui.label(
+                    RichText::new("This will delete all patched fixtures.")
+                        .color(egui::Color32::RED),
+                );
                 ui.label("This cannot be undone.");
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
@@ -351,7 +365,10 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ui.ctx(), |ui| {
                 ui.set_min_width(300.0);
-                ui.label(RichText::new("This will delete all patched fixtures...").color(egui::Color32::RED));
+                ui.label(
+                    RichText::new("This will delete all patched fixtures...")
+                        .color(egui::Color32::RED),
+                );
                 ui.label("...and create simple dimmer channels.");
                 ui.label("This cannot be undone.");
                 ui.add_space(6.0);
@@ -417,7 +434,11 @@ pub fn render_patching_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mu
 /// Render the add/edit patch dialog
 fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut PatchingPanelState) {
     let is_editing = state.editing_patch_id.is_some();
-    let title = if is_editing { "Edit Fixture" } else { "Add Fixture" };
+    let title = if is_editing {
+        "Edit Fixture"
+    } else {
+        "Add Fixture"
+    };
 
     egui::Window::new(title)
         .collapsible(false)
@@ -467,7 +488,10 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                     // Channel count info
                     if let Some(profile) = app.fixtures.get_profile(&state.selected_profile_id) {
                         ui.label("");
-                        ui.label(RichText::new(format!("{} channels", profile.channel_count)).color(Color32::GRAY));
+                        ui.label(
+                            RichText::new(format!("{} channels", profile.channel_count))
+                                .color(Color32::GRAY),
+                        );
                         ui.end_row();
                     }
 
@@ -482,7 +506,9 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                     // Universe
                     ui.label("Universe:");
                     ui.horizontal(|ui| {
-                        if state.universe_input == 0 { state.universe_input = 1; }
+                        if state.universe_input == 0 {
+                            state.universe_input = 1;
+                        }
                         let mut uni = state.universe_input as i32;
                         ui.add(egui::DragValue::new(&mut uni).range(1..=16).speed(1.0));
                         state.universe_input = uni as u16;
@@ -494,18 +520,30 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                     if !is_editing {
                         ui.label("Quantity:");
                         let mut qty = state.quantity.max(1) as i32;
-                        if ui.add(egui::DragValue::new(&mut qty).range(1..=50)).changed() {
+                        if ui
+                            .add(egui::DragValue::new(&mut qty).range(1..=50))
+                            .changed()
+                        {
                             state.quantity = qty as u32;
                         }
                         ui.end_row();
 
                         // Preview end address
-                        if let Some(profile) = app.fixtures.get_profile(&state.selected_profile_id) {
+                        if let Some(profile) = app.fixtures.get_profile(&state.selected_profile_id)
+                        {
                             if let Ok(addr) = state.address_input.trim().parse::<u16>() {
                                 let end = addr + profile.channel_count * state.quantity as u16 - 1;
                                 ui.label("");
-                                let color = if end > 512 { Color32::RED } else { Color32::GRAY };
-                                ui.label(RichText::new(format!("uses DMX {addr}–{end}")).color(color).small());
+                                let color = if end > 512 {
+                                    Color32::RED
+                                } else {
+                                    Color32::GRAY
+                                };
+                                ui.label(
+                                    RichText::new(format!("uses DMX {addr}–{end}"))
+                                        .color(color)
+                                        .small(),
+                                );
                                 ui.end_row();
                             }
                         }
@@ -537,7 +575,10 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                     "Add".into()
                 };
 
-                if ui.add_enabled(can_submit, egui::Button::new(btn_label)).clicked() {
+                if ui
+                    .add_enabled(can_submit, egui::Button::new(btn_label))
+                    .clicked()
+                {
                     let addr_result = state.address_input.trim().parse::<u16>();
                     let fnum_result = state.fixture_number_input.trim().parse::<usize>();
                     match (addr_result, fnum_result) {
@@ -550,7 +591,8 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                                 state.error_message = "Edit not yet implemented".to_string();
                             } else {
                                 let qty = state.quantity.max(1) as usize;
-                                let ch_count = app.fixtures
+                                let ch_count = app
+                                    .fixtures
                                     .get_profile(&state.selected_profile_id)
                                     .map(|p| p.channel_count as usize)
                                     .unwrap_or(1);
@@ -568,18 +610,28 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                                         format!("{} {}", state.label_input, i + 1)
                                     };
                                     match app.fixtures.add_patch_with_id(
-                                        fid, label,
-                                        state.selected_profile_id.clone(), addr, universe,
+                                        fid,
+                                        label,
+                                        state.selected_profile_id.clone(),
+                                        addr,
+                                        universe,
                                     ) {
-                                        Ok(id) => { last_id = id; }
-                                        Err(e) => { errors.push(format!("#{fid}: {e}")); }
+                                        Ok(id) => {
+                                            last_id = id;
+                                        }
+                                        Err(e) => {
+                                            errors.push(format!("#{fid}: {e}"));
+                                        }
                                     }
                                 }
                                 if errors.is_empty() {
                                     app.ui_state.status_message = if qty == 1 {
                                         format!("Added fixture #{} at {}", last_id, address)
                                     } else {
-                                        format!("Added {} fixtures starting at #{}", qty, fixture_num)
+                                        format!(
+                                            "Added {} fixtures starting at #{}",
+                                            qty, fixture_num
+                                        )
                                     };
                                     state.close_dialog();
                                 } else {
@@ -591,7 +643,8 @@ fn render_patch_dialog(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut Patc
                             state.error_message = "Invalid DMX address".to_string();
                         }
                         (_, Err(_)) => {
-                            state.error_message = "Fixture number must be a positive integer".to_string();
+                            state.error_message =
+                                "Fixture number must be a positive integer".to_string();
                         }
                     }
                 }

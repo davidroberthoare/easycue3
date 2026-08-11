@@ -4,7 +4,7 @@
 //! (white at centre, full colour at rim).  Value is fixed at 1.0 — use the
 //! fixture's intensity or virtual-intensity slider to control brightness.
 
-use egui::{Color32, Rect, Sense, Stroke, Ui, Vec2, pos2};
+use egui::{pos2, Color32, Rect, Sense, Stroke, Ui, Vec2};
 
 pub struct ColorWheel {
     /// Hue, 0.0–1.0 (red=0, clockwise).
@@ -17,7 +17,12 @@ pub struct ColorWheel {
 
 impl Default for ColorWheel {
     fn default() -> Self {
-        Self { hue: 0.0, saturation: 0.0, texture: None, last_size: Vec2::ZERO }
+        Self {
+            hue: 0.0,
+            saturation: 0.0,
+            texture: None,
+            last_size: Vec2::ZERO,
+        }
     }
 }
 
@@ -71,10 +76,7 @@ impl ColorWheel {
             let radius = rect.width().min(rect.height()) * 0.5;
             let angle = self.hue * std::f32::consts::TAU;
             let dist = self.saturation * radius;
-            let sel = pos2(
-                center.x + angle.cos() * dist,
-                center.y + angle.sin() * dist,
-            );
+            let sel = pos2(center.x + angle.cos() * dist, center.y + angle.sin() * dist);
             painter.circle_stroke(sel, 8.5, Stroke::new(3.0, Color32::BLACK));
             painter.circle_stroke(sel, 7.0, Stroke::new(1.5, Color32::WHITE));
         }
@@ -127,7 +129,10 @@ impl ColorWheel {
 
         ctx.load_texture(
             "color_wheel",
-            egui::ColorImage { size: [w, h], pixels },
+            egui::ColorImage {
+                size: [w, h],
+                pixels,
+            },
             egui::TextureOptions {
                 magnification: egui::TextureFilter::Linear,
                 minification: egui::TextureFilter::Linear,

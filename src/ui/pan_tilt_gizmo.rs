@@ -6,7 +6,7 @@
 //!
 //! Values are in the internal 0–100 range, matching the rest of the DMX layer.
 
-use egui::{Color32, Sense, Stroke, Ui, Vec2, pos2};
+use egui::{pos2, Color32, Sense, Stroke, Ui, Vec2};
 
 /// Stateless 2-D pan/tilt gizmo.  Pan and tilt map directly to raw channel
 /// values (0–100) so no intermediate conversion state is required.
@@ -26,15 +26,19 @@ impl PanTiltGizmo {
     /// Draw the gizmo.  `pan` and `tilt` are current internal values (0–100).
     /// Returns `Some((new_pan, new_tilt))` when the user clicks or drags.
     pub fn show(&self, ui: &mut Ui, pan: u8, tilt: u8, size: f32) -> Option<(u8, u8)> {
-        let (rect, response) =
-            ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
+        let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
 
             // Background
             painter.rect_filled(rect, 3.0, Color32::from_gray(28));
-            painter.rect_stroke(rect, 3.0, Stroke::new(1.0, Color32::from_gray(70)), egui::epaint::StrokeKind::Inside);
+            painter.rect_stroke(
+                rect,
+                3.0,
+                Stroke::new(1.0, Color32::from_gray(70)),
+                egui::epaint::StrokeKind::Inside,
+            );
 
             // Subtle centre crosshairs
             let cx = rect.left() + rect.width() * 0.5;

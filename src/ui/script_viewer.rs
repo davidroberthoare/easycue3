@@ -88,7 +88,11 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         // Dark mode: invert the page (white text on black). Re-rasterizes the
         // current page on toggle; the setting persists alongside the zoom.
         let mut dark = app.script_viewer.dark_mode;
-        if ui.toggle_value(&mut dark, "🌙 Dark").on_hover_text("Invert the script page").changed() {
+        if ui
+            .toggle_value(&mut dark, "🌙 Dark")
+            .on_hover_text("Invert the script page")
+            .changed()
+        {
             app.script_viewer.set_dark_mode(dark, ui.ctx());
         }
         ui.separator();
@@ -122,9 +126,7 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             if page_resp.response.changed() {
                 app.ui_state.page_jump_input = page_edit;
             }
-            if page_resp.response.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-            {
+            if page_resp.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 if let Ok(n) = app.ui_state.page_jump_input.trim().parse::<usize>() {
                     let target = n.clamp(1, page_count.max(1));
                     app.script_viewer.current_page = target - 1;
@@ -289,8 +291,7 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // Don't let the wheel pan/zoom the page while the add-cue popup is open or a
     // dropdown/menu (combo box, colour picker, …) is showing — the scroll should
     // go to that control, not to the PDF behind it.
-    let popup_active =
-        app.script_viewer.pending_add.is_some() || ui.memory(|m| m.any_popup_open());
+    let popup_active = app.script_viewer.pending_add.is_some() || ui.memory(|m| m.any_popup_open());
     if pointer_over_canvas && !popup_active {
         if ctrl_zoom != 1.0 {
             app.script_viewer.zoom = (app.script_viewer.zoom * ctrl_zoom).clamp(MIN_ZOOM, MAX_ZOOM);
