@@ -491,15 +491,14 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("ETC EOS ASCII Show", &["asc"])
                         .set_directory("./shows")
-                        .set_file_name(&format!(
-                            "{}.asc",
-                            title.to_lowercase().replace(' ', "_")
-                        ))
+                        .set_file_name(&format!("{}.asc", title.to_lowercase().replace(' ', "_")))
                         .save_file()
                     {
                         let contents = crate::show::ascii_export::export_ascii(
                             &app.cue_list,
                             app.fixtures.patch_list().patches(),
+                            app.fixtures.profiles(),
+                            &title,
                         );
                         match std::fs::write(&path, contents) {
                             Ok(_) => {
@@ -508,8 +507,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                                 log::info!("Exported EOS ASCII to {:?}", path);
                             }
                             Err(e) => {
-                                app.ui_state.status_message =
-                                    format!("Export error: {}", e);
+                                app.ui_state.status_message = format!("Export error: {}", e);
                                 log::error!("Failed to export EOS ASCII: {}", e);
                             }
                         }
