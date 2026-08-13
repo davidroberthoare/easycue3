@@ -4,6 +4,8 @@
 //! Old show files (pre-Phase B) used separate "cues" and "audio_cues" lists with a flat
 //! format; load() auto-migrates them into the unified format.
 
+pub mod ascii_export;
+
 use anyhow::Result;
 use crate::cue::Cue;
 use crate::fixtures::Patch;

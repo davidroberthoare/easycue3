@@ -486,6 +486,37 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     ui.close_menu();
                 }
                 ui.separator();
+                if ui.button("Export as EOS ASCII…").clicked() {
+                    let title = app.show_title.clone();
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("ETC EOS ASCII Show", &["asc"])
+                        .set_directory("./shows")
+                        .set_file_name(&format!(
+                            "{}.asc",
+                            title.to_lowercase().replace(' ', "_")
+                        ))
+                        .save_file()
+                    {
+                        let contents = crate::show::ascii_export::export_ascii(
+                            &app.cue_list,
+                            app.fixtures.patch_list().patches(),
+                        );
+                        match std::fs::write(&path, contents) {
+                            Ok(_) => {
+                                app.ui_state.status_message =
+                                    format!("Exported EOS ASCII to {:?}", path);
+                                log::info!("Exported EOS ASCII to {:?}", path);
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message =
+                                    format!("Export error: {}", e);
+                                log::error!("Failed to export EOS ASCII: {}", e);
+                            }
+                        }
+                    }
+                    ui.close_menu();
+                }
+                ui.separator();
                 if ui.button("Exit (Ctrl+Q)").clicked() {
                     log::info!("Quit requested from File menu (Ctrl+Q)");
                     app.ui_state.show_quit_confirmation = true;
