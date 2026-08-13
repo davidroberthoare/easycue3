@@ -76,7 +76,9 @@ pub fn export_ascii(cue_list: &CueList, patch: &[Patch]) -> String {
         writeln!(out, "CUE {}", cue_num).ok();
 
         if !cue.label.is_empty() {
-            writeln!(out, "TEXT {}", cue.label).ok();
+            // Strip newlines: TEXT is a single-line field in the ASCII format.
+            let safe_label = cue.label.replace(['\n', '\r'], " ");
+            writeln!(out, "TEXT {}", safe_label).ok();
         }
 
         writeln!(out, "UP {:.2}", data.fade_up).ok();
@@ -116,6 +118,8 @@ pub fn export_ascii(cue_list: &CueList, patch: &[Patch]) -> String {
                 .copied()
                 .unwrap_or(dmx_ch as u32);
 
+            // Channel values are 0–100 (percent) in EasyCue3's internal model,
+            // which matches EOS ASCII's AT scale — no conversion needed.
             writeln!(out, "CHAN {} AT {}", eos_chan, level).ok();
         }
 
@@ -155,7 +159,7 @@ fn build_address_map(patch: &[Patch]) -> HashMap<(u16, u16), u32> {
 /// is exactly zero so "1.0" becomes "1", and keep up to 2 decimal places
 /// otherwise ("1.5", "1.25").
 fn format_cue_number(number: f32) -> String {
-    if (number - number.floor()).abs() < f32::EPSILON {
+    if (number - number.floor()).abs() < 1e-4 {
         format!("{}", number as u32)
     } else {
         // Strip trailing zeros (e.g. 1.50 -> 1.5)

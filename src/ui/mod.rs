@@ -504,7 +504,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         match std::fs::write(&path, contents) {
                             Ok(_) => {
                                 app.ui_state.status_message =
-                                    format!("Exported EOS ASCII to {:?}", path);
+                                    format!("Exported EOS ASCII to {}", path.display());
                                 log::info!("Exported EOS ASCII to {:?}", path);
                             }
                             Err(e) => {
