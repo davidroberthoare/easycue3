@@ -16,6 +16,12 @@
 //! Amber/White/UV/…), and a 16-bit Pan/Tilt is rebuilt from its coarse+fine
 //! halves.
 //!
+//! `AsciiExportMode` selects which records are written: `Full` is a
+//! self-contained show; `MvrMatch` pairs with an imported MVR, emitting a
+//! patch section that references the same GDTF fixture identities the MVR
+//! embeds (no `Clear All`) so the patch is preserved rather than reset;
+//! `CuesOnly` emits cue data only.
+//!
 //! Fixtures whose profile cannot be mapped (unknown or `Custom` parameters)
 //! fall back to a conventional dimmer patch: the start address becomes one
 //! channel (the fixture ID) and any used sub-channels become their own channels
@@ -319,9 +325,18 @@ fn flat_channel(universe: u16, address: u16) -> u32 {
 }
 
 /// Build the fixture export table in fixture-ID order.
+///
+/// `require_known_personality` gates whether a mappable profile is only
+/// treated as a real multi-parameter fixture when it matches one of EOS's
+/// built-in "Generic" combos (`AsciiExportMode::Full`, since EOS can't build
+/// a working personality from arbitrary `$$PersChan` data — see
+/// `known_personality`). In `AsciiExportMode::CuesOnly`, fixtures are assumed
+/// already patched elsewhere (e.g. via an imported MVR/GDTF with their real
+/// personality), so any mappable profile is used as-is.
 fn build_fixtures(
     patch: &[Patch],
     profiles: &HashMap<String, FixtureProfile>,
+    require_known_personality: bool,
 ) -> Vec<FixtureExport> {
     let mut sorted: Vec<&Patch> = patch.iter().collect();
     sorted.sort_by_key(|p| p.id);
@@ -333,11 +348,7 @@ fn build_fixtures(
         let profile = profiles.get(&p.profile_id);
         let channel_count = profile.map(|pr| pr.channel_count).unwrap_or(1);
         let (params, param_slots) = match profile.and_then(build_personality) {
-            // Only fixtures matching one of EOS's own built-in "Generic"
-            // personalities can be patched as a real multi-parameter fixture
-            // (see `known_personality`); anything else falls back to flat
-            // per-address channels so its levels aren't silently dropped.
-            Some(params) if known_personality(&params).is_some() => {
+            Some(params) if !require_known_personality || known_personality(&params).is_some() => {
                 let mut slots = HashMap::new();
                 for (idx, param) in params.iter().enumerate() {
                     slots.insert(param.dmx_offset - 1, ParamSlot::Msb(idx));
@@ -460,6 +471,36 @@ fn resolve_target(fixtures: &[FixtureExport], uni: u16, addr: u16) -> ChannelTar
     }
 }
 
+/// Which patch-related records `export_ascii` emits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AsciiExportMode {
+    /// Self-contained show: `Clear All`, `$Personality`/`$Patch` (fake Dcids
+    /// for combos EOS doesn't know fall back to flat per-address channels —
+    /// see `KNOWN_PERSONALITIES`), then cues. For pure-ASCII workflows with
+    /// no companion GDTF/MVR import.
+    Full,
+    /// Cue/level data only: no `Clear All`, `Set Channels`, `$Personality`,
+    /// or `$Patch` records at all — importing this can't touch (or wipe)
+    /// whatever patch/fixture-library state already exists. Assumes
+    /// fixtures are already patched elsewhere (e.g. an imported MVR/GDTF)
+    /// with their real personality, so every mappable parameter — not just
+    /// `KNOWN_PERSONALITIES` combos — is written as `$$Param`/16-bit
+    /// position data on the fixture's own channel number.
+    ///
+    /// Not produced by any current UI action (the MVR bundle uses `MvrMatch`,
+    /// since EOS resets the patch when importing a file with no patch
+    /// records); kept for callers on consoles that merge ASCII imports.
+    #[allow(dead_code)]
+    CuesOnly,
+    /// Cues plus a patch section that **matches the fixture types an MVR
+    /// import establishes**: no `Clear All` (never wipe the MVR patch), but
+    /// `$Personality`/`$Patch` records reference the same GDTF identity
+    /// (`$$Manuf EasyCue3`, `$$Model <profile>`, `$$Dcid <gdtf_guid>`) the
+    /// MVR embeds, so importing this after the MVR re-patches the identical
+    /// fixture types/addresses instead of resetting them.
+    MvrMatch,
+}
+
 /// Build an ETC EOS-family ASCII show file from a cue list and fixture patch.
 ///
 /// `profiles` maps profile IDs to their definitions (used to build fixture
@@ -471,45 +512,54 @@ pub fn export_ascii(
     patch: &[Patch],
     profiles: &HashMap<String, FixtureProfile>,
     title: &str,
+    mode: AsciiExportMode,
 ) -> String {
-    let fixtures = build_fixtures(patch, profiles);
+    let full = mode == AsciiExportMode::Full;
+    let mvr_match = mode == AsciiExportMode::MvrMatch;
+    // Patch records are emitted in `Full` (self-contained) and `MvrMatch`
+    // (re-establishes the patch an imported MVR created); `CuesOnly` emits none.
+    let emit_patch = full || mvr_match;
+    let fixtures = build_fixtures(patch, profiles, full);
     let reserved_ids: HashSet<u32> = fixtures.iter().map(|f| f.id).collect();
 
     // -----------------------------------------------------------------------
     // Pre-scan the cue data: which conventional `Patch` lines are needed for
     // non-personality channels, and the highest channel number in use.
+    // Only relevant when patch records are emitted.
     // -----------------------------------------------------------------------
     let mut conventional_patch: Vec<(u16, u16, u32)> = Vec::new(); // (universe, addr, chan)
-    for cue in cue_list.cues() {
-        let CueKind::Lighting(data) = &cue.kind else {
-            continue;
-        };
-        for &key in data.channel_values.keys() {
-            let (uni, addr) = decode_universe_key(key);
-            if needs_conventional_patch(&fixtures, &reserved_ids, uni, addr) {
-                let chan = resolve_fallback_channel(&fixtures, uni, addr);
-                conventional_patch.push((uni, addr, chan));
-            }
-        }
-    }
-    // Always patch fallback fixtures' start addresses, even if never used in a cue.
-    for fx in &fixtures {
-        if fx.personality.is_none() {
-            let entry = (fx.universe, fx.start, fx.id);
-            if !conventional_patch.contains(&entry) {
-                conventional_patch.push(entry);
-            }
-        }
-    }
-    conventional_patch.sort_unstable();
-    conventional_patch.dedup();
-
     let mut max_channel = 512u32;
-    for &(_, _, chan) in &conventional_patch {
-        max_channel = max_channel.max(chan);
-    }
-    for fx in &fixtures {
-        max_channel = max_channel.max(fx.id);
+    if emit_patch {
+        for cue in cue_list.cues() {
+            let CueKind::Lighting(data) = &cue.kind else {
+                continue;
+            };
+            for &key in data.channel_values.keys() {
+                let (uni, addr) = decode_universe_key(key);
+                if needs_conventional_patch(&fixtures, &reserved_ids, uni, addr) {
+                    let chan = resolve_fallback_channel(&fixtures, uni, addr);
+                    conventional_patch.push((uni, addr, chan));
+                }
+            }
+        }
+        // Always patch fallback fixtures' start addresses, even if never used in a cue.
+        for fx in &fixtures {
+            if fx.personality.is_none() {
+                let entry = (fx.universe, fx.start, fx.id);
+                if !conventional_patch.contains(&entry) {
+                    conventional_patch.push(entry);
+                }
+            }
+        }
+        conventional_patch.sort_unstable();
+        conventional_patch.dedup();
+
+        for &(_, _, chan) in &conventional_patch {
+            max_channel = max_channel.max(chan);
+        }
+        for fx in &fixtures {
+            max_channel = max_channel.max(fx.id);
+        }
     }
 
     let mut out = String::with_capacity(8192);
@@ -524,8 +574,15 @@ pub fn export_ascii(
     if !title.is_empty() {
         writeln!(out, "$$Title {}", single_line(title)).ok();
     }
-    out.push_str("Clear All\n");
-    writeln!(out, "Set Channels {}\n", max_channel).ok();
+    if full {
+        // `Clear All` resets the console's existing patch/library state
+        // before applying this file — only for the self-contained `Full`
+        // export. `MvrMatch` must preserve the patch an MVR import created.
+        out.push_str("Clear All\n");
+    }
+    if emit_patch {
+        writeln!(out, "Set Channels {}\n", max_channel).ok();
+    }
 
     // -----------------------------------------------------------------------
     // Fixture parameter definitions ($ParamType)
@@ -546,9 +603,9 @@ pub fn export_ascii(
     }
 
     // -----------------------------------------------------------------------
-    // Fixture personalities + patch
+    // Fixture personalities + patch (Full and MvrMatch modes only).
     // -----------------------------------------------------------------------
-    if !fixtures.is_empty() {
+    if emit_patch && !fixtures.is_empty() {
         // One $Personality per distinct personality ID (first fixture wins).
         let mut seen_pids: Vec<u32> = fixtures.iter().filter_map(|f| f.personality).collect();
         seen_pids.sort_unstable();
@@ -562,13 +619,24 @@ pub fn export_ascii(
             let Some(profile) = profiles.get(&p.profile_id) else {
                 continue;
             };
-            // Matched against `KNOWN_PERSONALITIES` in `build_fixtures`, so
-            // this always resolves for a fixture with `personality` set.
-            let known = known_personality(&fx.params).unwrap();
+            // `Full` matches EOS's built-in "Generic" personalities (see
+            // `KNOWN_PERSONALITIES`). `MvrMatch` references the same GDTF
+            // fixture identity the companion MVR embeds, so EOS resolves it
+            // to the already-imported fixture type.
+            let (manuf, model, dcid) = if full {
+                let known = known_personality(&fx.params).unwrap();
+                (
+                    "Generic".to_string(),
+                    known.model.to_string(),
+                    known.dcid.to_string(),
+                )
+            } else {
+                crate::show::gdtf_export::profile_identity(profile)
+            };
             writeln!(out, "$Personality {}", pid).ok();
-            writeln!(out, "   $$Manuf Generic").ok();
-            writeln!(out, "   $$Model {}", known.model).ok();
-            writeln!(out, "   $$Dcid {}", known.dcid).ok();
+            writeln!(out, "   $$Manuf {}", single_line(&manuf)).ok();
+            writeln!(out, "   $$Model {}", single_line(&model)).ok();
+            writeln!(out, "   $$Dcid {}", dcid).ok();
             writeln!(out, "   $$Footprint {}", profile.channel_count).ok();
             for p in &fx.params {
                 if p.size == 2 {
@@ -611,9 +679,20 @@ pub fn export_ascii(
             if let Some(pid) = fx.personality {
                 let edmx = fx.start as u32 + (fx.universe as u32 - 1) * 512;
                 let mode = if edmx > 512 { 1 } else { 0 };
-                let model = known_personality(&fx.params).map(|k| k.model).unwrap_or("Fixture");
+                let model = if full {
+                    known_personality(&fx.params)
+                        .map(|k| k.model)
+                        .unwrap_or("Fixture")
+                        .to_string()
+                } else {
+                    let p = patch.iter().find(|p| p.id == fx.id as usize).unwrap();
+                    profiles
+                        .get(&p.profile_id)
+                        .map(|pr| pr.name.clone())
+                        .unwrap_or_else(|| "Fixture".to_string())
+                };
                 writeln!(out, "$Patch {} {} {} {} 1", fx.id, pid, edmx, mode).ok();
-                writeln!(out, "   $$Pers {}", single_line(model)).ok();
+                writeln!(out, "   $$Pers {}", single_line(&model)).ok();
                 if !fx.label.is_empty() {
                     writeln!(out, "   Text {}", single_line(&fx.label)).ok();
                 }
@@ -628,17 +707,19 @@ pub fn export_ascii(
     // personality fixtures' uncovered addresses, and addresses outside any
     // fixture).  Skip entries that were already emitted as a fixture's own
     // Patch line above.
-    for (uni, addr, chan) in &conventional_patch {
-        let is_own_patch = fixtures.iter().any(|f| {
-            f.personality.is_none() && f.id == *chan && f.start == *addr && f.universe == *uni
-        });
-        if is_own_patch {
-            continue;
+    if emit_patch {
+        for (uni, addr, chan) in &conventional_patch {
+            let is_own_patch = fixtures.iter().any(|f| {
+                f.personality.is_none() && f.id == *chan && f.start == *addr && f.universe == *uni
+            });
+            if is_own_patch {
+                continue;
+            }
+            writeln!(out, "Patch {} {}<{}@Hff", uni, chan, addr).ok();
         }
-        writeln!(out, "Patch {} {}<{}@Hff", uni, chan, addr).ok();
-    }
-    if !conventional_patch.is_empty() {
-        out.push('\n');
+        if !conventional_patch.is_empty() {
+            out.push('\n');
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -915,7 +996,7 @@ mod tests {
     #[test]
     fn empty_show_produces_valid_ascii() {
         let list = CueList::new();
-        let out = export_ascii(&list, &[], &HashMap::new(), "");
+        let out = export_ascii(&list, &[], &HashMap::new(), "", AsciiExportMode::Full);
         assert!(out.starts_with("Ident 3:0\n"));
         assert!(out.ends_with("EndData\n"));
         assert!(out.contains("$CueList 1\n"));
@@ -930,7 +1011,7 @@ mod tests {
         let mut cue = Cue::new_lighting(1.0);
         cue.lighting_data_mut().unwrap().set_channel(10, 75);
         let list = make_list(vec![cue]);
-        let out = export_ascii(&list, &patch, &profiles, "");
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::Full);
         // Fixture 5 at address 10, one-channel personality, no flat patch.
         assert!(out.contains("$Patch 5 90000 10 0 1\n"));
         assert!(out.contains("$$PersChan     1     1     1     0     0\n"));
@@ -954,12 +1035,91 @@ mod tests {
         d.set_channel(101, 50); // green
         d.channel_values.insert(universe_key(1, 102), 0); // blue -> explicit zero
         let list = make_list(vec![cue]);
-        let out = export_ascii(&list, &patch, &profiles, "");
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::Full);
 
         assert!(!out.contains("$Personality"));
         // Each address becomes its own flat channel: fixture ID for the
         // start address, DMX address for the rest.
         assert!(out.contains("$$ChanMove 11@Hff 101@H80 102@H00"));
+    }
+
+    #[test]
+    fn cues_only_mode_omits_clear_all_and_patch_records() {
+        // Same RGB profile as above, but in CuesOnly mode it must not touch
+        // patch at all — no Clear All, Set Channels, $Personality, $Patch or
+        // bare Patch lines — and (unlike Full mode) its color parameters use
+        // $$Param on the fixture's own channel instead of falling back to
+        // flat per-address channels, since the fixture is assumed already
+        // patched (e.g. via MVR) with its real personality.
+        let mut profiles = HashMap::new();
+        profiles.insert("rgb".into(), rgb_profile());
+        let patch = vec![patch(11, 100, 1, "rgb")];
+
+        let mut cue = Cue::new_lighting(1.0);
+        let d = cue.lighting_data_mut().unwrap();
+        d.set_channel(100, 100); // red
+        d.set_channel(101, 50); // green
+        let list = make_list(vec![cue]);
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::CuesOnly);
+
+        assert!(!out.contains("Clear All"));
+        assert!(!out.contains("Set Channels"));
+        assert!(!out.contains("$Personality"));
+        assert!(!out.contains("$Patch"));
+        assert!(!out.contains("\nPatch "));
+        assert!(out.contains("$$Param 11 12@255"));
+        assert!(out.contains("13@128"));
+    }
+
+    #[test]
+    fn mvr_match_mode_references_gdtf_identity_patch() {
+        // The MVR bundle's ASCII must re-establish the same patch the MVR
+        // created: no Clear All, but $Personality/$Patch records referencing
+        // the GDTF fixture identity (manuf/model/Dcid), with cue levels on
+        // the fixture's own parameters.
+        let mut profiles = HashMap::new();
+        profiles.insert("rgb".into(), rgb_profile());
+        let patch = vec![patch(11, 100, 1, "rgb")];
+
+        let mut cue = Cue::new_lighting(1.0);
+        let d = cue.lighting_data_mut().unwrap();
+        d.set_channel(100, 100); // red
+        d.set_channel(101, 50); // green
+        let list = make_list(vec![cue]);
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::MvrMatch);
+
+        assert!(!out.contains("Clear All"));
+        assert!(out.contains("Set Channels 512"));
+        assert!(out.contains("$$Manuf EasyCue3\n"));
+        assert!(out.contains("$$Model RGB\n"));
+        assert!(out.contains(&format!(
+            "$$Dcid {}\n",
+            crate::show::gdtf_export::gdtf_guid("rgb")
+        )));
+        assert!(out.contains("$Patch 11 90000 100 0 1\n"));
+        assert!(out.contains("$$Pers RGB\n"));
+        // Levels on the fixture's own channel; no flat per-address patches.
+        assert!(out.contains("$$Param 11 12@255 13@128"));
+        assert!(!out.contains("Patch 1 100<"));
+    }
+
+    #[test]
+    fn mvr_match_dimmer_references_gdtf_identity() {
+        let mut profiles = HashMap::new();
+        profiles.insert("dimmer".into(), dimmer_profile());
+        let patch = vec![patch(5, 10, 1, "dimmer")];
+
+        let list = make_list(vec![Cue::new_lighting(1.0)]);
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::MvrMatch);
+
+        // Must use the GDTF dimmer identity (matching the MVR), not EOS's
+        // built-in Generic Dimmer Dcid.
+        assert!(out.contains(&format!(
+            "$$Dcid {}\n",
+            crate::show::gdtf_export::gdtf_guid("dimmer")
+        )));
+        assert!(!out.contains("1631553D-CE8B-416F-B9C8-D8269CBA7F43"));
+        assert!(out.contains("$Patch 5 90000 10 0 1\n"));
     }
 
     #[test]
@@ -999,7 +1159,7 @@ mod tests {
         profiles.insert("irgb".into(), profile);
         let patch = vec![patch(6, 20, 1, "irgb")];
         let list = make_list(vec![Cue::new_lighting(1.0)]);
-        let out = export_ascii(&list, &patch, &profiles, "");
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::Full);
 
         assert!(out.contains("$$Manuf Generic\n"));
         assert!(out.contains("$$Model LED_IRGB_8B\n"));
@@ -1060,7 +1220,7 @@ mod tests {
         d.channel_values.insert(universe_key(1, 2), 0); // pan fine -> flat channel 2, explicit zero
         d.set_channel(6, 100); // red -> flat channel 6
         let list = make_list(vec![cue]);
-        let out = export_ascii(&list, &patch, &profiles, "");
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::Full);
 
         assert!(!out.contains("$Personality"));
         assert!(out.contains("$$ChanMove 1@H80 2@H00 6@Hff"));
@@ -1095,7 +1255,7 @@ mod tests {
         let mut cue = Cue::new_lighting(1.0);
         cue.lighting_data_mut().unwrap().set_channel(20, 80);
         let list = make_list(vec![cue]);
-        let out = export_ascii(&list, &patch, &profiles, "");
+        let out = export_ascii(&list, &patch, &profiles, "", AsciiExportMode::Full);
 
         // No personality; start address becomes the fixture-ID channel.
         assert!(!out.contains("$Personality"));
@@ -1110,7 +1270,7 @@ mod tests {
         d.set_channel_in_universe(1, 1, 100);
         d.set_channel_in_universe(2, 1, 50);
         let list = make_list(vec![cue]);
-        let out = export_ascii(&list, &[], &HashMap::new(), "");
+        let out = export_ascii(&list, &[], &HashMap::new(), "", AsciiExportMode::Full);
         // No fixtures: both addresses become flat channels.
         assert!(out.contains("Patch 1 1<1@Hff\n"));
         assert!(out.contains("Patch 2 513<1@Hff\n"));
@@ -1125,7 +1285,7 @@ mod tests {
         let mut cue = Cue::new_lighting(1.0);
         *cue.lighting_data_mut().unwrap() = data;
         let list = make_list(vec![cue]);
-        let out = export_ascii(&list, &[], &HashMap::new(), "");
+        let out = export_ascii(&list, &[], &HashMap::new(), "", AsciiExportMode::Full);
         assert!(out.contains("$$ChanMove 5@H00"));
     }
 

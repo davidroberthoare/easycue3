@@ -5,6 +5,8 @@
 //! format; load() auto-migrates them into the unified format.
 
 pub mod ascii_export;
+pub mod gdtf_export;
+pub mod mvr_export;
 
 use anyhow::Result;
 use crate::cue::Cue;

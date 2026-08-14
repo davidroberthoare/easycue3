@@ -309,6 +309,69 @@ fn execute_goto(app: &mut EasyCueApp) {
     }
 }
 
+/// Export an MVR (fixture types + real DMX patch, via embedded GDTF) plus an
+/// ASCII show into `dir`, with a README explaining the import order. MVR
+/// carries fixture type, DMX address, and fixture number in one file. The
+/// ASCII is exported in `AsciiExportMode::MvrMatch`: it carries a patch
+/// section that references the same GDTF fixture identities the MVR embeds
+/// (no `Clear All`), so importing it after the MVR re-patches the identical
+/// fixtures instead of resetting them, and adds the cue/level data.
+fn export_mvr_ascii_bundle(
+    app: &EasyCueApp,
+    dir: &std::path::Path,
+    title: &str,
+) -> anyhow::Result<usize> {
+    let profiles = app.fixtures.profiles();
+    let mut profile_ids: Vec<&String> = app
+        .fixtures
+        .patch_list()
+        .patches()
+        .iter()
+        .map(|p| &p.profile_id)
+        .collect();
+    profile_ids.sort();
+    profile_ids.dedup();
+    let count = profile_ids.len();
+
+    let mvr = crate::show::mvr_export::export_mvr(app.fixtures.patch_list().patches(), profiles);
+    let mvr_filename = format!("{}.mvr", title.to_lowercase().replace(' ', "_"));
+    std::fs::write(dir.join(mvr_filename), mvr)?;
+
+    let ascii = crate::show::ascii_export::export_ascii(
+        &app.cue_list,
+        app.fixtures.patch_list().patches(),
+        profiles,
+        title,
+        crate::show::ascii_export::AsciiExportMode::MvrMatch,
+    );
+    let ascii_filename = format!("{}_cues.asc", title.to_lowercase().replace(' ', "_"));
+    std::fs::write(dir.join(ascii_filename), ascii)?;
+
+    std::fs::write(
+        dir.join("README.txt"),
+        "EasyCue3 MVR + ASCII export\n\
+         ===========================\n\n\
+         Import these in order:\n\n\
+         1. Import the .mvr file first (File > Import > MVR, if supported).\n\
+         This patches every fixture with its real type (embedded GDTF), DMX\n\
+         address, and fixture number in one step.\n\n\
+         2. Import the _cues.asc file second (File > Import > ASCII). It\n\
+         contains the cue/level data plus a patch section that references the\n\
+         same GDTF fixture types the MVR just imported (same manufacturer,\n\
+         model and Dcid, and no Clear All), so the patch is preserved rather\n\
+         than reset - the cues then land on each fixture's real parameters\n\
+         (color/position included, not just intensity).\n\n\
+         If your console doesn't support MVR import, patch the fixtures\n\
+         manually using the .gdtf files instead (a plain GDTF+ASCII bundle\n\
+         can't reliably carry patch data - EOS-family ASCII import can only\n\
+         recognize its own already-known personalities, and importing it\n\
+         alongside Clear All can wipe an unpatched custom fixture type from\n\
+         the library).\n",
+    )?;
+
+    Ok(count)
+}
+
 /// Render the dockable area
 fn render_dock_area(ctx: &Context, app: &mut EasyCueApp) {
     // Custom frame with cobalt background
@@ -499,6 +562,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                             app.fixtures.patch_list().patches(),
                             app.fixtures.profiles(),
                             &title,
+                            crate::show::ascii_export::AsciiExportMode::Full,
                         );
                         match std::fs::write(&path, contents) {
                             Ok(_) => {
@@ -509,6 +573,29 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                             Err(e) => {
                                 app.ui_state.status_message = format!("Export error: {}", e);
                                 log::error!("Failed to export EOS ASCII: {}", e);
+                            }
+                        }
+                    }
+                    ui.close_menu();
+                }
+                if ui.button("Export MVR + Cue ASCII Bundle…").clicked() {
+                    let title = app.show_title.clone();
+                    if let Some(dir) = rfd::FileDialog::new()
+                        .set_directory("./shows")
+                        .pick_folder()
+                    {
+                        match export_mvr_ascii_bundle(app, &dir, &title) {
+                            Ok(count) => {
+                                app.ui_state.status_message = format!(
+                                    "Exported MVR ({} fixture type(s)) + cue ASCII to {}",
+                                    count,
+                                    dir.display()
+                                );
+                                log::info!("Exported MVR+ASCII bundle to {:?}", dir);
+                            }
+                            Err(e) => {
+                                app.ui_state.status_message = format!("Export error: {}", e);
+                                log::error!("Failed to export MVR+ASCII bundle: {}", e);
                             }
                         }
                     }
