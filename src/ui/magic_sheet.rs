@@ -41,6 +41,24 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
             ui.separator();
 
+            // Command button — a shape that runs a command-line command when clicked in live mode
+            if ui
+                .button("⚡ Cmd")
+                .on_hover_text(
+                    "Add a button that runs a command-line command (go, back, stop, goto5, …)",
+                )
+                .clicked()
+            {
+                let canvas_centre = canvas_centre(ui, app);
+                let new_id = app
+                    .magic_sheet
+                    .add_command_shape([canvas_centre.x, canvas_centre.y]);
+                app.magic_sheet_state.selected_shape_ids.clear();
+                app.magic_sheet_state.selected_shape_ids.insert(new_id);
+            }
+
+            ui.separator();
+
             // Copy
             let has_sel = !app.magic_sheet_state.selected_shape_ids.is_empty();
             if ui
@@ -63,16 +81,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     .magic_sheet_state
                     .clipboard
                     .iter()
-                    .map(|s| {
-                        app.magic_sheet.add_shape_at(
-                            s.kind.clone(),
-                            [s.pos[0] + offset, s.pos[1] + offset],
-                            s.scale,
-                            s.bg_color,
-                            s.outline_color,
-                            s.fixture_id,
-                        )
-                    })
+                    .map(|s| app.magic_sheet.add_shape_clone(s, [offset, offset]))
                     .collect();
                 app.magic_sheet_state.selected_shape_ids = new_ids.into_iter().collect();
             }
@@ -255,6 +264,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             let id = s.id;
             let link_color = s.link_color;
             let link_intensity = s.link_intensity;
+            let command = s.command.clone();
             (
                 id,
                 kind,
@@ -267,6 +277,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 is_group,
                 link_color,
                 link_intensity,
+                command,
             )
         })
         .collect();
@@ -285,6 +296,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         is_group,
         link_color,
         link_intensity,
+        command,
     ) in &shapes_snapshot
     {
         let shape_id = *shape_id;
@@ -299,10 +311,22 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
         let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
 
-        // Determine whether this is a group shape or a fixture shape.
-        let is_group_shape = *is_group || (group_id.is_some() && fixture_id.is_none());
+        // Determine whether this is a command, group, or fixture shape.
+        let is_command_shape = command.is_some();
+        let is_group_shape =
+            !is_command_shape && (*is_group || (group_id.is_some() && fixture_id.is_none()));
 
-        let (label, fix_num, intensity, rgb, fx_active) = if is_group_shape {
+        let (label, fix_num, intensity, rgb, fx_active) = if is_command_shape {
+            (
+                command
+                    .clone()
+                    .unwrap_or_else(|| "(no command)".to_string()),
+                None,
+                0.0,
+                None,
+                false,
+            )
+        } else if is_group_shape {
             let (label, num, count, color) = group_shape_info(app, *group_id);
             (label, num, count, color, false)
         } else {
@@ -389,39 +413,50 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         } else if !edit_mode && !shift_held {
             // ── Live mode: click to select fixture / group ────────────────────
             if resp.clicked() {
-                let modifiers = ui.input(|i| i.modifiers);
-                let additive = modifiers.command || modifiers.ctrl;
-
-                if let Some(fid) = fixture_id {
-                    // Single-fixture shape
-                    if additive {
-                        if app.ui_state.selected_fixtures.contains(fid) {
-                            app.ui_state.selected_fixtures.remove(fid);
-                        } else {
-                            app.ui_state.selected_fixtures.insert(*fid);
-                        }
-                    } else {
-                        app.ui_state.selected_fixtures.clear();
-                        app.ui_state.selected_fixtures.insert(*fid);
+                if is_command_shape {
+                    // Command shape: run the stored command through the command line.
+                    if let Some(cmd) = command {
+                        app.ui_state.command_input = cmd.clone();
+                        crate::ui::execute_command_line(app);
                     }
-                    app.ui_state.last_selected_fixture = *fixture_id;
-                    update_command_from_fixture_selection(app);
-                } else if let Some(gid) = group_id {
-                    // Group shape — always additive: clicking a group adds its fixtures
-                    // to the current selection so multiple groups can be built up easily.
-                    let group_fixtures = app.groups.resolve_fixtures(*gid);
-                    if !group_fixtures.is_empty() {
-                        for fid in &group_fixtures {
+                } else {
+                    let modifiers = ui.input(|i| i.modifiers);
+                    let additive = modifiers.command || modifiers.ctrl;
+
+                    if let Some(fid) = fixture_id {
+                        // Single-fixture shape
+                        if additive {
+                            if app.ui_state.selected_fixtures.contains(fid) {
+                                app.ui_state.selected_fixtures.remove(fid);
+                            } else {
+                                app.ui_state.selected_fixtures.insert(*fid);
+                            }
+                        } else {
+                            app.ui_state.selected_fixtures.clear();
                             app.ui_state.selected_fixtures.insert(*fid);
                         }
-                        app.ui_state.last_selected_fixture = group_fixtures.last().copied();
+                        app.ui_state.last_selected_fixture = *fixture_id;
                         update_command_from_fixture_selection(app);
+                    } else if let Some(gid) = group_id {
+                        // Group shape — always additive: clicking a group adds its fixtures
+                        // to the current selection so multiple groups can be built up easily.
+                        let group_fixtures = app.groups.resolve_fixtures(*gid);
+                        if !group_fixtures.is_empty() {
+                            for fid in &group_fixtures {
+                                app.ui_state.selected_fixtures.insert(*fid);
+                            }
+                            app.ui_state.last_selected_fixture = group_fixtures.last().copied();
+                            update_command_from_fixture_selection(app);
+                        }
                     }
                 }
             }
 
             // ── Live mode: drag adjusts intensity on all selected fixtures ────
-            if resp.dragged() && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
+            if !is_command_shape
+                && resp.dragged()
+                && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary))
+            {
                 let dy = resp.drag_delta().y;
                 if dy.abs() > 0.5 {
                     if let Some(fid) = fixture_id {
@@ -453,6 +488,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let highlight = is_selected_shape || is_selected_fixture;
         let border_color = if highlight {
             Color32::from_rgb(100, 180, 255)
+        } else if is_command_shape {
+            Color32::from_rgb(230, 180, 60)
         } else {
             *outline_color
         };
@@ -467,7 +504,16 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             effective_bg,
             Stroke::new(border_width, border_color),
         );
-        if is_group_shape {
+        if is_command_shape {
+            draw_command_shape_label(
+                &painter,
+                screen_center,
+                w,
+                h,
+                &label,
+                app.magic_sheet_state.canvas_zoom,
+            );
+        } else if is_group_shape {
             draw_group_shape_label(
                 &painter,
                 screen_center,
@@ -688,14 +734,18 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
     );
     let mut link_color = shape.link_color;
     let mut link_intensity = shape.link_intensity;
+    let mut command_text = shape.command.clone().unwrap_or_default();
 
-    // Determine link mode: Fixture / Group (no None — new shapes default to Fixture)
+    // Determine link mode: Fixture / Group / Command
     #[derive(PartialEq)]
     enum LinkMode {
         Fixture,
         Group,
+        Command,
     }
-    let mut link_mode = if is_group {
+    let mut link_mode = if shape.is_command() {
+        LinkMode::Command
+    } else if is_group {
         LinkMode::Group
     } else {
         LinkMode::Fixture
@@ -710,6 +760,7 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut link_mode, LinkMode::Fixture, "Fixture");
                 ui.selectable_value(&mut link_mode, LinkMode::Group, "Group");
+                ui.selectable_value(&mut link_mode, LinkMode::Command, "Command");
             });
             ui.end_row();
 
@@ -719,6 +770,7 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
             match link_mode {
                 LinkMode::Fixture => {
                     group_id = None; // clear group if switching mode
+                    command_text.clear();
                     let patches: Vec<_> = app.fixtures.patch_list().patches().to_vec();
                     let selected_label = fixture_id
                         .and_then(|fid| patches.iter().find(|p| p.id == fid))
@@ -743,6 +795,7 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
                 }
                 LinkMode::Group => {
                     fixture_id = None; // clear fixture if switching mode
+                    command_text.clear();
                     link_color = false;
                     link_intensity = false;
                     let groups: Vec<_> = app.groups.groups.clone();
@@ -777,6 +830,28 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
                                 ui.selectable_value(&mut group_id, Some(group.id), item_label);
                             }
                         });
+                    ui.end_row();
+                }
+                LinkMode::Command => {
+                    fixture_id = None; // clear fixture if switching mode
+                    group_id = None; // clear group if switching mode
+                    link_color = false;
+                    link_intensity = false;
+
+                    ui.label("Command:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut command_text)
+                            .hint_text("e.g. go, back, stop, goto5")
+                            .desired_width(130.0),
+                    );
+                    ui.end_row();
+
+                    ui.label("");
+                    ui.label(
+                        egui::RichText::new("Runs on click in live mode")
+                            .small()
+                            .weak(),
+                    );
                     ui.end_row();
                 }
             }
@@ -835,6 +910,14 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
         s.outline_color = [r, g, b, a];
         s.link_color = link_color;
         s.link_intensity = link_intensity;
+        s.command = {
+            let trimmed = command_text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        };
     }
 }
 
@@ -1116,6 +1199,49 @@ fn draw_shape(
             painter.add(egui::Shape::convex_polygon(pts, fill, stroke));
         }
     }
+}
+
+fn draw_command_shape_label(
+    painter: &egui::Painter,
+    center: Pos2,
+    w: f32,
+    h: f32,
+    label: &str,
+    zoom: f32,
+) {
+    let font_sm = egui::FontId::proportional(9.0 * zoom);
+    let font_md = egui::FontId::proportional(13.0 * zoom);
+    let accent = Color32::from_rgb(230, 180, 60);
+    let small_color = Color32::from_gray(180);
+
+    painter.text(
+        Pos2::new(center.x - w / 2.0 + 4.0, center.y - h / 2.0 + 3.0),
+        egui::Align2::LEFT_TOP,
+        "⚡",
+        font_sm.clone(),
+        accent,
+    );
+
+    let label_display: String = if label.chars().count() > 14 {
+        label.chars().take(14).collect()
+    } else {
+        label.to_string()
+    };
+    painter.text(
+        Pos2::new(center.x, center.y),
+        egui::Align2::CENTER_CENTER,
+        label_display,
+        font_md,
+        accent,
+    );
+
+    painter.text(
+        Pos2::new(center.x, center.y + h / 2.0 - 9.0),
+        egui::Align2::CENTER_BOTTOM,
+        "tap to run",
+        font_sm,
+        small_color,
+    );
 }
 
 fn draw_group_shape_label(

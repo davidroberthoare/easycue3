@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-05-30T01:17:17.428929634+00:00",
+  "created": "2026-08-15T19:30:01.822847876+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -268,6 +268,7 @@
     }
   ],
   "description": "",
+  "effects": [],
   "groups": {
     "groups": [
       {
@@ -782,8 +783,9 @@
       }
     ]
   },
-  "modified": "2026-05-30T01:17:17.429059007+00:00",
-  "next_cue_id": 18,
+  "modified": "2026-08-15T19:30:01.823011578+00:00",
+  "next_cue_id": 227,
+  "next_effect_id": 1,
   "patch": [
     {
       "id": 1,
@@ -905,5 +907,8 @@
       "start_address": 216,
       "universe": 1
     }
-  ]
+  ],
+  "script_viewer": {
+    "markers": []
+  }
 }

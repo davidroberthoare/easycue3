@@ -33,7 +33,13 @@ ShowFile
               ├── scale: f32             — size multiplier (1.0 = ~80×60 px)
               ├── bg_color: [u8; 4]      — RGBA fill
               ├── outline_color: [u8; 4] — RGBA border
-              └── fixture_id: Option<usize>   — links to Patch::id
+              ├── fixture_id: Option<usize>   — links to Patch::id
+              ├── group_id: Option<u32>       — links to Group::id
+              ├── is_group: bool               — persists group-link mode
+              ├── link_color / link_intensity  — live fill linking (fixtures only)
+              └── command: Option<String>      — command shape: clicked in live mode,
+                                                 runs this command-line command
+                                                 (e.g. "go", "back", "stop", "goto5")
 ```
 
 Ephemeral per-session state (not serialized, in `EasyCueApp`):
@@ -57,6 +63,7 @@ Screen position = `canvas_pos * zoom + canvas_offset`
 - [x] **Commit 1** (67f25ba) — Foundation: `MagicSheet` data structures, `ShowFile` integration, `TabKind::MagicSheet`, skeleton panel wired into dock + View menu
 - [x] **Commit 2** (acc7974) — Shape rendering + pan/zoom + live mode + edit drag (all bundled): draw Rectangle/Circle/Diamond via egui Painter; display fixture label, id, intensity %, colour swatch; middle/right-drag to pan; scroll to zoom; reset-view button; click to select fixture; vertical drag for intensity; Ctrl+click multi-select; bidirectional sync with Channels panel via `app.ui_state.selected_fixtures`
 - [x] **Commit 3** (49377d7) — Edit mode properties side panel: fixture assignment dropdown, scale DragValue, fill/outline colour pickers
+- [x] **Command shapes** — add a "⚡ Cmd" button that runs a command-line command when clicked in live mode (any command the command line accepts: `go`, `back`, `stop`, `goto5`, `4a33`, …). Transport keywords `go` / `back` / `stop` were added to `execute_command_line` so bare words work too. Properties panel gains a third "Command" link mode with a text field.
 
 ## Current Status (as of 2026-05-04)
 
@@ -77,6 +84,5 @@ All planned stages are complete. The magic sheet is fully functional for MVP use
 - Custom SVG shapes loaded from `magic_sheet_shapes/` directory
 - Background stage-plot image
 - Multiple named sheets (tabs within the panel)
-- Group shapes (one shape → one fixture group)
 - Label font size control
 - Shape locking (prevent accidental moves in live mode)

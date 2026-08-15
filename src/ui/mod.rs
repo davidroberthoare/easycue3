@@ -1481,6 +1481,34 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
         }
     }
 
+    // Transport commands — bare keywords, works from any context:
+    //   "go"   → fire the next cue (GO)
+    //   "back" → return to the previous cue (BACK)
+    //   "stop" → halt playback and audio (STOP)
+    match input.as_str() {
+        "go" => {
+            app.go_next();
+            app.ui_state.status_message = "GO".to_string();
+            app.ui_state.command_input.clear();
+            return;
+        }
+        "back" => {
+            app.go_back();
+            app.ui_state.status_message = "BACK".to_string();
+            app.ui_state.command_input.clear();
+            return;
+        }
+        "stop" => {
+            app.playback.stop();
+            #[cfg(feature = "audio")]
+            app.audio_playback.stop_all();
+            app.ui_state.status_message = "STOP".to_string();
+            app.ui_state.command_input.clear();
+            return;
+        }
+        _ => {}
+    }
+
     // Label / fade-edit commands on the ACTIVE cue (falls back to the selected cue
     // when nothing is running):
     //   "l"   → select the cue and focus its Label field
