@@ -1,5 +1,17 @@
 # Release Notes
 
+## v0.8.0
+
+- **New: Cue hotkeys (Ctrl+0…Ctrl+9)** — trigger cues from the keyboard when running a show. Assign any existing lighting, sound, or adjust cue in the new **Hotkeys** panel (View → Hotkeys):
+  - **Trigger** — the cue runs exactly as if you'd pressed GO (fade timing respected), but the on-deck/play-head cue is left untouched and autofollows aren't armed.
+  - **Hold** — the cue plays for as long as the key is held down, then fades back out on release using the cue's fade up/down times (lighting returns to where the stage was before you pressed; audio fades out with its `fade_out`).
+  - **Latch** — like Hold, but you don't have to keep the key held: first press starts the cue, second press stops it.
+  - Assignments are saved in the show file (older show files load unchanged; an empty hotkey map is omitted on save), and the default show ships with a few working examples. Holds are robust against key auto-repeat and releases that happen while a text field is focused.
+- **Smarter cue numbering when inserting** — new cues (LX/Snd/Adj, drag-and-drop, and script-viewer creates) now appear next to where you're working instead of at the end of the list:
+  - In the Cue list, the number is computed from the *selected* cue (falling back to the active cue) and the cue after it — preferring an available whole number, then the decimal midpoint: between 3 and 6 you get 4, then 4.5, 4.25…; between 3 and 4 you get 3.5, 3.25…
+  - In the Script Viewer, double-clicking between two markers numbers the new cue halfway between those two cues (again preferring a whole number).
+  - Recording now baselines cue tracking at the insertion point rather than the end of the list.
+
 ## v0.7.2
 
 - **Sleep/resume & device-loss recovery** — EasyCue3 now survives the machine going to sleep and hot-unplug/re-plug of audio and DMX hardware without a restart:
