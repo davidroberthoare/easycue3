@@ -29,6 +29,7 @@ pub enum TabKind {
     MagicSheet,
     Effects,
     ScriptViewer,
+    Hotkeys, // Ctrl+0…9 cue hotkeys
     // Legacy variants kept for saved dock state deserialization — never shown
     #[serde(other)]
     Unknown,
@@ -46,8 +47,26 @@ impl std::fmt::Display for TabKind {
             TabKind::MagicSheet => write!(f, "Magic Sheet"),
             TabKind::Effects => write!(f, "Effects"),
             TabKind::ScriptViewer => write!(f, "Script Viewer"),
+            TabKind::Hotkeys => write!(f, "Hotkeys"),
             TabKind::Unknown => write!(f, "?"),
         }
+    }
+}
+
+/// The top-row digit key for `d` (0→Num0 … 9→Num9).
+fn digit_key(d: usize) -> egui::Key {
+    match d {
+        0 => egui::Key::Num0,
+        1 => egui::Key::Num1,
+        2 => egui::Key::Num2,
+        3 => egui::Key::Num3,
+        4 => egui::Key::Num4,
+        5 => egui::Key::Num5,
+        6 => egui::Key::Num6,
+        7 => egui::Key::Num7,
+        8 => egui::Key::Num8,
+        9 => egui::Key::Num9,
+        _ => unreachable!("digit key index {d} out of range"),
     }
 }
 
@@ -340,6 +359,11 @@ pub struct EasyCueApp {
     pub current_file_path: Option<std::path::PathBuf>,
     pub dock_state: DockState<TabKind>,
     pub cue_colors: CueColorSettings,
+
+    /// Hotkey assignments (Ctrl+0…9 → cue + trigger mode), saved with the show.
+    pub hotkeys: crate::hotkeys::HotkeyMap,
+    /// Runtime hold/latch engagement state for the hotkeys (never persisted).
+    pub hotkey_runtime: crate::hotkeys::HotkeyRuntime,
 
     #[cfg(feature = "audio")]
     pub audio_player: AudioPlayer,
@@ -688,6 +712,8 @@ impl EasyCueApp {
             current_file_path: None,
             dock_state,
             cue_colors: CueColorSettings::default(),
+            hotkeys: crate::hotkeys::HotkeyMap::default(),
+            hotkey_runtime: crate::hotkeys::HotkeyRuntime::default(),
             audio_player,
             audio_playback,
             autofollow_timer: None,
@@ -887,6 +913,8 @@ impl EasyCueApp {
         self.groups = show.groups;
         self.magic_sheet = show.magic_sheet;
         self.cue_colors = show.cue_colors;
+        self.hotkeys = show.hotkeys;
+        self.hotkey_runtime = crate::hotkeys::HotkeyRuntime::default();
         // Script viewer: restore persisted annotations. The PDF itself is not
         // loaded here (no egui context for textures) — the panel lazily loads
         // it on first render if `pdf_path` is set and no document is loaded.
@@ -946,6 +974,7 @@ impl EasyCueApp {
         show.effects = self.effect_list.effects().to_vec();
         show.next_effect_id = self.effect_list.next_id();
         show.script_viewer = self.script_viewer.data.clone();
+        show.hotkeys = self.hotkeys.clone();
 
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -1718,6 +1747,146 @@ impl EasyCueApp {
         }
     }
 
+    // --- Hotkey playback ---
+
+    /// Fire the cue referenced by a hotkey in Trigger mode: the cue runs with
+    /// its normal fade timing exactly as if GO was pressed, but the play head /
+    /// on-deck cue is left untouched and no autofollow is armed.
+    pub fn hotkey_trigger(&mut self, cue_id: u32) -> bool {
+        let Some(idx) = self.cue_list.cues().iter().position(|c| c.id == cue_id) else {
+            self.ui_state.status_message = format!("Hotkey: cue #{} not found", cue_id);
+            return false;
+        };
+        let Some(cue) = self.cue_list.get_cue(idx).cloned() else {
+            return false;
+        };
+        let fired = match &cue.kind {
+            crate::cue::CueKind::Lighting(data) => {
+                self.playback.start(&cue, &self.universes);
+                self.execute_effect_actions(&data.effect_actions, data.fade_up, data.fade_down);
+                true
+            }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Audio(_) => self.audio_playback.start(&cue, &self.audio_player),
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Adjust(data) => {
+                self.fire_adjust_cue(cue.id, data.clone());
+                true
+            }
+        };
+        if fired {
+            self.follow_cue_in_script_view(cue.id);
+            self.ui_state.status_message = format!("Hotkey → Q{:.1} {}", cue.number, cue.label);
+            log::info!("Hotkey trigger → cue {:.1} '{}'", cue.number, cue.label);
+        }
+        fired
+    }
+
+    /// Begin a hotkey Hold/Latch engagement for key `key_idx`. Lighting cues
+    /// snapshot the current stage so releasing can fade back to it; audio cues
+    /// start normally (fading in with their `fade_in`). Adjust cues have no
+    /// hold semantics — they just fire once.
+    pub fn hotkey_engage(&mut self, key_idx: usize, cue_id: u32) {
+        let Some(idx) = self.cue_list.cues().iter().position(|c| c.id == cue_id) else {
+            return;
+        };
+        let Some(cue) = self.cue_list.get_cue(idx).cloned() else {
+            return;
+        };
+        match &cue.kind {
+            crate::cue::CueKind::Lighting(data) => {
+                self.hotkey_runtime.engaged[key_idx] = true;
+                self.hotkey_runtime.light_before[key_idx] = Some(self.snapshot_universes());
+                self.playback.start(&cue, &self.universes);
+                self.execute_effect_actions(&data.effect_actions, data.fade_up, data.fade_down);
+            }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Audio(_) => {
+                self.hotkey_runtime.engaged[key_idx] = true;
+                self.audio_playback.start(&cue, &self.audio_player);
+            }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Adjust(_) => {
+                self.hotkey_trigger(cue_id);
+                return;
+            }
+        }
+        self.ui_state.status_message =
+            format!("Hotkey {} → Q{:.1} {}", key_idx, cue.number, cue.label);
+        log::info!(
+            "Hotkey {} engage → cue {:.1} '{}'",
+            key_idx,
+            cue.number,
+            cue.label
+        );
+    }
+
+    /// End a hotkey Hold/Latch engagement for key `key_idx`. A held lighting
+    /// cue fades back (with `fade_down`) to the stage state captured on engage;
+    /// a held audio cue fades out with its `fade_out` and stops.
+    pub fn hotkey_disengage(&mut self, key_idx: usize) {
+        if !self.hotkey_runtime.engaged[key_idx] {
+            return;
+        }
+        self.hotkey_runtime.engaged[key_idx] = false;
+        let snapshot = self.hotkey_runtime.light_before[key_idx].take();
+        let Some(assignment) = self.hotkeys.get(key_idx).copied() else {
+            return;
+        };
+        let Some(idx) = self
+            .cue_list
+            .cues()
+            .iter()
+            .position(|c| c.id == assignment.cue_id)
+        else {
+            return;
+        };
+        let Some(cue) = self.cue_list.get_cue(idx) else {
+            return;
+        };
+        match &cue.kind {
+            crate::cue::CueKind::Lighting(data) => {
+                let target = snapshot.unwrap_or_default();
+                self.playback
+                    .start_to_state(&target, data.fade_down, None, &self.universes);
+            }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Audio(_) => {
+                self.audio_playback
+                    .stop_cue_with_fade(assignment.cue_id, 0.5);
+            }
+            #[cfg(feature = "audio")]
+            crate::cue::CueKind::Adjust(_) => {}
+        }
+        self.ui_state.status_message = format!(
+            "Hotkey {} release → Q{:.1} {}",
+            key_idx, cue.number, cue.label
+        );
+        log::info!(
+            "Hotkey {} disengage → cue {:.1} '{}'",
+            key_idx,
+            cue.number,
+            cue.label
+        );
+    }
+
+    /// Snapshot every universe as a `universe_key -> value` map (the format
+    /// `PlaybackEngine::start_to_state` accepts) for hotkey hold restoration.
+    fn snapshot_universes(&self) -> std::collections::HashMap<u16, u8> {
+        let mut state = std::collections::HashMap::new();
+        for (uni_idx, universe) in self.universes.iter().enumerate() {
+            let universe_num = (uni_idx + 1) as u16;
+            for ch in 1u16..=512 {
+                if let Ok(v) = universe.get_channel(ch) {
+                    if v > 0 {
+                        state.insert(crate::cue::universe_key(universe_num, ch), v);
+                    }
+                }
+            }
+        }
+        state
+    }
+
     /// If the fired cue has a script-viewer marker, record it as the pending
     /// focus target. The panel decides whether to actually jump (it skips the
     /// jump if the marker is already visible on screen). Called after any cue
@@ -2371,6 +2540,49 @@ impl eframe::App for EasyCueApp {
                 }
             } else {
                 self.go_next();
+            }
+        }
+
+        // Hotkeys (Ctrl+0…Ctrl+9): fire assigned cues with Trigger / Hold / Latch
+        // semantics. Edge-detected against the previous frame's *key state* (not
+        // press/release events) so a release that happens while the keyboard is
+        // busy (text field focused) is still caught on the next idle frame, and
+        // OS key auto-repeat can't re-fire a hold or double-toggle a latch.
+        if !keyboard_busy && !self.ui_state.goto_mode {
+            let down_now: Vec<bool> = ctx.input(|i| {
+                let ctrl = i.modifiers.command && !i.modifiers.shift && !i.modifiers.alt;
+                (0..10).map(|d| ctrl && i.key_down(digit_key(d))).collect()
+            });
+            for (d, now_down) in down_now.into_iter().enumerate() {
+                let was_down = self.hotkey_runtime.key_down[d];
+                self.hotkey_runtime.key_down[d] = now_down;
+                let Some(assignment) = self.hotkeys.get(d).copied() else {
+                    continue;
+                };
+                if assignment.cue_id == 0 {
+                    continue;
+                }
+                let rising = now_down && !was_down;
+                let falling = !now_down && was_down;
+                if rising {
+                    match assignment.mode {
+                        crate::hotkeys::HotkeyMode::Trigger => {
+                            self.hotkey_trigger(assignment.cue_id);
+                        }
+                        crate::hotkeys::HotkeyMode::Hold => {
+                            self.hotkey_engage(d, assignment.cue_id);
+                        }
+                        crate::hotkeys::HotkeyMode::Latch => {
+                            if self.hotkey_runtime.engaged[d] {
+                                self.hotkey_disengage(d);
+                            } else {
+                                self.hotkey_engage(d, assignment.cue_id);
+                            }
+                        }
+                    }
+                } else if falling && assignment.mode == crate::hotkeys::HotkeyMode::Hold {
+                    self.hotkey_disengage(d);
+                }
             }
         }
 

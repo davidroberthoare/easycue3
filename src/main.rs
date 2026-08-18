@@ -5,6 +5,7 @@
 
 mod app;
 mod groups;
+mod hotkeys;
 mod magic_sheet;
 mod media;
 mod scriptviewer;

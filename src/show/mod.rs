@@ -92,6 +92,11 @@ pub struct ShowFile {
     #[serde(default)]
     pub script_viewer: crate::scriptviewer::ScriptViewerData,
 
+    /// Hotkey assignments (Ctrl+0…Ctrl+9 → cue + trigger mode). Older show
+    /// files lack the field entirely; an empty map omits it on save.
+    #[serde(default, skip_serializing_if = "crate::hotkeys::HotkeyMap::is_empty")]
+    pub hotkeys: crate::hotkeys::HotkeyMap,
+
     /// Show-level effect library (waveform patterns applied via cues).
     #[serde(default)]
     pub effects: Vec<crate::effects::Effect>,
@@ -126,6 +131,7 @@ impl ShowFile {
             magic_sheet: MagicSheet::default(),
             cue_colors: CueColorSettings::default(),
             script_viewer: crate::scriptviewer::ScriptViewerData::default(),
+            hotkeys: crate::hotkeys::HotkeyMap::default(),
             effects: Vec::new(),
             next_effect_id: 1,
             #[cfg(feature = "audio")]
@@ -217,5 +223,48 @@ mod tests {
         assert!(show.script_viewer.markers.is_empty());
         assert!(show.script_viewer.notes.is_empty());
         assert!(show.script_viewer.pdf_path.is_none());
+    }
+
+    #[test]
+    fn hotkeys_round_trip_and_default_when_missing() {
+        use crate::hotkeys::{HotkeyMap, HotkeyMode};
+
+        // Older show files lack the field entirely.
+        let old = r#"{"description":"","created":"x","modified":"x","cues":[]}"#;
+        let show: ShowFile = serde_json::from_str(old).unwrap();
+        assert!(show.hotkeys.is_empty());
+
+        // Assignments round-trip.
+        let mut show = ShowFile::new();
+        show.hotkeys = HotkeyMap {
+            keys: (0..10)
+                .map(|i| {
+                    if i == 1 {
+                        crate::hotkeys::HotkeyAssignment {
+                            cue_id: 42,
+                            mode: HotkeyMode::Hold,
+                        }
+                    } else if i == 5 {
+                        crate::hotkeys::HotkeyAssignment {
+                            cue_id: 7,
+                            mode: HotkeyMode::Latch,
+                        }
+                    } else {
+                        crate::hotkeys::HotkeyAssignment::default()
+                    }
+                })
+                .collect(),
+        };
+        let json = serde_json::to_string(&show).unwrap();
+        let back: ShowFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.hotkeys.get(1).unwrap().cue_id, 42);
+        assert_eq!(back.hotkeys.get(1).unwrap().mode, HotkeyMode::Hold);
+        assert_eq!(back.hotkeys.get(5).unwrap().mode, HotkeyMode::Latch);
+        assert!(back.hotkeys.get(9).unwrap().is_empty());
+
+        // An all-empty map is omitted from the JSON entirely.
+        let empty = ShowFile::new();
+        let json = serde_json::to_string(&empty).unwrap();
+        assert!(!json.contains("hotkeys"));
     }
 }
