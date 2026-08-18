@@ -72,13 +72,10 @@ fn handle_dropped_files(app: &mut EasyCueApp, files: Vec<egui::DroppedFile>) -> 
             }
         };
 
-        let next_number = app
-            .cue_list
-            .cues()
-            .iter()
-            .last()
-            .map(|c| c.number.floor() + 1.0)
-            .unwrap_or(1.0);
+        // Compute the insert number per file so successive drops keep halving
+        // the gap to the next cue (first 3.5, then 3.25, …) — mirroring the
+        // single-file button behaviour.
+        let next_number = app.next_cue_insert_number();
 
         match classify_dropped_file(&path) {
             #[cfg(feature = "audio")]
@@ -283,13 +280,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 .set_title("Select Audio File")
                 .pick_file()
             {
-                let next_number = app
-                    .cue_list
-                    .cues()
-                    .iter()
-                    .last()
-                    .map(|c| c.number.floor() + 1.0)
-                    .unwrap_or(1.0);
+                let next_number = app.next_cue_insert_number();
                 let filename = path
                     .file_stem()
                     .and_then(|s| s.to_str())
@@ -300,7 +291,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 let id = app.cue_list.next_id();
                 app.cue_list.add_cue(cue);
                 app.ui_state.selected_cue_id = Some(id);
-                app.ui_state.status_message = format!("Added audio cue {:.0}", next_number);
+                app.ui_state.status_message = format!("Added audio cue {:.1}", next_number);
                 app.ui_state.audio_file_cache.clear();
             }
         }
@@ -311,13 +302,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             .on_hover_text("Add a sound adjust cue (volume ramp / stop)")
             .clicked()
         {
-            let next_number = app
-                .cue_list
-                .cues()
-                .iter()
-                .last()
-                .map(|c| c.number.floor() + 1.0)
-                .unwrap_or(1.0);
+            let next_number = app.next_cue_insert_number();
             // Auto-target: find the most recent audio cue in the list so the
             // Adjust operates on that cue's volume directly rather than the
             // global master (which starts at 1.0 and makes UP fades confusing).
@@ -334,7 +319,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             let id = app.cue_list.next_id();
             app.cue_list.add_cue(cue);
             app.ui_state.selected_cue_id = Some(id);
-            app.ui_state.status_message = format!("Added adjust cue {:.0}", next_number);
+            app.ui_state.status_message = format!("Added adjust cue {:.1}", next_number);
         }
 
         if ui.button(format!("{}", ph::TRASH)).clicked() {

@@ -1094,7 +1094,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                             close = true;
                         }
                         NewCueKind::Lighting => {
-                            created_id = app.add_cue_of_kind(kind);
+                            created_id = app.add_cue_of_kind(kind, pending.page_index, pending.y);
                             created_new = created_id.is_some();
                             close = created_id.is_some();
                         }
@@ -1108,7 +1108,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                                 .set_title("Select Audio File")
                                 .pick_file()
                             {
-                                let id = app.add_cue_of_kind(kind);
+                                let id = app.add_cue_of_kind(kind, pending.page_index, pending.y);
                                 if let Some(id) = id {
                                     if let Some(idx) =
                                         app.cue_list.cues().iter().position(|c| c.id == id)
@@ -1127,7 +1127,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                         }
                         #[cfg(feature = "audio")]
                         NewCueKind::Adjustment => {
-                            created_id = app.add_cue_of_kind(kind);
+                            created_id = app.add_cue_of_kind(kind, pending.page_index, pending.y);
                             created_new = created_id.is_some();
                             close = created_id.is_some();
                         }

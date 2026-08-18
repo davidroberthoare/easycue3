@@ -1746,16 +1746,17 @@ impl EasyCueApp {
 
     /// Create a new cue inline from the script viewer's add-cue popup and add it
     /// to the cue list. Returns the new cue's stable ID, or None on failure.
-    /// The created cue follows the same numbering and auto-targeting conventions
-    /// as the equivalent buttons in the Cues panel.
-    pub fn add_cue_of_kind(&mut self, kind: crate::scriptviewer::NewCueKind) -> Option<u32> {
-        let next_number = self
-            .cue_list
-            .cues()
-            .iter()
-            .last()
-            .map(|c| c.number.floor() + 1.0)
-            .unwrap_or(1.0);
+    /// The created cue is numbered by its position on the script page (between
+    /// the bracketing markers — see [`Self::script_insert_number`]) and follows
+    /// the same auto-targeting conventions as the equivalent buttons in the
+    /// Cues panel.
+    pub fn add_cue_of_kind(
+        &mut self,
+        kind: crate::scriptviewer::NewCueKind,
+        page_index: usize,
+        y: f32,
+    ) -> Option<u32> {
+        let next_number = self.script_insert_number(page_index, y);
         let id = self.cue_list.next_id();
 
         match kind {
@@ -1765,13 +1766,13 @@ impl EasyCueApp {
             }
             crate::scriptviewer::NewCueKind::Lighting => {
                 let mut cue = Cue::new_lighting(next_number);
-                cue.label = format!("Cue {:.0}", next_number);
+                cue.label = format!("Cue {:.1}", next_number);
                 self.cue_list.add_cue(cue);
             }
             #[cfg(feature = "audio")]
             crate::scriptviewer::NewCueKind::Sound => {
                 let mut cue = Cue::new_audio(next_number, std::path::PathBuf::new());
-                cue.label = format!("Sound {:.0}", next_number);
+                cue.label = format!("Sound {:.1}", next_number);
                 self.cue_list.add_cue(cue);
             }
             #[cfg(feature = "audio")]
@@ -1787,7 +1788,7 @@ impl EasyCueApp {
                 if let crate::cue::CueKind::Adjust(ref mut d) = cue.kind {
                     d.target_audio_cue = prev_audio_num;
                 }
-                cue.label = format!("Adjust {:.0}", next_number);
+                cue.label = format!("Adjust {:.1}", next_number);
                 self.cue_list.add_cue(cue);
             }
             #[cfg(not(feature = "audio"))]
@@ -1849,31 +1850,97 @@ impl EasyCueApp {
         );
     }
 
+    /// Index of the cue that new cues should be numbered relative to: the
+    /// selected cue (takes precedence) or the active play-head cue. `None` when
+    /// neither exists.
+    fn insert_anchor_index(&self) -> Option<usize> {
+        if let Some(id) = self.ui_state.selected_cue_id {
+            if let Some(idx) = self.cue_list.cues().iter().position(|c| c.id == id) {
+                return Some(idx);
+            }
+        }
+        self.cue_list.current_index()
+    }
+
+    /// Number for the next cue added from the Cues panel: the midpoint between
+    /// the selected/active cue and the cue after it (so it slots in close to
+    /// where the operator is working), or the end-of-list default.
+    pub fn next_cue_insert_number(&self) -> f32 {
+        match self.insert_anchor_index() {
+            Some(i) => self.cue_list.number_for_insert_after(i),
+            None => self.cue_list.end_insert_number(),
+        }
+    }
+
+    /// Number for a cue created from the script viewer at the given page
+    /// position. Brackets the position among all markers (ordered by page,
+    /// then y — top of page first) and takes the midpoint of the two
+    /// neighbouring cues' numbers, so a cue dropped between two script cues
+    /// slots between them. Falls back to the end-of-list default when the
+    /// position isn't bracketed by markers (or they reference missing cues).
+    fn script_insert_number(&self, page_index: usize, y: f32) -> f32 {
+        use crate::scriptviewer::CueMarker;
+        let mut markers: Vec<&CueMarker> = self.script_viewer.data.markers.iter().collect();
+        markers.sort_by(|a, b| {
+            (a.page_index, a.y)
+                .partial_cmp(&(b.page_index, b.y))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let click = (page_index, y);
+        let before = markers.iter().rev().find(|m| (m.page_index, m.y) <= click);
+        let after = markers.iter().find(|m| click < (m.page_index, m.y));
+        match (before, after) {
+            (Some(b), Some(a)) => {
+                let nums: Vec<f32> = [b.cue_id, a.cue_id]
+                    .iter()
+                    .filter_map(|id| {
+                        self.cue_list
+                            .cues()
+                            .iter()
+                            .find(|c| c.id == *id)
+                            .map(|c| c.number)
+                    })
+                    .collect();
+                match nums.as_slice() {
+                    [bn, an] if (*an - *bn).abs() > 0.005 => {
+                        ((bn + an) / 2.0 * 100.0).round() / 100.0
+                    }
+                    _ => self.cue_list.end_insert_number(),
+                }
+            }
+            _ => self.cue_list.end_insert_number(),
+        }
+    }
+
     /// Record a new lighting cue from the current universe state.
     /// Returns the stable ID assigned to the new cue.
     pub fn record_cue(&mut self) -> u32 {
-        let next_number = self
-            .cue_list
-            .cues()
-            .iter()
-            .filter(|c| c.is_lighting())
-            .last()
-            .map(|c| c.number.floor() + 1.0)
-            .unwrap_or(1.0);
+        let anchor_idx = self.insert_anchor_index();
+        let next_number = match anchor_idx {
+            Some(i) => self.cue_list.number_for_insert_after(i),
+            None => self.cue_list.end_insert_number(),
+        };
 
         let mut cue = Cue::new_lighting(next_number);
-        cue.label = format!("Cue {:.0}", next_number);
+        cue.label = format!("Cue {:.1}", next_number);
 
         // The ID that will be assigned by add_cue (cue.id is 0 → next_id is used)
         let assigned_id = self.cue_list.next_id();
 
         // Tracking mode: only record channels that differ from the accumulated state
         // of all existing cues. A channel going to 0 that was non-zero must be stored
-        // explicitly so the next cue knows to fade it out.
-        let tracked = if self.cue_list.is_empty() {
-            std::collections::HashMap::new()
-        } else {
-            self.cue_list.tracked_state_up_to(self.cue_list.len() - 1)
+        // explicitly so the next cue knows to fade it out. The baseline is the state
+        // at the insertion point (right after the anchor) — or the full end-of-list
+        // state when appending at the end.
+        let tracked = match anchor_idx {
+            Some(i) => self.cue_list.tracked_state_up_to(i),
+            None => {
+                if self.cue_list.is_empty() {
+                    std::collections::HashMap::new()
+                } else {
+                    self.cue_list.tracked_state_up_to(self.cue_list.len() - 1)
+                }
+            }
         };
 
         if let Some(data) = cue.lighting_data_mut() {
@@ -1896,9 +1963,9 @@ impl EasyCueApp {
             .map(|d| d.channel_values.len())
             .unwrap_or(0);
         self.cue_list.add_cue(cue);
-        self.ui_state.status_message = format!("Recorded cue {:.0}", next_number);
+        self.ui_state.status_message = format!("Recorded cue {:.1}", next_number);
         log::info!(
-            "Recorded cue {:.0} with {} channels",
+            "Recorded cue {:.1} with {} channels",
             next_number,
             channel_count
         );

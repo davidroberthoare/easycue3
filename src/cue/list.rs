@@ -36,7 +36,8 @@ impl CueList {
         } else {
             self.next_id = self.next_id.max(cue.id + 1);
         }
-        let insert_pos = self.cues
+        let insert_pos = self
+            .cues
             .binary_search_by(|c| c.number.partial_cmp(&cue.number).unwrap())
             .unwrap_or_else(|e| e);
         self.cues.insert(insert_pos, cue);
@@ -93,6 +94,32 @@ impl CueList {
 
     pub fn is_empty(&self) -> bool {
         self.cues.is_empty()
+    }
+
+    // --- Numbering for newly created cues ---
+
+    /// Default number for a cue appended at the end of the list: the next whole
+    /// number after the last cue (1.0 when the list is empty).
+    pub fn end_insert_number(&self) -> f32 {
+        self.cues
+            .last()
+            .map(|c| c.number.floor() + 1.0)
+            .unwrap_or(1.0)
+    }
+
+    /// Number for a new cue inserted directly after the cue at `anchor_idx`:
+    /// the midpoint between it and the next cue in the list, so repeated
+    /// inserts keep halving the gap (between 3.0 and 4.0 → 3.5, then 3.25, …).
+    /// When the anchor is the last cue (or the index is out of range), falls
+    /// back to [`Self::end_insert_number`].
+    pub fn number_for_insert_after(&self, anchor_idx: usize) -> f32 {
+        let Some(anchor) = self.cues.get(anchor_idx) else {
+            return self.end_insert_number();
+        };
+        let Some(next) = self.cues.get(anchor_idx + 1) else {
+            return self.end_insert_number();
+        };
+        ((anchor.number + next.number) / 2.0 * 100.0).round() / 100.0
     }
 
     // --- Play head ---
@@ -162,18 +189,30 @@ impl CueList {
     /// Next cue of any kind after current (sequential list order)
     pub fn next_any_index(&self) -> Option<usize> {
         let start = self.current.map(|i| i + 1).unwrap_or(0);
-        if start < self.cues.len() { Some(start) } else { None }
+        if start < self.cues.len() {
+            Some(start)
+        } else {
+            None
+        }
     }
 
     /// Previous cue of any kind before current
     pub fn previous_any_index(&self) -> Option<usize> {
         let end = self.current?;
-        if end > 0 { Some(end - 1) } else { None }
+        if end > 0 {
+            Some(end - 1)
+        } else {
+            None
+        }
     }
 
     /// Change the number of a cue by stable ID, reject duplicates, re-sort the list.
     pub fn renumber_cue(&mut self, cue_id: u32, new_number: f32) -> Result<()> {
-        if self.cues.iter().any(|c| c.id != cue_id && (c.number - new_number).abs() < 0.005) {
+        if self
+            .cues
+            .iter()
+            .any(|c| c.id != cue_id && (c.number - new_number).abs() < 0.005)
+        {
             anyhow::bail!("Cue number {:.1} is already in use", new_number);
         }
         let Some(cue) = self.cues.iter_mut().find(|c| c.id == cue_id) else {
@@ -182,7 +221,11 @@ impl CueList {
         cue.number = new_number;
 
         let current_id = self.current.and_then(|i| self.cues.get(i)).map(|c| c.id);
-        self.cues.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(std::cmp::Ordering::Equal));
+        self.cues.sort_by(|a, b| {
+            a.number
+                .partial_cmp(&b.number)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         self.current = current_id.and_then(|id| self.cues.iter().position(|c| c.id == id));
         Ok(())
     }
@@ -201,7 +244,13 @@ impl CueList {
     /// the renumber can't silently merge two cues onto one number.
     ///
     /// Returns the number of cues renumbered. The play head is preserved.
-    pub fn renumber_range(&mut self, from_idx: usize, to_idx: usize, new_start: f32, step: f32) -> Result<usize> {
+    pub fn renumber_range(
+        &mut self,
+        from_idx: usize,
+        to_idx: usize,
+        new_start: f32,
+        step: f32,
+    ) -> Result<usize> {
         if from_idx > to_idx || to_idx >= self.cues.len() {
             anyhow::bail!("Invalid renumber range");
         }
@@ -219,8 +268,16 @@ impl CueList {
             }
         }
         // Collisions with cues left outside the renumbered slice.
-        for cue in self.cues.iter().take(from_idx).chain(self.cues.iter().skip(to_idx + 1)) {
-            if let Some(n) = new_numbers.iter().find(|n| (cue.number - **n).abs() < 0.005) {
+        for cue in self
+            .cues
+            .iter()
+            .take(from_idx)
+            .chain(self.cues.iter().skip(to_idx + 1))
+        {
+            if let Some(n) = new_numbers
+                .iter()
+                .find(|n| (cue.number - **n).abs() < 0.005)
+            {
                 anyhow::bail!(
                     "New number {:.1} collides with cue {:.1} outside the renumbered range",
                     n,
@@ -243,7 +300,10 @@ impl CueList {
             for cue in self.cues.iter_mut() {
                 if let Some(d) = cue.adjust_data_mut() {
                     if let Some(target) = d.target_audio_cue {
-                        if let Some((_, new_num)) = old_to_new.iter().find(|(old, _)| (old - target).abs() < 0.005) {
+                        if let Some((_, new_num)) = old_to_new
+                            .iter()
+                            .find(|(old, _)| (old - target).abs() < 0.005)
+                        {
                             d.target_audio_cue = Some(*new_num);
                         }
                     }
@@ -260,7 +320,11 @@ impl CueList {
 
         // Re-sort by number, preserving the play head.
         let current_id = self.current.and_then(|i| self.cues.get(i)).map(|c| c.id);
-        self.cues.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(std::cmp::Ordering::Equal));
+        self.cues.sort_by(|a, b| {
+            a.number
+                .partial_cmp(&b.number)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         self.current = current_id.and_then(|id| self.cues.iter().position(|c| c.id == id));
 
         Ok(count)
@@ -269,9 +333,19 @@ impl CueList {
     /// Re-number every cue whose number falls in `[from_num, to_num]`
     /// (inclusive). The list is sorted by number, so this selects a contiguous
     /// slice and delegates to [`Self::renumber_range`].
-    pub fn renumber_range_for_numbers(&mut self, from_num: f32, to_num: f32, new_start: f32, step: f32) -> Result<usize> {
+    pub fn renumber_range_for_numbers(
+        &mut self,
+        from_num: f32,
+        to_num: f32,
+        new_start: f32,
+        step: f32,
+    ) -> Result<usize> {
         if to_num < from_num {
-            anyhow::bail!("Range start {:.1} is after range end {:.1}", from_num, to_num);
+            anyhow::bail!(
+                "Range start {:.1} is after range end {:.1}",
+                from_num,
+                to_num
+            );
         }
         let from_idx = self
             .cues
@@ -318,7 +392,10 @@ impl CueList {
             if let CueKind::Lighting(data) = &cue.kind {
                 for action in &data.effect_actions {
                     match action {
-                        EffectAction::Start { effect_id, fixtures } => {
+                        EffectAction::Start {
+                            effect_id,
+                            fixtures,
+                        } => {
                             if let Some(entry) = state.iter_mut().find(|(id, _)| id == effect_id) {
                                 entry.1 = fixtures.clone();
                             } else {
@@ -358,6 +435,40 @@ mod tests {
 
     fn numbers_of(list: &CueList) -> Vec<f32> {
         list.cues().iter().map(|c| c.number).collect()
+    }
+
+    #[test]
+    fn end_insert_number_defaults() {
+        let list = CueList::new();
+        assert_eq!(list.end_insert_number(), 1.0);
+
+        let mut list = lighting_list(&[1.0, 2.5, 3.0]);
+        assert_eq!(list.end_insert_number(), 4.0);
+    }
+
+    #[test]
+    fn number_for_insert_after_midpoints() {
+        let mut list = lighting_list(&[1.0, 2.0, 3.0, 4.0]);
+        // Between cue 3.0 (idx 2) and cue 4.0 (idx 3) → 3.5.
+        assert_eq!(list.number_for_insert_after(2), 3.5);
+        // Inserting a 3.5 shifts everything; between 3.0 and 3.5 → 3.25.
+        list.add_cue(Cue::new_lighting(3.5));
+        assert_eq!(list.number_for_insert_after(2), 3.25);
+        // Between 3.25 and 3.5 → 3.375 (rounded to 2dp).
+        list.add_cue(Cue::new_lighting(3.25));
+        assert_eq!(list.number_for_insert_after(3), 3.38);
+        // Between 1.0 and 2.0 → 1.5.
+        assert_eq!(list.number_for_insert_after(0), 1.5);
+    }
+
+    #[test]
+    fn number_for_insert_after_last_cue_appends() {
+        let list = lighting_list(&[1.0, 2.0, 3.5]);
+        // Anchor is the last cue → end-of-list default (4.0), not a midpoint.
+        assert_eq!(list.number_for_insert_after(2), 4.0);
+        // Out-of-range index also falls back.
+        assert_eq!(list.number_for_insert_after(5), 4.0);
+        assert_eq!(list.number_for_insert_after(usize::MAX), 4.0);
     }
 
     #[test]
