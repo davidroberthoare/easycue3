@@ -1,6 +1,6 @@
 {
   "audio_cues": [],
-  "created": "2026-08-15T19:30:01.822847876+00:00",
+  "created": "2026-08-18T17:35:07.980564564+00:00",
   "cue_colors": {
     "base_adjust": {
       "a": 255,
@@ -181,7 +181,7 @@
       "data": {
         "audio_path": "media/sample2.mp3",
         "fade_in": 0.0,
-        "fade_out": 4.0,
+        "fade_out": 0.5,
         "length": 5.0,
         "notes": "",
         "output_routes": [
@@ -229,8 +229,8 @@
           "54": 4,
           "55": 100
         },
-        "fade_down": 1.0,
-        "fade_up": 1.0
+        "fade_down": 0.0,
+        "fade_up": 0.0
       },
       "id": 16,
       "label": "SR Highlight",
@@ -305,12 +305,34 @@
     ],
     "next_id": 4
   },
+  "hotkeys": {
+    "keys": [
+      {
+        "cue_id": 4
+      },
+      {
+        "cue_id": 16,
+        "mode": "latch"
+      },
+      {
+        "cue_id": 5,
+        "mode": "hold"
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
   "magic_sheet": {
     "canvas_offset": [
-      201.6802978515625,
-      160.3262939453125
+      97.8187255859375,
+      194.975341796875
     ],
-    "canvas_zoom": 0.7899296283721924,
+    "canvas_zoom": 0.758867621421814,
     "next_shape_id": 21,
     "shapes": [
       {
@@ -320,6 +342,7 @@
           136,
           255
         ],
+        "command": null,
         "fixture_id": 1,
         "group_id": null,
         "id": 2,
@@ -337,6 +360,7 @@
           42.9127197265625,
           220.3660888671875
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -346,6 +370,7 @@
           136,
           255
         ],
+        "command": null,
         "fixture_id": 2,
         "group_id": null,
         "id": 3,
@@ -363,6 +388,7 @@
           152.6258544921875,
           249.26702880859375
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -372,6 +398,7 @@
           136,
           255
         ],
+        "command": null,
         "fixture_id": 4,
         "group_id": null,
         "id": 4,
@@ -389,6 +416,7 @@
           358.2568359375,
           247.81732177734375
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -398,6 +426,7 @@
           136,
           255
         ],
+        "command": null,
         "fixture_id": 5,
         "group_id": null,
         "id": 5,
@@ -415,6 +444,7 @@
           469.6893310546875,
           225.87432861328125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -424,6 +454,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 6,
         "group_id": null,
         "id": 6,
@@ -441,6 +472,7 @@
           152.1412353515625,
           132.68157958984375
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -450,6 +482,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 7,
         "group_id": null,
         "id": 7,
@@ -467,6 +500,7 @@
           250.01611328125,
           150.0645751953125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -476,6 +510,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 8,
         "group_id": null,
         "id": 8,
@@ -493,6 +528,7 @@
           348.0721435546875,
           132.5072021484375
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -502,6 +538,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 9,
         "group_id": null,
         "id": 9,
@@ -519,6 +556,7 @@
           210.384765625,
           76.38067626953125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -528,6 +566,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 10,
         "group_id": null,
         "id": 10,
@@ -545,6 +584,7 @@
           301.2882080078125,
           74.54736328125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -554,6 +594,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 11,
         "group_id": null,
         "id": 11,
@@ -571,6 +612,7 @@
           119.7017822265625,
           -31.08673095703125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -580,6 +622,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 12,
         "group_id": null,
         "id": 12,
@@ -597,6 +640,7 @@
           252.57847595214844,
           -31.08673095703125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -606,6 +650,7 @@
           75,
           255
         ],
+        "command": null,
         "fixture_id": 13,
         "group_id": null,
         "id": 13,
@@ -623,6 +668,7 @@
           385.4551696777344,
           -31.08673095703125
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -632,6 +678,7 @@
           136,
           255
         ],
+        "command": null,
         "fixture_id": 3,
         "group_id": null,
         "id": 14,
@@ -649,6 +696,7 @@
           254.9632568359375,
           267.527099609375
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -658,6 +706,7 @@
           40,
           255
         ],
+        "command": null,
         "fixture_id": null,
         "group_id": 1,
         "id": 15,
@@ -675,6 +724,7 @@
           -80.5421142578125,
           227.281494140625
         ],
+        "rotation_deg": 0.0,
         "scale": 0.75
       },
       {
@@ -684,6 +734,7 @@
           44,
           255
         ],
+        "command": null,
         "fixture_id": null,
         "group_id": 2,
         "id": 16,
@@ -701,6 +752,7 @@
           -78.1016845703125,
           88.97991943359375
         ],
+        "rotation_deg": 0.0,
         "scale": 0.75
       },
       {
@@ -710,6 +762,7 @@
           115,
           255
         ],
+        "command": null,
         "fixture_id": null,
         "group_id": 3,
         "id": 18,
@@ -727,6 +780,7 @@
           -79.78694915771484,
           -30.107868194580078
         ],
+        "rotation_deg": 0.0,
         "scale": 0.75
       },
       {
@@ -736,6 +790,7 @@
           108,
           255
         ],
+        "command": null,
         "fixture_id": 14,
         "group_id": null,
         "id": 19,
@@ -753,6 +808,7 @@
           190.8743896484375,
           -128.13658142089844
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       },
       {
@@ -762,6 +818,7 @@
           108,
           255
         ],
+        "command": null,
         "fixture_id": 15,
         "group_id": null,
         "id": 20,
@@ -779,12 +836,13 @@
           319.39251708984375,
           -125.81246185302734
         ],
+        "rotation_deg": 0.0,
         "scale": 1.0
       }
     ]
   },
-  "modified": "2026-08-15T19:30:01.823011578+00:00",
-  "next_cue_id": 227,
+  "modified": "2026-08-18T17:35:07.980959077+00:00",
+  "next_cue_id": 244,
   "next_effect_id": 1,
   "patch": [
     {
@@ -909,6 +967,7 @@
     }
   ],
   "script_viewer": {
-    "markers": []
+    "markers": [],
+    "notes": []
   }
 }

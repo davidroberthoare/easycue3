@@ -426,7 +426,18 @@ impl AudioPlaybackEngine {
     /// Uses each stream's own `fade_out_duration`; falls back to `default_fade_secs`
     /// for streams that have no configured fade-out.
     pub fn stop_all_with_fade(&mut self, default_fade_secs: f32) {
+        self.stop_cue_with_fade(0, default_fade_secs);
+    }
+
+    /// Begin fading out a single cue's streams (all streams when `cue_id` is 0),
+    /// stopping each once its fade completes. Uses each stream's own
+    /// `fade_out_duration`; falls back to `default_fade_secs` for streams that
+    /// have no configured fade-out.
+    pub fn stop_cue_with_fade(&mut self, cue_id: u32, default_fade_secs: f32) {
         for stream in &mut self.streams {
+            if cue_id != 0 && stream.cue_id != cue_id {
+                continue;
+            }
             if matches!(
                 stream.state,
                 AudioCueState::Playing | AudioCueState::FadingIn { .. }

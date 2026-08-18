@@ -8,6 +8,7 @@ mod cues;
 mod effects;
 mod fixture_editor;
 mod groups;
+mod hotkeys;
 mod magic_sheet;
 mod pan_tilt_gizmo;
 mod patching;
@@ -24,6 +25,7 @@ pub use cues::render_cues_panel;
 pub use effects::render_effects_panel;
 pub use fixture_editor::{render_fixture_editor, FixtureEditorState};
 pub use groups::{render_groups_panel, GroupsPanelState};
+pub use hotkeys::render_hotkeys_panel;
 pub use magic_sheet::render_magic_sheet_panel;
 pub use pan_tilt_gizmo::PanTiltGizmo;
 pub use patching::{render_patching_panel, PatchingPanelState};
@@ -360,6 +362,7 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             TabKind::MagicSheet => render_magic_sheet_panel(ui, self.app),
             TabKind::Effects => render_effects_panel(ui, self.app),
             TabKind::ScriptViewer => render_script_viewer_panel(ui, self.app),
+            TabKind::Hotkeys => render_hotkeys_panel(ui, self.app),
             TabKind::Unknown => {
                 ui.label("(unknown tab)");
             }
@@ -392,6 +395,8 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.show_title = "New Show".to_string();
                     app.current_file_path = None;
                     app.reset_cue_colors_to_defaults();
+                    app.hotkeys = crate::hotkeys::HotkeyMap::default();
+                    app.hotkey_runtime = crate::hotkeys::HotkeyRuntime::default();
                     app.ui_state.selected_cue_id = None;
                     app.ui_state.selected_lighting_cue_id = None;
                     app.ui_state.selected_audio_cue_id = None;
@@ -561,6 +566,12 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         .push_to_focused_leaf(TabKind::ScriptViewer);
                     ui.close_menu();
                 }
+                if ui.button("Hotkeys").clicked() {
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Hotkeys);
+                    ui.close_menu();
+                }
 
                 ui.separator();
                 ui.label(egui::RichText::new("Layout:").strong());
@@ -686,6 +697,10 @@ fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
                     ph::ARROW_UP,
                     ph::ARROW_DOWN
                 ));
+                ui.add_space(8.0);
+
+                ui.label(egui::RichText::new("Hotkeys (assign in the Hotkeys panel)").strong());
+                ui.label("Ctrl+0…Ctrl+9 — fire the assigned cue (Trigger / Hold / Latch)");
                 ui.add_space(8.0);
 
                 ui.label(egui::RichText::new("Command Line").strong());
