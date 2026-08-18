@@ -3,14 +3,16 @@
 //! Loads a PDF script (via `pdfium-render`), displays it on a zoomable/panable
 //! canvas, and lets the operator place *cue markers* on the page. Each marker
 //! is a lightweight spatial index that references a cue in the show file's cue
-//! list by stable ID — this module does not duplicate cue data.
+//! list by stable ID — this module does not duplicate cue data. The operator
+//! can also place *notes* (text + colour) that are purely visual and never
+//! trigger playback.
 //!
 //! Two modes:
 //! - **Edit** — double-click to add a marker (linked to an existing cue or a
-//!   freshly created one), click/drag to select/reposition, delete via the
-//!   marker editor strip.
+//!   freshly created one) or a note, click/drag to select/reposition, delete
+//!   via the editor strip.
 //! - **Playback** — markers are read-only; clicking one fires the linked cue
-//!   exactly as if it were triggered from the cue list.
+//!   exactly as if it were triggered from the cue list. Notes are inert.
 //!
 //! ## Persistence
 //! [`ScriptViewerData`] is stored inside the show file (see `src/show/mod.rs`).
@@ -79,6 +81,38 @@ impl CueMarker {
     }
 }
 
+/// An RGB colour for a script note, stored as bytes (0–255) so it stays
+/// compact and human-readable in show files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteColour {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+impl NoteColour {
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b }
+    }
+}
+
+/// A free-form text annotation pinned to a point on a PDF page. Unlike a
+/// [`CueMarker`] it carries no cue reference and never triggers playback — it
+/// is a passive note (text + colour) for the operator.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScriptNote {
+    /// Zero-based index of the page the note sits on.
+    pub page_index: usize,
+    /// X position in PDF points (0 = left edge of the page).
+    pub x: f32,
+    /// Y position in PDF points (0 = top edge of the page).
+    pub y: f32,
+    /// The note's text.
+    pub text: String,
+    /// Colour used to draw the note's dot and text.
+    pub colour: NoteColour,
+}
+
 /// Per-script annotation set, embedded in the show file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScriptViewerData {
@@ -90,6 +124,9 @@ pub struct ScriptViewerData {
     /// Cue markers placed on the pages.
     #[serde(default)]
     pub markers: Vec<CueMarker>,
+    /// Free-form text notes placed on the pages. Notes never trigger cues.
+    #[serde(default)]
+    pub notes: Vec<ScriptNote>,
 }
 
 impl ScriptViewerData {
@@ -104,8 +141,9 @@ impl ScriptViewerData {
     }
 }
 
-/// The kind of cue to create inline from the script viewer's add-cue popup.
-/// Maps onto the show file's `CueKind` variants.
+/// The kind of item to create inline from the script viewer's add-cue popup.
+/// The cue kinds map onto the show file's `CueKind` variants; `Note` is a
+/// passive text annotation and never creates a cue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewCueKind {
     Lighting,
@@ -113,6 +151,8 @@ pub enum NewCueKind {
     Sound,
     /// `CueKind::Adjust` — fades volume/pan on the targeted audio stream.
     Adjustment,
+    /// A free-form text note — not a cue, never triggers playback.
+    Note,
 }
 
 /// Which control of the add-cue popup to give keyboard focus to when it opens.
@@ -122,7 +162,7 @@ pub enum NewCueKind {
 pub enum PopupFocusTarget {
     /// Focus the existing-cue combo box (Space/Enter opens the dropdown).
     ExistingCombo,
-    /// Focus the "Create & link" button (Enter creates the cue immediately).
+    /// Focus the "Create & link" button (Enter creates the item immediately).
     CreateButton,
 }
 
@@ -188,14 +228,25 @@ pub struct ScriptViewer {
     pub selected_marker: Option<usize>,
     /// Marker being dragged this frame (index into `data.markers`).
     pub drag_marker: Option<usize>,
+    /// Index (into `data.notes`) of the currently selected note.
+    pub selected_note: Option<usize>,
+    /// Note being dragged this frame (index into `data.notes`).
+    pub drag_note: Option<usize>,
     /// Pending add-cue popup (set by double-clicking an empty area).
     pub pending_add: Option<PendingMarker>,
     /// Transient UI state for the add-cue popup.
     pub popup_new_kind: NewCueKind,
     pub popup_existing_cue: Option<u32>,
+    /// Colour used for the next created note (remembers the last-used colour;
+    /// changed via the note editor strip).
+    pub popup_note_colour: NoteColour,
     /// True when the last completed popup action linked an existing cue (rather
     /// than creating a new one). Drives which control is pre-focused next time.
     pub popup_last_was_link: bool,
+    /// True when a freshly-created note's text field should grab focus in the
+    /// note editor strip on its next frame (so the operator can type the note
+    /// text right away). Consumed by the strip.
+    pub focus_note_edit: bool,
     /// Which control the add-cue popup should focus on its next frame. Set when
     /// `pending_add` is created and consumed by the popup's first render.
     pub popup_focus: Option<PopupFocusTarget>,
@@ -230,10 +281,14 @@ impl Default for ScriptViewer {
             edit_mode: false,
             selected_marker: None,
             drag_marker: None,
+            selected_note: None,
+            drag_note: None,
             pending_add: None,
             popup_new_kind: NewCueKind::Lighting,
             popup_existing_cue: None,
+            popup_note_colour: NoteColour::rgb(255, 210, 0),
             popup_last_was_link: false,
+            focus_note_edit: false,
             popup_focus: None,
             last_refine: None,
             pending_focus: None,
@@ -305,8 +360,11 @@ impl ScriptViewer {
         self.page_count = 0;
         self.current_page = 0;
         self.selected_marker = None;
+        self.selected_note = None;
+        self.drag_note = None;
         self.pending_add = None;
         self.popup_focus = None;
+        self.focus_note_edit = false;
         self.pan = egui::Vec2::ZERO;
         self.last_canvas_top = None;
         self.pending_focus = None;
@@ -356,7 +414,10 @@ impl ScriptViewer {
         self.selected_marker = None;
         self.pending_add = None;
         self.drag_marker = None;
+        self.selected_note = None;
+        self.drag_note = None;
         self.popup_focus = None;
+        self.focus_note_edit = false;
         self.pan = egui::Vec2::ZERO;
         self.last_canvas_top = None;
         self.last_refine = None;
@@ -529,6 +590,37 @@ impl ScriptViewer {
             None
         }
     }
+
+    /// Index (into `data.notes`) of the first note within `radius_px` of a
+    /// screen position on the current page. `to_screen` maps page→screen.
+    pub fn note_at(
+        &self,
+        page_index: usize,
+        screen_pos: egui::Pos2,
+        radius_px: f32,
+        to_screen: &dyn Fn(&ScriptNote) -> egui::Pos2,
+    ) -> Option<usize> {
+        self.data.notes.iter().enumerate().find_map(|(idx, n)| {
+            if n.page_index == page_index && to_screen(n).distance(screen_pos) <= radius_px {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn add_note(&mut self, note: ScriptNote) -> usize {
+        self.data.notes.push(note);
+        self.data.notes.len() - 1
+    }
+
+    pub fn remove_note(&mut self, index: usize) -> Option<ScriptNote> {
+        if index < self.data.notes.len() {
+            Some(self.data.notes.remove(index))
+        } else {
+            None
+        }
+    }
 }
 
 /// Pick the render target width (px) for a page so that the *longer* rendered
@@ -650,10 +742,25 @@ mod tests {
     }
 
     #[test]
+    fn script_note_round_trips_through_json() {
+        let note = ScriptNote {
+            page_index: 1,
+            x: 10.5,
+            y: 20.25,
+            text: "Blocking: enter stage left".to_string(),
+            colour: NoteColour::rgb(255, 210, 0),
+        };
+        let json = serde_json::to_string(&note).unwrap();
+        let back: ScriptNote = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, note);
+    }
+
+    #[test]
     fn script_viewer_data_defaults_to_empty() {
         let data = ScriptViewerData::default();
         assert!(data.pdf_path.is_none());
         assert!(data.markers.is_empty());
+        assert!(data.notes.is_empty());
     }
 
     #[test]
@@ -663,6 +770,7 @@ mod tests {
         let data: ScriptViewerData = serde_json::from_str(json).unwrap();
         assert!(data.pdf_path.is_none());
         assert!(data.markers.is_empty());
+        assert!(data.notes.is_empty());
 
         // A fragment with markers.
         let json = r#"{"pdf_path": "script.pdf", "markers": [{"page_index": 0, "x": 1.0, "y": 2.0, "cue_id": 3}]}"#;
@@ -673,6 +781,14 @@ mod tests {
         );
         assert_eq!(data.markers.len(), 1);
         assert_eq!(data.markers[0].cue_id, 3);
+        assert!(data.notes.is_empty());
+
+        // A fragment with a note.
+        let json = r#"{"pdf_path": "script.pdf", "markers": [], "notes": [{"page_index": 0, "x": 4.0, "y": 5.0, "text": "hi", "colour": {"r": 255, "g": 0, "b": 0}}]}"#;
+        let data: ScriptViewerData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.notes.len(), 1);
+        assert_eq!(data.notes[0].text, "hi");
+        assert_eq!(data.notes[0].colour, NoteColour::rgb(255, 0, 0));
     }
 
     #[test]

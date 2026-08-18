@@ -12,14 +12,20 @@
 //! is recomputed here on every frame from the current zoom/pan.
 
 use crate::app::{EasyCueApp, TabKind};
-use crate::scriptviewer::{CueMarker, NewCueKind, PendingMarker};
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use crate::scriptviewer::{CueMarker, NewCueKind, NoteColour, PendingMarker, ScriptNote};
+use egui::{Color32, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
 /// Hit radius (screen px) for marker selection/clicking.
 const MARKER_RADIUS_PX: f32 = 14.0;
 /// Zoom clamp bounds (also used by the +/- buttons and scroll zoom).
 const MIN_ZOOM: f32 = 0.05;
 const MAX_ZOOM: f32 = 8.0;
+
+/// What annotation sits under a pointer position.
+enum HitTarget {
+    Marker(usize),
+    Note(usize),
+}
 
 /// Entry point called by the tab viewer.
 pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
@@ -172,10 +178,15 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         }
     });
 
-    // ── Marker editor strip (edit mode with a selection) ─────────────────────
-    if app.script_viewer.edit_mode && app.script_viewer.selected_marker.is_some() {
-        render_marker_editor_strip(ui, app);
-        ui.separator();
+    // ── Annotation editor strip (edit mode with a selection) ────────────────
+    if app.script_viewer.edit_mode {
+        if app.script_viewer.selected_marker.is_some() {
+            render_marker_editor_strip(ui, app);
+            ui.separator();
+        } else if app.script_viewer.selected_note.is_some() {
+            render_note_editor_strip(ui, app);
+            ui.separator();
+        }
     }
 
     // ── Error / empty-state message ──────────────────────────────────────────
@@ -367,10 +378,21 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     let edit_mode = app.script_viewer.edit_mode;
 
     if edit_mode {
-        // Drag an existing marker (primary button).
+        // Drag an existing marker or note (primary button). Markers win over
+        // notes when they overlap.
         if canvas_response.drag_started_by(egui::PointerButton::Primary) && !shift_held {
             if let Some(origin) = ui.input(|i| i.pointer.press_origin()) {
-                app.script_viewer.drag_marker = hit_marker(app, current_page, origin, &to_screen);
+                match hit_annotation(app, current_page, origin, &to_screen) {
+                    Some(HitTarget::Marker(i)) => {
+                        app.script_viewer.drag_marker = Some(i);
+                        app.script_viewer.drag_note = None;
+                    }
+                    Some(HitTarget::Note(i)) => {
+                        app.script_viewer.drag_note = Some(i);
+                        app.script_viewer.drag_marker = None;
+                    }
+                    None => {}
+                }
             }
         }
         if let Some(midx) = app.script_viewer.drag_marker {
@@ -387,20 +409,35 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 app.script_viewer.drag_marker = None;
             }
         }
+        if let Some(nidx) = app.script_viewer.drag_note {
+            if canvas_response.dragged_by(egui::PointerButton::Primary) {
+                if let Some(ptr) = canvas_response.interact_pointer_pos() {
+                    let (px, py) = to_page(ptr);
+                    if let Some(n) = app.script_viewer.data.notes.get_mut(nidx) {
+                        n.x = px.clamp(0.0, width_pts);
+                        n.y = py.clamp(0.0, height_pts);
+                    }
+                }
+            }
+            if canvas_response.drag_stopped() {
+                app.script_viewer.drag_note = None;
+            }
+        }
 
-        // Double-click empty space → add-cue popup.
+        // Double-click empty space → add-item popup.
         if canvas_response.double_clicked() && !shift_held {
             if let Some(pos) = canvas_response.interact_pointer_pos() {
-                if hit_marker(app, current_page, pos, &to_screen).is_none() {
+                if hit_annotation(app, current_page, pos, &to_screen).is_none() {
                     let (px, py) = to_page(pos);
                     app.script_viewer.pending_add = Some(PendingMarker {
                         page_index: current_page,
                         x: px.clamp(0.0, width_pts),
                         y: py.clamp(0.0, height_pts),
                     });
-                    // Remembered action: focus the existing-cue combo if the last
-                    // popup used it, otherwise the "Create & link" button so a
-                    // repeat double-click is a keyboard-only flow.
+                    // Fresh popup: remember the last action so a repeat
+                    // double-click is a pure keyboard affair. The selected item
+                    // kind (`popup_new_kind`) and note colour persist between
+                    // popups, so a repeat note flow starts pre-selected.
                     app.script_viewer.popup_focus =
                         Some(if app.script_viewer.popup_last_was_link {
                             crate::scriptviewer::PopupFocusTarget::ExistingCombo
@@ -410,21 +447,34 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 }
             }
         }
-        // Single click: select the marker (and its cue in the cue list), or
-        // click the background to deselect everything.
+        // Single click: select a marker (and its cue in the cue list) or a
+        // note, or click the background to deselect everything.
         if canvas_response.clicked_by(egui::PointerButton::Primary) && !shift_held {
             if let Some(pos) = canvas_response.interact_pointer_pos() {
-                match hit_marker(app, current_page, pos, &to_screen) {
-                    Some(idx) => {
+                match hit_annotation(app, current_page, pos, &to_screen) {
+                    Some(HitTarget::Marker(idx)) => {
                         app.script_viewer.selected_marker = Some(idx);
+                        app.script_viewer.selected_note = None;
                         if let Some(cue_id) =
                             app.script_viewer.data.markers.get(idx).map(|m| m.cue_id)
                         {
                             app.select_cue(cue_id);
                         }
                     }
+                    Some(HitTarget::Note(idx)) => {
+                        app.script_viewer.selected_note = Some(idx);
+                        app.script_viewer.selected_marker = None;
+                        // Notes aren't cues — clear any cue selection.
+                        app.ui_state.selected_cue_id = None;
+                        app.ui_state.selected_lighting_cue_id = None;
+                        app.ui_state.selected_audio_cue_id = None;
+                        // Grab the note text box so a click and start typing is a
+                        // single gesture (same as right after a note is created).
+                        app.script_viewer.focus_note_edit = true;
+                    }
                     None => {
                         app.script_viewer.selected_marker = None;
+                        app.script_viewer.selected_note = None;
                         app.ui_state.selected_cue_id = None;
                         app.ui_state.selected_lighting_cue_id = None;
                         app.ui_state.selected_audio_cue_id = None;
@@ -433,7 +483,7 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         }
 
-        // Delete selected marker while the canvas is hovered.
+        // Delete the selected marker or note while the canvas is hovered.
         let delete_pressed = ui.input(|i| i.key_pressed(egui::Key::Delete))
             && canvas_rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default()));
         if delete_pressed {
@@ -441,22 +491,27 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 app.script_viewer.remove_marker(midx);
                 app.script_viewer.selected_marker = None;
                 app.ui_state.status_message = "Marker deleted".to_string();
+            } else if let Some(nidx) = app.script_viewer.selected_note {
+                app.script_viewer.remove_note(nidx);
+                app.script_viewer.selected_note = None;
+                app.ui_state.status_message = "Note deleted".to_string();
             }
         }
     } else if canvas_response.clicked_by(egui::PointerButton::Primary) {
-        // Playback: click a marker → fire its cue (GO behaviour).
+        // Playback: click a marker → fire its cue (GO behaviour). Notes are
+        // inert — clicking one does nothing.
         if let Some(pos) = canvas_response.interact_pointer_pos() {
-            let cue_id = hit_marker(app, current_page, pos, &to_screen)
-                .and_then(|i| app.script_viewer.data.markers.get(i))
-                .map(|m| m.cue_id);
-            if let Some(cue_id) = cue_id {
-                app.fire_cue_by_id(cue_id);
+            if let Some(HitTarget::Marker(i)) = hit_annotation(app, current_page, pos, &to_screen) {
+                if let Some(cue_id) = app.script_viewer.data.markers.get(i).map(|m| m.cue_id) {
+                    app.fire_cue_by_id(cue_id);
+                }
             }
         }
     }
 
-    // ── Draw markers ─────────────────────────────────────────────────────────
+    // ── Draw markers & notes ─────────────────────────────────────────────────
     draw_markers(&painter, app, current_page, &to_screen);
+    draw_notes(&painter, app, current_page, &to_screen);
 
     // ── Add-cue popup ────────────────────────────────────────────────────────
     if app.script_viewer.pending_add.is_some() {
@@ -479,6 +534,33 @@ fn hit_marker(
         .marker_at(current_page, pos, MARKER_RADIUS_PX, &|m: &CueMarker| {
             to_screen(m.x, m.y)
         })
+}
+
+/// Index of the note on `current_page` within hit radius of `pos`, if any.
+fn hit_note(
+    app: &EasyCueApp,
+    current_page: usize,
+    pos: Pos2,
+    to_screen: &dyn Fn(f32, f32) -> Pos2,
+) -> Option<usize> {
+    app.script_viewer
+        .note_at(current_page, pos, MARKER_RADIUS_PX, &|n: &ScriptNote| {
+            to_screen(n.x, n.y)
+        })
+}
+
+/// The marker or note under `pos` — markers take priority on overlap so a
+/// note placed on top of a cue dot still lets playback fire the cue.
+fn hit_annotation(
+    app: &EasyCueApp,
+    current_page: usize,
+    pos: Pos2,
+    to_screen: &dyn Fn(f32, f32) -> Pos2,
+) -> Option<HitTarget> {
+    if let Some(i) = hit_marker(app, current_page, pos, to_screen) {
+        return Some(HitTarget::Marker(i));
+    }
+    hit_note(app, current_page, pos, to_screen).map(HitTarget::Note)
 }
 fn draw_markers(
     painter: &egui::Painter,
@@ -541,6 +623,69 @@ fn draw_markers(
             pill_color,
         );
         painter.galley(label_tl, galley, text);
+    }
+}
+
+/// Draw free-form notes on `current_page` as diamond dots (distinct from the
+/// round cue-marker dots) with the note text in the note's colour.
+fn draw_notes(
+    painter: &egui::Painter,
+    app: &EasyCueApp,
+    current_page: usize,
+    to_screen: &dyn Fn(f32, f32) -> Pos2,
+) {
+    let notes: Vec<(usize, &ScriptNote, Pos2)> = app
+        .script_viewer
+        .data
+        .notes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.page_index == current_page)
+        .map(|(idx, n)| (idx, n, to_screen(n.x, n.y)))
+        .collect();
+
+    for (idx, note, pos) in &notes {
+        let colour = Color32::from_rgb(note.colour.r, note.colour.g, note.colour.b);
+        let is_selected =
+            app.script_viewer.edit_mode && app.script_viewer.selected_note == Some(*idx);
+
+        let r = if is_selected {
+            MARKER_RADIUS_PX + 4.0
+        } else {
+            MARKER_RADIUS_PX
+        };
+        let diamond = Shape::convex_polygon(
+            vec![
+                Pos2::new(pos.x, pos.y - r),
+                Pos2::new(pos.x + r, pos.y),
+                Pos2::new(pos.x, pos.y + r),
+                Pos2::new(pos.x - r, pos.y),
+            ],
+            colour,
+            Stroke::new(if is_selected { 2.5 } else { 1.5 }, Color32::WHITE),
+        );
+        painter.add(diamond);
+
+        // Note text to the right, vertically centred on the dot.
+        let text = if note.text.is_empty() {
+            String::from("note")
+        } else {
+            note.text.clone()
+        };
+        let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), colour);
+        let pad = Vec2::new(5.0, 2.5);
+        let label_tl = Pos2::new(pos.x + r + 3.0, pos.y - galley.size().y / 2.0);
+        let pill_color = if app.script_viewer.dark_mode {
+            Color32::from_rgba_unmultiplied(70, 70, 70, 225)
+        } else {
+            Color32::from_black_alpha(120)
+        };
+        painter.rect_filled(
+            Rect::from_min_size(label_tl - pad, galley.size() + pad * 2.0),
+            3.0,
+            pill_color,
+        );
+        painter.galley(label_tl, galley, colour);
     }
 }
 
@@ -717,6 +862,87 @@ fn render_marker_editor_strip(ui: &mut Ui, app: &mut EasyCueApp) {
     });
 }
 
+fn render_note_editor_strip(ui: &mut Ui, app: &mut EasyCueApp) {
+    let Some(nidx) = app.script_viewer.selected_note else {
+        return;
+    };
+    let Some(note) = app.script_viewer.data.notes.get(nidx).cloned() else {
+        app.script_viewer.selected_note = None;
+        return;
+    };
+
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Note:").strong());
+
+        // Edit the note text live. A stable id lets the strip re-focus this
+        // field (selecting all) whenever the operator clicks a note or creates
+        // one, so typing straight away replaces the existing text.
+        let mut text = note.text.clone();
+        let note_edit_id = egui::Id::new(("script_note_text", nidx));
+        let output = egui::TextEdit::singleline(&mut text)
+            .id(note_edit_id)
+            .desired_width(220.0)
+            .hint_text("Note text")
+            .show(ui);
+        if output.response.changed() {
+            app.script_viewer.data.notes[nidx].text = text;
+        }
+        let text_len = app.script_viewer.data.notes[nidx].text.len();
+        if app.script_viewer.focus_note_edit {
+            app.script_viewer.focus_note_edit = false;
+            // Select all so typing replaces the current text (mirrors the cue
+            // label edit behaviour in the properties panel).
+            output.response.request_focus();
+            let mut state = output.state.clone();
+            use egui::text::{CCursor, CCursorRange};
+            state.cursor.set_char_range(Some(CCursorRange::two(
+                CCursor::new(0),
+                CCursor::new(text_len),
+            )));
+            state.store(ui.ctx(), output.response.id);
+        }
+
+        // Pick a new colour. Also updates the last-used colour so the next note
+        // created from the add-item popup uses it. The `||` comparison guards
+        // against the picker changing the colour without reporting `.changed()`
+        // on the same frame.
+        let mut rgb = [note.colour.r, note.colour.g, note.colour.b];
+        let stored = [note.colour.r, note.colour.g, note.colour.b];
+        let resp = ui.color_edit_button_srgb(&mut rgb);
+        if resp.changed() || rgb != stored {
+            let nc = NoteColour::rgb(rgb[0], rgb[1], rgb[2]);
+            app.script_viewer.data.notes[nidx].colour = nc;
+            app.script_viewer.popup_note_colour = nc;
+        }
+
+        ui.separator();
+        ui.label(
+            egui::RichText::new(format!(
+                "page {} · ({:.0}, {:.0}) pt",
+                note.page_index + 1,
+                note.x,
+                note.y
+            ))
+            .small()
+            .color(Color32::from_gray(150)),
+        );
+        ui.label(
+            egui::RichText::new("drag to move · Delete to remove")
+                .small()
+                .italics()
+                .color(Color32::from_gray(120)),
+        );
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("Delete").clicked() {
+                app.script_viewer.remove_note(nidx);
+                app.script_viewer.selected_note = None;
+                app.ui_state.status_message = "Note deleted".to_string();
+            }
+        });
+    });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Add-cue popup (double-click on empty page space)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -732,6 +958,8 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
     // existing one). New cues get selected + their label focused so the
     // operator can start typing a name right away.
     let mut created_new = false;
+    // True when the popup added a text note (no cue involved).
+    let mut note_added = false;
 
     // Consumed on this frame so the focus request only applies once on open.
     let focus_target = app.script_viewer.popup_focus.take();
@@ -791,9 +1019,9 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
             }
             ui.separator();
 
-            // ── Create a new cue inline ────────────────────────────────────
+            // ── Create a new item inline ────────────────────────────────────
             ui.label(
-                egui::RichText::new("…or create a new cue:")
+                egui::RichText::new("…or create a new item:")
                     .small()
                     .color(Color32::from_gray(150)),
             );
@@ -815,15 +1043,23 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                     NewCueKind::Adjustment,
                     "Adjustment",
                 );
+                ui.selectable_value(
+                    &mut app.script_viewer.popup_new_kind,
+                    NewCueKind::Note,
+                    "Note",
+                );
             });
 
             let kind = app.script_viewer.popup_new_kind;
-            if kind != NewCueKind::Lighting {
-                let hint = if kind == NewCueKind::Sound {
-                    "Sound cues need an audio file — you'll pick one on create."
-                } else {
-                    "Adjustment cues target the most recent sound cue."
-                };
+            let hint = match kind {
+                NewCueKind::Lighting => None,
+                NewCueKind::Sound => {
+                    Some("Sound cues need an audio file — you'll pick one on create.")
+                }
+                NewCueKind::Adjustment => Some("Adjustment cues target the most recent sound cue."),
+                NewCueKind::Note => Some("Notes are text annotations — they never trigger cues."),
+            };
+            if let Some(hint) = hint {
                 ui.label(
                     egui::RichText::new(hint)
                         .small()
@@ -831,6 +1067,7 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                         .color(Color32::from_gray(140)),
                 );
             }
+            ui.separator();
 
             ui.horizontal(|ui| {
                 let create_btn = ui.button("Create & link");
@@ -839,6 +1076,23 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                 }
                 if create_btn.clicked() {
                     match kind {
+                        NewCueKind::Note => {
+                            let note = ScriptNote {
+                                page_index: pending.page_index,
+                                x: pending.x,
+                                y: pending.y,
+                                text: String::new(),
+                                colour: app.script_viewer.popup_note_colour,
+                            };
+                            let idx = app.script_viewer.add_note(note);
+                            app.script_viewer.selected_note = Some(idx);
+                            app.script_viewer.selected_marker = None;
+                            // Let the operator start typing the note text in the
+                            // editor strip without clicking into it first.
+                            app.script_viewer.focus_note_edit = true;
+                            note_added = true;
+                            close = true;
+                        }
                         NewCueKind::Lighting => {
                             created_id = app.add_cue_of_kind(kind);
                             created_new = created_id.is_some();
@@ -892,7 +1146,11 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
         // Remember what the operator did so the next popup can pre-select and
         // pre-focus the same control. `popup_existing_cue` is intentionally
         // kept so a repeat "link existing" flow shows the last linked cue.
-        if let Some(cid) = created_id {
+        // `popup_new_kind` persists on its own, so a repeat note flow re-opens
+        // with "Note" already selected.
+        if note_added {
+            app.script_viewer.popup_last_was_link = false;
+        } else if let Some(cid) = created_id {
             if created_new {
                 app.script_viewer.popup_last_was_link = false;
             } else {
@@ -900,6 +1158,14 @@ fn render_add_cue_popup(ctx: &egui::Context, app: &mut EasyCueApp) {
                 app.script_viewer.popup_existing_cue = Some(cid);
             }
         }
+    }
+
+    // A note is not a cue — clear any cue selection so no marker highlights.
+    if note_added {
+        app.ui_state.selected_cue_id = None;
+        app.ui_state.selected_lighting_cue_id = None;
+        app.ui_state.selected_audio_cue_id = None;
+        app.ui_state.status_message = "Note added".to_string();
     }
 
     // Attach a marker to the chosen cue once the popup resolves.

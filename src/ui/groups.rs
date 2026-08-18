@@ -54,13 +54,14 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
 
     let mut to_remove: Option<u32> = None;
     let mut to_select: Option<Vec<usize>> = None;
+    let mut pending_renumber: Option<(u32, u32)> = None;
 
     ScrollArea::vertical().show(ui, |ui| {
         egui_extras::TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(egui_extras::Column::exact(45.0)) // Group #
+            .column(egui_extras::Column::exact(60.0)) // Group #
             .column(egui_extras::Column::initial(120.0).at_least(80.0)) // Label
             .column(egui_extras::Column::remainder().at_least(120.0)) // Fixtures
             .column(egui_extras::Column::exact(80.0)) // Actions
@@ -84,9 +85,21 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
 
                 for gid in group_ids {
                     body.row(26.0, |mut row| {
-                        // ── Group # ───────────────────────────────────────────
+                        // ── Group # (inline renumber) ───────────────────────────
                         row.col(|ui| {
-                            ui.label(format!("G{}", gid));
+                            let mut number = gid as i32;
+                            if ui
+                                .add(
+                                    egui::DragValue::new(&mut number)
+                                        .range(1..=9999)
+                                        .speed(1)
+                                        .prefix("G"),
+                                )
+                                .on_hover_text("Drag to renumber the group")
+                                .changed()
+                            {
+                                pending_renumber = Some((gid, number as u32));
+                            }
                         });
 
                         // ── Label (inline edit) ────────────────────────────────
@@ -164,6 +177,28 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
     });
 
     // ── Deferred mutations ─────────────────────────────────────────────────────
+    if let Some((old_id, new_id)) = pending_renumber {
+        if old_id != new_id {
+            let changes = app.groups.renumber(old_id, new_id);
+            if !changes.is_empty() {
+                // Re-point magic sheet shapes at the new ids. `renumber` returns a
+                // permutation (swaps produce two pairs), so map each shape once.
+                let id_map: std::collections::HashMap<u32, u32> = changes.iter().copied().collect();
+                for shape in &mut app.magic_sheet.shapes {
+                    if let Some(gid) = shape.group_id {
+                        if let Some(&new) = id_map.get(&gid) {
+                            shape.group_id = Some(new);
+                        }
+                    }
+                }
+                for &(old, _) in &changes {
+                    state.fixture_inputs.remove(&old);
+                }
+                app.ui_state.status_message = format!("Renumbered group G{} → G{}", old_id, new_id);
+            }
+        }
+    }
+
     if let Some(gid) = to_remove {
         app.groups.remove_group(gid);
         state.fixture_inputs.remove(&gid);

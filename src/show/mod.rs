@@ -4,11 +4,11 @@
 //! Old show files (pre-Phase B) used separate "cues" and "audio_cues" lists with a flat
 //! format; load() auto-migrates them into the unified format.
 
-use anyhow::Result;
 use crate::cue::Cue;
 use crate::fixtures::Patch;
 use crate::groups::GroupList;
 use crate::magic_sheet::MagicSheet;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// RGBA color for show-file persisted UI settings.
@@ -47,12 +47,12 @@ impl Default for CueColorSettings {
     fn default() -> Self {
         Self {
             // Hardcoded fallbacks for missing/older show files.
-            status_fading:  RgbaColor::rgb(200, 160, 30),
-            status_active:  RgbaColor::rgb(175, 45, 45),
+            status_fading: RgbaColor::rgb(200, 160, 30),
+            status_active: RgbaColor::rgb(175, 45, 45),
             status_on_deck: RgbaColor::rgb(45, 135, 45),
-            base_lighting:  RgbaColor::rgb(150, 85, 170),
-            base_audio:     RgbaColor::rgb(65, 95, 190),
-            base_adjust:    RgbaColor::rgb(100, 100, 110),
+            base_lighting: RgbaColor::rgb(150, 85, 170),
+            base_audio: RgbaColor::rgb(65, 95, 190),
+            base_adjust: RgbaColor::rgb(100, 100, 110),
         }
     }
 }
@@ -189,12 +189,19 @@ mod tests {
 
     #[test]
     fn script_viewer_data_round_trips_through_show_file() {
-        use crate::scriptviewer::{CueMarker, ScriptViewerData};
+        use crate::scriptviewer::{CueMarker, NoteColour, ScriptNote, ScriptViewerData};
 
         let mut data = ScriptViewerData::default();
         data.set_pdf_path(std::path::PathBuf::from("lorem.pdf"));
         data.markers.push(CueMarker::new(0, 12.5, 34.0, 1));
         data.markers.push(CueMarker::new(2, 200.0, 600.0, 7));
+        data.notes.push(ScriptNote {
+            page_index: 0,
+            x: 50.0,
+            y: 90.0,
+            text: "Stage-left lighting note".to_string(),
+            colour: NoteColour::rgb(255, 210, 0),
+        });
 
         let mut show = ShowFile::new();
         show.script_viewer = data.clone();
@@ -202,12 +209,13 @@ mod tests {
         let back: ShowFile = serde_json::from_str(&json).unwrap();
         assert_eq!(back.script_viewer.pdf_path, data.pdf_path);
         assert_eq!(back.script_viewer.markers, data.markers);
+        assert_eq!(back.script_viewer.notes, data.notes);
 
         // Old show files without the field still load (serde default).
         let old = r#"{"description":"","created":"x","modified":"x","cues":[]}"#;
         let show: ShowFile = serde_json::from_str(old).unwrap();
         assert!(show.script_viewer.markers.is_empty());
+        assert!(show.script_viewer.notes.is_empty());
         assert!(show.script_viewer.pdf_path.is_none());
     }
 }
-

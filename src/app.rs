@@ -897,8 +897,10 @@ impl EasyCueApp {
         }
         self.script_viewer.data = show.script_viewer;
         self.script_viewer.selected_marker = None;
+        self.script_viewer.selected_note = None;
         self.script_viewer.pending_add = None;
         self.script_viewer.drag_marker = None;
+        self.script_viewer.drag_note = None;
         self.magic_sheet_state = MagicSheetState {
             canvas_offset: egui::Vec2::new(
                 self.magic_sheet.canvas_offset[0],
@@ -1757,6 +1759,10 @@ impl EasyCueApp {
         let id = self.cue_list.next_id();
 
         match kind {
+            crate::scriptviewer::NewCueKind::Note => {
+                // Notes aren't cues — created directly by the script viewer popup.
+                return None;
+            }
             crate::scriptviewer::NewCueKind::Lighting => {
                 let mut cue = Cue::new_lighting(next_number);
                 cue.label = format!("Cue {:.0}", next_number);
@@ -2275,7 +2281,8 @@ impl eframe::App for EasyCueApp {
                     self.cue_list.set_current_index(prev_idx);
                     self.select_cue(id);
                     self.ui_state.go_cue_input = format!("{:.1}", num);
-                }            }
+                }
+            }
         }
         if go {
             let pending_idx = {

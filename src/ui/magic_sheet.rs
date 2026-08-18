@@ -26,36 +26,38 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         if app.magic_sheet_state.edit_mode {
             ui.separator();
 
-            // Shape palette — click to add a shape at canvas centre and immediately select it
-            ui.label("Add:");
-            for kind in crate::magic_sheet::ALL_SHAPE_KINDS {
-                if ui.button(kind.to_string()).clicked() {
+            // Shape palette — dropdown to add a shape at canvas centre and immediately select it
+            ui.menu_button("＋ Add", |ui| {
+                for kind in crate::magic_sheet::ALL_SHAPE_KINDS {
+                    if ui.button(kind.to_string()).clicked() {
+                        let canvas_centre = canvas_centre(ui, app);
+                        let new_id = app
+                            .magic_sheet
+                            .add_shape(kind.clone(), [canvas_centre.x, canvas_centre.y]);
+                        app.magic_sheet_state.selected_shape_ids.clear();
+                        app.magic_sheet_state.selected_shape_ids.insert(new_id);
+                        ui.close_menu();
+                    }
+                }
+                ui.separator();
+
+                // Command button — a shape that runs a command-line command when clicked in live mode
+                if ui
+                    .button("⚡ Command Shape")
+                    .on_hover_text(
+                        "Add a button that runs a command-line command (go, back, stop, goto5, …)",
+                    )
+                    .clicked()
+                {
                     let canvas_centre = canvas_centre(ui, app);
                     let new_id = app
                         .magic_sheet
-                        .add_shape(kind.clone(), [canvas_centre.x, canvas_centre.y]);
+                        .add_command_shape([canvas_centre.x, canvas_centre.y]);
                     app.magic_sheet_state.selected_shape_ids.clear();
                     app.magic_sheet_state.selected_shape_ids.insert(new_id);
+                    ui.close_menu();
                 }
-            }
-
-            ui.separator();
-
-            // Command button — a shape that runs a command-line command when clicked in live mode
-            if ui
-                .button("⚡ Cmd")
-                .on_hover_text(
-                    "Add a button that runs a command-line command (go, back, stop, goto5, …)",
-                )
-                .clicked()
-            {
-                let canvas_centre = canvas_centre(ui, app);
-                let new_id = app
-                    .magic_sheet
-                    .add_command_shape([canvas_centre.x, canvas_centre.y]);
-                app.magic_sheet_state.selected_shape_ids.clear();
-                app.magic_sheet_state.selected_shape_ids.insert(new_id);
-            }
+            });
 
             ui.separator();
 
@@ -91,49 +93,37 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             // Alignment — shown when 2+ shapes are selected
             let sel_count = app.magic_sheet_state.selected_shape_ids.len();
             if sel_count >= 2 {
-                ui.label("Align:");
-                if ui
-                    .small_button("⬅")
-                    .on_hover_text("Align left edges")
-                    .clicked()
-                {
-                    align_shapes(app, Alignment::Left);
-                }
-                if ui
-                    .small_button("➡")
-                    .on_hover_text("Align right edges")
-                    .clicked()
-                {
-                    align_shapes(app, Alignment::Right);
-                }
-                if ui
-                    .small_button("⬆")
-                    .on_hover_text("Align top edges")
-                    .clicked()
-                {
-                    align_shapes(app, Alignment::Top);
-                }
-                if ui
-                    .small_button("⬇")
-                    .on_hover_text("Align bottom edges")
-                    .clicked()
-                {
-                    align_shapes(app, Alignment::Bottom);
-                }
-                if ui
-                    .small_button("↔")
-                    .on_hover_text("Distribute horizontally")
-                    .clicked()
-                {
-                    align_shapes(app, Alignment::DistributeH);
-                }
-                if ui
-                    .small_button("↕")
-                    .on_hover_text("Distribute vertically")
-                    .clicked()
-                {
-                    align_shapes(app, Alignment::DistributeV);
-                }
+                ui.menu_button("⇨ Align", |ui| {
+                    if ui.button("⬅ Align left edges").clicked() {
+                        align_shapes(app, Alignment::Left);
+                        ui.close_menu();
+                    }
+                    if ui.button("➡ Align right edges").clicked() {
+                        align_shapes(app, Alignment::Right);
+                        ui.close_menu();
+                    }
+                    if ui.button("⬆ Align top edges").clicked() {
+                        align_shapes(app, Alignment::Top);
+                        ui.close_menu();
+                    }
+                    if ui.button("⬇ Align bottom edges").clicked() {
+                        align_shapes(app, Alignment::Bottom);
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("↔ Distribute horizontally").clicked() {
+                        align_shapes(app, Alignment::DistributeH);
+                        ui.close_menu();
+                    }
+                    if ui.button("↕ Distribute vertically").clicked() {
+                        align_shapes(app, Alignment::DistributeV);
+                        ui.close_menu();
+                    }
+                    if ui.button("⟳ Distribute angles").clicked() {
+                        align_shapes(app, Alignment::DistributeAngles);
+                        ui.close_menu();
+                    }
+                });
                 ui.separator();
             }
 
@@ -265,11 +255,13 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             let link_color = s.link_color;
             let link_intensity = s.link_intensity;
             let command = s.command.clone();
+            let rotation_deg = s.rotation_deg;
             (
                 id,
                 kind,
                 pos,
                 scale,
+                rotation_deg,
                 bg,
                 outline,
                 fixture_id,
@@ -289,6 +281,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         kind,
         pos,
         scale,
+        rotation_deg,
         bg_color,
         outline_color,
         fixture_id,
@@ -301,6 +294,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     {
         let shape_id = *shape_id;
         let scale = *scale;
+        let rotation_deg = *rotation_deg;
 
         let screen_center = canvas_to_screen(
             canvas_rect,
@@ -368,8 +362,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 false
             };
 
-        let shape_rect = Rect::from_center_size(screen_center, egui::vec2(w, h));
-        let resp = ui.allocate_rect(shape_rect, Sense::click_and_drag());
+        let shape_bbox = shape_bbox(kind, screen_center, w, h, rotation_deg);
+        let resp = ui.allocate_rect(shape_bbox, Sense::click_and_drag());
 
         // ── Edit mode: click to select, drag to move ──────────────────────────
         if edit_mode && !shift_held && app.magic_sheet_state.drag_select_start.is_none() {
@@ -503,6 +497,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             h,
             effective_bg,
             Stroke::new(border_width, border_color),
+            rotation_deg,
         );
         if is_command_shape {
             draw_command_shape_label(
@@ -573,7 +568,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 if !modifiers.command && !modifiers.ctrl {
                     app.magic_sheet_state.selected_shape_ids.clear();
                 }
-                for (shape_id, _kind, pos, scale, ..) in &shapes_snapshot {
+                for (shape_id, _kind, pos, scale, rotation_deg, ..) in &shapes_snapshot {
                     let sc = canvas_to_screen(
                         canvas_rect,
                         app.magic_sheet_state.canvas_offset,
@@ -582,8 +577,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     );
                     let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
                     let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
-                    let shape_rect = Rect::from_center_size(sc, egui::vec2(w, h));
-                    if sel_rect.intersects(shape_rect) {
+                    if sel_rect.intersects(shape_bbox(_kind, sc, w, h, *rotation_deg)) {
                         app.magic_sheet_state.selected_shape_ids.insert(*shape_id);
                     }
                 }
@@ -607,17 +601,19 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 i.pointer
                     .press_origin()
                     .map(|p| {
-                        shapes_snapshot.iter().any(|(_, _, pos, scale, ..)| {
-                            let sc = canvas_to_screen(
-                                canvas_rect,
-                                app.magic_sheet_state.canvas_offset,
-                                app.magic_sheet_state.canvas_zoom,
-                                *pos,
-                            );
-                            let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
-                            let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
-                            Rect::from_center_size(sc, egui::vec2(w, h)).contains(p)
-                        })
+                        shapes_snapshot
+                            .iter()
+                            .any(|(_, kind, pos, scale, rotation_deg, ..)| {
+                                let sc = canvas_to_screen(
+                                    canvas_rect,
+                                    app.magic_sheet_state.canvas_offset,
+                                    app.magic_sheet_state.canvas_zoom,
+                                    *pos,
+                                );
+                                let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
+                                let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
+                                shape_bbox(kind, sc, w, h, *rotation_deg).contains(p)
+                            })
                     })
                     .unwrap_or(false)
             })
@@ -645,7 +641,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 if !modifiers.command && !modifiers.ctrl {
                     app.ui_state.selected_fixtures.clear();
                 }
-                for (_, _, pos, scale, _, _, fixture_id, group_id, is_group, ..) in &shapes_snapshot
+                for (_, kind, pos, scale, rotation_deg, _, _, fixture_id, group_id, is_group, ..) in
+                    &shapes_snapshot
                 {
                     let sc = canvas_to_screen(
                         canvas_rect,
@@ -655,7 +652,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     );
                     let w = BASE_W * scale * app.magic_sheet_state.canvas_zoom;
                     let h = BASE_H * scale * app.magic_sheet_state.canvas_zoom;
-                    if sel_rect.intersects(Rect::from_center_size(sc, egui::vec2(w, h))) {
+                    if sel_rect.intersects(shape_bbox(kind, sc, w, h, *rotation_deg)) {
                         if let Some(fid) = fixture_id {
                             app.ui_state.selected_fixtures.insert(*fid);
                         } else if *is_group || group_id.is_some() {
@@ -720,6 +717,7 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
     let mut group_id = shape.group_id;
     let mut is_group = shape.is_group;
     let mut scale = shape.scale;
+    let mut rotation = shape.rotation_deg.rem_euclid(360.0);
     let mut bg = Color32::from_rgba_unmultiplied(
         shape.bg_color[0],
         shape.bg_color[1],
@@ -865,6 +863,15 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
             );
             ui.end_row();
 
+            ui.label("Rotation:");
+            ui.horizontal(|ui| {
+                ui.add(egui::Slider::new(&mut rotation, 0.0..=360.0).suffix("°"));
+                if ui.small_button("⟲").on_hover_text("Reset to 0°").clicked() {
+                    rotation = 0.0;
+                }
+            });
+            ui.end_row();
+
             ui.label("Fill:");
             egui::color_picker::color_edit_button_srgba(
                 ui,
@@ -904,6 +911,7 @@ fn render_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_id: u32) {
         s.group_id = group_id;
         s.is_group = is_group;
         s.scale = scale;
+        s.rotation_deg = rotation.rem_euclid(360.0);
         let [r, g, b, a] = bg.to_srgba_unmultiplied();
         s.bg_color = [r, g, b, a];
         let [r, g, b, a] = outline.to_srgba_unmultiplied();
@@ -933,6 +941,7 @@ fn render_multi_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_ids: &
         None => return,
     };
     let mut scale = first.scale;
+    let mut rotation = first.rotation_deg.rem_euclid(360.0);
     let mut bg = Color32::from_rgba_unmultiplied(
         first.bg_color[0],
         first.bg_color[1],
@@ -949,6 +958,7 @@ fn render_multi_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_ids: &
     let mut link_intensity = first.link_intensity;
 
     let mut scale_changed = false;
+    let mut rotation_changed = false;
     let mut bg_changed = false;
     let mut outline_changed = false;
     let mut link_color_changed = false;
@@ -966,6 +976,12 @@ fn render_multi_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_ids: &
                         .speed(0.01)
                         .fixed_decimals(2),
                 )
+                .changed();
+            ui.end_row();
+
+            ui.label("Rotation (all):");
+            rotation_changed = ui
+                .add(egui::Slider::new(&mut rotation, 0.0..=360.0).suffix("°"))
                 .changed();
             ui.end_row();
 
@@ -1009,6 +1025,9 @@ fn render_multi_shape_properties(ui: &mut Ui, app: &mut EasyCueApp, shape_ids: &
             if scale_changed {
                 s.scale = scale;
             }
+            if rotation_changed {
+                s.rotation_deg = rotation.rem_euclid(360.0);
+            }
             if bg_changed {
                 let [r, g, b, a] = bg.to_srgba_unmultiplied();
                 s.bg_color = [r, g, b, a];
@@ -1036,6 +1055,7 @@ enum Alignment {
     Bottom,
     DistributeH,
     DistributeV,
+    DistributeAngles,
 }
 
 fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
@@ -1055,6 +1075,7 @@ fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
         cy: f32,
         hw: f32,
         hh: f32,
+        angle: f32,
     }
     let mut infos: Vec<Info> = ids
         .iter()
@@ -1069,6 +1090,7 @@ fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
                     cy: s.pos[1],
                     hw: BASE_W * s.scale / 2.0,
                     hh: BASE_H * s.scale / 2.0,
+                    angle: s.rotation_deg.rem_euclid(360.0),
                 })
         })
         .collect();
@@ -1079,6 +1101,26 @@ fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
     let max_bottom = infos.iter().map(|i| i.cy + i.hh).fold(f32::MIN, f32::max);
 
     match alignment {
+        Alignment::DistributeAngles => {
+            // Order shapes left-to-right, then top-to-bottom; assign angles in that order.
+            infos.sort_by(|a, b| {
+                a.cx.partial_cmp(&b.cx)
+                    .unwrap()
+                    .then(a.cy.partial_cmp(&b.cy).unwrap())
+            });
+            let n = infos.len();
+            let span = infos[n - 1].angle - infos[0].angle;
+            for (i, info) in infos.iter().enumerate() {
+                let target = if n > 1 {
+                    infos[0].angle + span * (i as f32 / (n as f32 - 1.0))
+                } else {
+                    info.angle
+                };
+                if let Some(s) = app.magic_sheet.get_shape_mut(info.id) {
+                    s.rotation_deg = target;
+                }
+            }
+        }
         Alignment::DistributeH => {
             infos.sort_by(|a, b| a.cx.partial_cmp(&b.cx).unwrap());
             let n = infos.len();
@@ -1177,9 +1219,11 @@ fn draw_shape(
     h: f32,
     fill: Color32,
     stroke: Stroke,
+    rot_deg: f32,
 ) {
+    let rotated = rot_deg.rem_euclid(360.0) != 0.0;
     match kind {
-        ShapeKind::Rectangle => {
+        ShapeKind::Rectangle if !rotated => {
             let rect = Rect::from_center_size(center, egui::vec2(w, h));
             painter.rect_filled(rect, 4.0, fill);
             painter.rect_stroke(rect, 4.0, stroke, egui::epaint::StrokeKind::Inside);
@@ -1189,16 +1233,91 @@ fn draw_shape(
             painter.circle_filled(center, r, fill);
             painter.circle_stroke(center, r, stroke);
         }
-        ShapeKind::Diamond => {
-            let pts = vec![
-                Pos2::new(center.x, center.y - h / 2.0),
-                Pos2::new(center.x + w / 2.0, center.y),
-                Pos2::new(center.x, center.y + h / 2.0),
-                Pos2::new(center.x - w / 2.0, center.y),
-            ];
-            painter.add(egui::Shape::convex_polygon(pts, fill, stroke));
+        _ => {
+            // Generic path: fill each convex sub-polygon, then stroke the full outline
+            // (needed so concave shapes like the arrow get a single clean border).
+            for poly in shape_local_fills(kind) {
+                let pts = transform_local_points(center, w, h, rot_deg, &poly);
+                painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
+                    pts,
+                    fill,
+                    egui::epaint::PathStroke::NONE,
+                )));
+            }
+            let outline_pts =
+                transform_local_points(center, w, h, rot_deg, &shape_local_outline(kind));
+            painter.add(egui::Shape::Path(egui::epaint::PathShape::closed_line(
+                outline_pts,
+                stroke,
+            )));
         }
     }
+}
+
+/// Local-space outline points for a shape, as fractions of w/h around the centre.
+/// Used for hit-testing, rubber-band selection and rotated drawing.
+fn shape_local_outline(kind: &ShapeKind) -> Vec<[f32; 2]> {
+    match kind {
+        ShapeKind::Rectangle => vec![[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
+        ShapeKind::Circle => vec![[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
+        ShapeKind::Diamond => vec![[0.0, -0.5], [0.5, 0.0], [0.0, 0.5], [-0.5, 0.0]],
+        ShapeKind::Arrow => {
+            let sy = 0.32;
+            let tx = 0.5;
+            vec![
+                [-0.5, sy],
+                [0.0, sy],
+                [0.0, 0.5],
+                [tx, 0.0],
+                [0.0, -0.5],
+                [0.0, -sy],
+                [-0.5, -sy],
+            ]
+        }
+    }
+}
+
+/// Convex fill sub-polygons for a shape, as fractions of w/h around the centre.
+fn shape_local_fills(kind: &ShapeKind) -> Vec<Vec<[f32; 2]>> {
+    match kind {
+        ShapeKind::Arrow => vec![
+            vec![[-0.5, -0.32], [0.0, -0.32], [0.0, 0.32], [-0.5, 0.32]],
+            vec![[0.0, -0.5], [0.5, 0.0], [0.0, 0.5]],
+        ],
+        _ => vec![shape_local_outline(kind)],
+    }
+}
+
+/// Rotate+scale local points into screen space around `center`.
+fn transform_local_points(
+    center: Pos2,
+    w: f32,
+    h: f32,
+    rot_deg: f32,
+    local: &[[f32; 2]],
+) -> Vec<Pos2> {
+    let (sin, cos) = rot_deg.to_radians().sin_cos();
+    local
+        .iter()
+        .map(|[lx, ly]| {
+            let px = lx * w;
+            let py = ly * h;
+            Pos2::new(
+                center.x + px * cos - py * sin,
+                center.y + px * sin + py * cos,
+            )
+        })
+        .collect()
+}
+
+/// Axis-aligned bounding box of a (possibly rotated) shape in screen space.
+/// Used for hit-testing and rubber-band selection.
+fn shape_bbox(kind: &ShapeKind, center: Pos2, w: f32, h: f32, rot_deg: f32) -> Rect {
+    if matches!(kind, ShapeKind::Circle) {
+        return Rect::from_center_size(center, egui::vec2(w, h));
+    }
+    let pts = transform_local_points(center, w, h, rot_deg, &shape_local_outline(kind));
+    Rect::from_points(&pts)
 }
 
 fn draw_command_shape_label(

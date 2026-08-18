@@ -13,6 +13,7 @@ pub enum ShapeKind {
     Rectangle,
     Circle,
     Diamond,
+    Arrow,
 }
 
 impl std::fmt::Display for ShapeKind {
@@ -21,13 +22,18 @@ impl std::fmt::Display for ShapeKind {
             ShapeKind::Rectangle => write!(f, "Rect"),
             ShapeKind::Circle => write!(f, "Circle"),
             ShapeKind::Diamond => write!(f, "Diamond"),
+            ShapeKind::Arrow => write!(f, "Arrow"),
         }
     }
 }
 
 /// All available shape kinds, in palette order.
-pub const ALL_SHAPE_KINDS: &[ShapeKind] =
-    &[ShapeKind::Rectangle, ShapeKind::Circle, ShapeKind::Diamond];
+pub const ALL_SHAPE_KINDS: &[ShapeKind] = &[
+    ShapeKind::Rectangle,
+    ShapeKind::Circle,
+    ShapeKind::Diamond,
+    ShapeKind::Arrow,
+];
 
 /// A single shape placed on the magic sheet canvas.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +45,9 @@ pub struct MagicSheetShape {
     pub pos: [f32; 2],
     /// Size multiplier — 1.0 means the default base size (~80 × 60 px).
     pub scale: f32,
+    /// Rotation in degrees, clockwise. 0 = not rotated.
+    #[serde(default)]
+    pub rotation_deg: f32,
     /// Background fill colour [R, G, B, A].
     pub bg_color: [u8; 4],
     /// Outline / border colour [R, G, B, A].
@@ -72,6 +81,7 @@ impl MagicSheetShape {
             kind,
             pos,
             scale: 1.0,
+            rotation_deg: 0.0,
             bg_color: [30, 50, 75, 255],
             outline_color: [100, 150, 200, 255],
             fixture_id: None,
@@ -96,6 +106,7 @@ impl MagicSheetShape {
             kind: self.kind.clone(),
             pos: [self.pos[0] + offset[0], self.pos[1] + offset[1]],
             scale: self.scale,
+            rotation_deg: self.rotation_deg,
             bg_color: self.bg_color,
             outline_color: self.outline_color,
             fixture_id: self.fixture_id,
@@ -197,10 +208,12 @@ mod tests {
     fn duplicate_preserves_command_and_group() {
         let mut sheet = MagicSheet::default();
         let id = sheet.add_command_shape([0.0, 0.0]);
-        let src = sheet.shapes.iter().find(|s| s.id == id).unwrap().clone();
+        let mut src = sheet.shapes.iter().find(|s| s.id == id).unwrap().clone();
+        src.rotation_deg = 45.0;
         let new_id = sheet.add_shape_clone(&src, [5.0, 5.0]);
         let dup = sheet.shapes.iter().find(|s| s.id == new_id).unwrap();
         assert_eq!(dup.command.as_deref(), Some("go"));
         assert_eq!(dup.pos, [5.0, 5.0]);
+        assert_eq!(dup.rotation_deg, 45.0);
     }
 }

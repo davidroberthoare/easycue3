@@ -9,10 +9,15 @@ Working first pass, feature-complete against the spec:
 
 - ✅ PDF loading + rasterization (`pdfium-render`), GPU textures
 - ✅ Edit / Playback modes (toolbar toggle)
-- ✅ Double-click empty page → add-cue popup (link existing cue OR create
-  Lighting / Sound / Adjustment inline)
-- ✅ Click to select, drag to move, Delete to remove markers
-- ✅ Marker reassignment via combo in the edit strip
+- ✅ Double-click empty page → add-item popup (link existing cue, or create a
+  Lighting / Sound / Adjustment cue / Note via the kind row; note creation
+  drops a text note and focuses the editor-strip text box for typing right away)
+- ✅ Text notes (text + colour) — purely visual, never trigger cues; drawn as
+  diamond dots distinct from cue markers. New notes use the last-used colour
+  (change it via the note editor strip)
+- ✅ Click to select, drag to move, Delete to remove markers/notes
+- ✅ Marker reassignment via combo in the edit strip; note text/colour editable
+  in its own strip
 - ✅ Click marker in Playback mode → fires the linked cue (GO behaviour)
 - ✅ Zoom (Ctrl/Cmd+scroll + buttons) / pan (scroll, or middle/right/shift-drag)
 - ✅ "⟲ Fit" fits the whole current page into the canvas, centred
@@ -37,7 +42,7 @@ Working first pass, feature-complete against the spec:
 
 | File | Purpose |
 | --- | --- |
-| `src/scriptviewer/mod.rs` | Data model (`CueMarker`, `ScriptViewerData`, `NewCueKind`), runtime state (`ScriptViewer`, `PageImage`), PDF loading/rasterization, page cache, library binding. |
+| `src/scriptviewer/mod.rs` | Data model (`CueMarker`, `ScriptNote`, `ScriptViewerData`, `NewCueKind`), runtime state (`ScriptViewer`, `PageImage`), PDF loading/rasterization, page cache, library binding. |
 | `src/ui/script_viewer.rs` | The dockable panel: toolbar, canvas, marker interactions, add-cue popup, marker editor strip. |
 | `src/app.rs` | `EasyCueApp::script_viewer` field; save/load wiring; `fire_cue_by_id()`, `add_cue_of_kind()`; `TabKind::ScriptViewer`. |
 | `src/show/mod.rs` | `ShowFile.script_viewer: ScriptViewerData` (serde-defaulted for older files). |
@@ -47,12 +52,15 @@ Working first pass, feature-complete against the spec:
 
 ```rust
 CueMarker { page_index: usize, x: f32, y: f32, cue_id: u32 }
-ScriptViewerData { pdf_path: Option<PathBuf>, markers: Vec<CueMarker> }
+ScriptNote { page_index: usize, x: f32, y: f32, text: String, colour: NoteColour }
+NoteColour { r: u8, g: u8, b: u8 }
+ScriptViewerData { pdf_path: Option<PathBuf>, markers: Vec<CueMarker>, notes: Vec<ScriptNote> }
 ```
 
-- Markers are stored in **PDF point space** (native pdfium units, origin
+- Markers/notes are stored in **PDF point space** (native pdfium units, origin
   top-left); the screen↔page transform is computed per frame in the panel.
-- Markers reference cues by stable `cue_id` — no cue data is duplicated.
+- Markers reference cues by stable `cue_id` — no cue data is duplicated. Notes
+  reference nothing and never fire cues.
 - `pdf_path` is stored as a bare filename resolved via
   `crate::paths::resolve_media_path` (same `media/` convention as audio cues).
 
@@ -125,6 +133,9 @@ A clear error is shown in the panel if the library is missing.
   later in Cue Properties.
 - **Adjustment cues** auto-target the most recent audio cue, matching the
   existing Cues-panel behaviour.
+- **Notes** are created via the "Note" kind in the popup using the last-used
+  colour; the editor strip then grabs focus so the operator can type the note
+  text immediately (keyboard-only repeat: double-click → Enter → type).
 - **Marker colours** reuse `CueColorSettings` (`base_lighting`/`base_audio`/
   `base_adjust`); missing cues render grey.
 - **Firing** goes through `app.go_to_cue()` (a real GO with fade) via
