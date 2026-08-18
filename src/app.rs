@@ -1903,7 +1903,7 @@ impl EasyCueApp {
                     .collect();
                 match nums.as_slice() {
                     [bn, an] if (*an - *bn).abs() > 0.005 => {
-                        ((bn + an) / 2.0 * 100.0).round() / 100.0
+                        crate::cue::list::midpoint_insert_number(*bn, *an)
                     }
                     _ => self.cue_list.end_insert_number(),
                 }

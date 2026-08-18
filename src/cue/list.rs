@@ -108,10 +108,9 @@ impl CueList {
     }
 
     /// Number for a new cue inserted directly after the cue at `anchor_idx`:
-    /// the midpoint between it and the next cue in the list, so repeated
-    /// inserts keep halving the gap (between 3.0 and 4.0 → 3.5, then 3.25, …).
-    /// When the anchor is the last cue (or the index is out of range), falls
-    /// back to [`Self::end_insert_number`].
+    /// the gap between it and the next cue is halved — preferring a whole number
+    /// (see [`midpoint_insert_number`]). When the anchor is the last cue (or the
+    /// index is out of range), falls back to [`Self::end_insert_number`].
     pub fn number_for_insert_after(&self, anchor_idx: usize) -> f32 {
         let Some(anchor) = self.cues.get(anchor_idx) else {
             return self.end_insert_number();
@@ -119,7 +118,7 @@ impl CueList {
         let Some(next) = self.cues.get(anchor_idx + 1) else {
             return self.end_insert_number();
         };
-        ((anchor.number + next.number) / 2.0 * 100.0).round() / 100.0
+        midpoint_insert_number(anchor.number, next.number)
     }
 
     // --- Play head ---
@@ -421,6 +420,22 @@ impl CueList {
     }
 }
 
+/// Number for a new cue placed between two existing cue numbers `a < b`.
+/// Prefers a whole number when one sits strictly between them: the midpoint
+/// rounded down to an integer, as long as that integer still falls strictly
+/// between `a` and `b` (so between 3.0 and 6.0 the first insert is 4.0, then
+/// 4.5, …). Otherwise falls back to the decimal midpoint rounded to 2dp
+/// (3.0 & 4.0 → 3.5, then 3.25, …).
+pub fn midpoint_insert_number(a: f32, b: f32) -> f32 {
+    let mid = (a + b) / 2.0;
+    let whole = mid.floor();
+    if a < whole && whole < b {
+        whole
+    } else {
+        (mid * 100.0).round() / 100.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,6 +484,22 @@ mod tests {
         // Out-of-range index also falls back.
         assert_eq!(list.number_for_insert_after(5), 4.0);
         assert_eq!(list.number_for_insert_after(usize::MAX), 4.0);
+    }
+
+    #[test]
+    fn midpoint_insert_number_prefers_whole_numbers() {
+        // Whole number sits in the gap → use it (round the midpoint down).
+        assert_eq!(midpoint_insert_number(3.0, 6.0), 4.0);
+        assert_eq!(midpoint_insert_number(3.0, 7.0), 5.0);
+        assert_eq!(midpoint_insert_number(3.0, 5.0), 4.0);
+        assert_eq!(midpoint_insert_number(3.0, 10.0), 6.0);
+        // A whole number below the midpoint that's still inside the gap.
+        assert_eq!(midpoint_insert_number(3.8, 4.9), 4.0);
+        assert_eq!(midpoint_insert_number(1.0, 3.0), 2.0);
+        // No whole number in the gap → decimal midpoint.
+        assert_eq!(midpoint_insert_number(3.0, 4.0), 3.5);
+        assert_eq!(midpoint_insert_number(3.0, 4.5), 3.75);
+        assert_eq!(midpoint_insert_number(3.25, 3.5), 3.38);
     }
 
     #[test]
