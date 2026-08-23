@@ -55,6 +55,37 @@
       width: 28px; height: 28px; border-radius: 50%;
       border: 2px solid rgba(255,255,255,0.4); display: inline-block;
     }
+    /* Custom HSV colour wheel (matches the desktop circular wheel) */
+    .ec-wheel-overlay {
+      position: fixed; inset: 0; z-index: 13600;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .ec-wheel-card {
+      background: var(--f7-page-bg-color, #14171c);
+      border-radius: 12px;
+      padding: 16px;
+      width: min(92vw, 340px);
+      max-height: 92vh;
+      overflow-y: auto;
+    }
+    .ec-wheel-card .ec-wheel-title {
+      display: flex; align-items: center; justify-content: space-between;
+      font-weight: 700; margin-bottom: 8px;
+    }
+    .ec-wheel-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8px 0 0;
+    }
+    .ec-wheel {
+      touch-action: none;
+      border-radius: 50%;
+    }
+    .fixture-row.ec-fx-sel,
+    .group-row.ec-gp-sel { background: rgba(30, 150, 255, 0.25) !important; }
+    .fixture-row.ec-fx-sel .item-media .badge,
+    .group-row.ec-gp-sel .item-media .badge { border-color: #4faeff; color: #4faeff; }
   </style>
 </head>
 <body>
@@ -99,9 +130,10 @@
     <!-- Bottom tab bar -->
     <div class="toolbar tabbar toolbar-bottom">
       <div class="toolbar-inner">
-        <a href="#view-cues" class="tab-link tab-link-active">Cues</a>
-        <a href="#view-fixtures" class="tab-link">Fixtures</a>
-        <a href="#view-channels" class="tab-link">Channels</a>
+        <a href="#view-cues" class="tab-link tab-link-active">Cue</a>
+        <a href="#view-fixtures" class="tab-link">Fix</a>
+        <a href="#view-channels" class="tab-link">Chan</a>
+        <a href="#view-groups" class="tab-link">Grp</a>
         <a href="#view-patch" class="tab-link">Patch</a>
         <a href="#view-cmd" class="tab-link">Cmd</a>
       </div>
@@ -136,7 +168,18 @@
           </div>
           <div class="block block-strong">
             <p class="segmented-label">Grand master</p>
-            <div class="range-slider" id="master-range"></div>
+            <div class="range-slider" id="master-range">
+              <input type="range" min="0" max="100" step="1" value="100">
+            </div>
+          </div>
+          <div class="block block-strong" id="audio-status" style="display:none">
+            <p id="audio-status-text">&nbsp;</p>
+          </div>
+          <div class="block block-strong">
+            <p class="segmented-label">Sound master</p>
+            <div class="range-slider" id="sound-master-range">
+              <input type="range" min="0" max="100" step="1" value="100">
+            </div>
           </div>
         </div>
       </div>
@@ -149,9 +192,28 @@
           <div class="navbar-bg"></div>
           <div class="navbar-inner">
             <div class="title">Fixtures</div>
+            <div class="right">
+              <a href="#" class="link" id="fixture-select-btn">Select</a>
+            </div>
           </div>
         </div>
         <div class="page-content">
+          <div class="block block-strong margin-top" id="fixture-level-block" style="display:none">
+            <div class="grid grid-cols-5 grid-gap">
+              <a href="#" class="button button-small button-outline" data-level="0">Out</a>
+              <a href="#" class="button button-small button-outline" data-level="25">25</a>
+              <a href="#" class="button button-small button-outline" data-level="50">50</a>
+              <a href="#" class="button button-small button-outline" data-level="75">75</a>
+              <a href="#" class="button button-small button-outline" data-level="100">Full</a>
+            </div>
+            <div class="range-slider margin-top" id="fixture-range">
+              <input type="range" min="0" max="100" step="1" value="0">
+            </div>
+            <div class="grid grid-cols-2 grid-gap margin-top">
+              <div class="block-footer" id="fixture-sel-label">No fixtures selected</div>
+              <a href="#" class="button button-small" id="fixture-clear-sel">Clear</a>
+            </div>
+          </div>
           <div class="list media-list list-strong-ios inset-md" id="fixture-list">
             <ul></ul>
           </div>
@@ -177,19 +239,61 @@
         <div class="page-content">
           <div class="block block-strong margin-top" id="channel-level-block">
             <div class="grid grid-cols-5 grid-gap">
-              <a href="#" class="button button-small button-outline" data-level="100">Full</a>
-              <a href="#" class="button button-small button-outline" data-level="75">75</a>
-              <a href="#" class="button button-small button-outline" data-level="50">50</a>
-              <a href="#" class="button button-small button-outline" data-level="25">25</a>
               <a href="#" class="button button-small button-outline" data-level="0">Out</a>
+              <a href="#" class="button button-small button-outline" data-level="25">25</a>
+              <a href="#" class="button button-small button-outline" data-level="50">50</a>
+              <a href="#" class="button button-small button-outline" data-level="75">75</a>
+              <a href="#" class="button button-small button-outline" data-level="100">Full</a>
             </div>
-            <div class="range-slider margin-top" id="channel-range"></div>
+            <div class="range-slider margin-top" id="channel-range">
+              <input type="range" min="0" max="100" step="1" value="0">
+            </div>
             <div class="grid grid-cols-2 grid-gap margin-top">
               <div class="block-footer" id="channel-sel-label">No channels selected</div>
               <a href="#" class="button button-small" id="channel-clear-sel">Clear selection</a>
             </div>
           </div>
           <div class="ec-grid" id="channel-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUPS -->
+    <div id="view-groups" class="view tab">
+      <div class="page">
+        <div class="navbar">
+          <div class="navbar-bg"></div>
+          <div class="navbar-inner">
+            <div class="title">Groups</div>
+          </div>
+        </div>
+        <div class="page-content">
+          <div class="block block-strong margin-top" id="group-recalled" style="display:none">
+            <p id="group-recalled-label">&nbsp;</p>
+            <div class="grid grid-cols-5 grid-gap">
+              <a href="#" class="button button-small button-outline" data-level="0">Out</a>
+              <a href="#" class="button button-small button-outline" data-level="25">25</a>
+              <a href="#" class="button button-small button-outline" data-level="50">50</a>
+              <a href="#" class="button button-small button-outline" data-level="75">75</a>
+              <a href="#" class="button button-small button-outline" data-level="100">Full</a>
+            </div>
+            <div class="range-slider margin-top" id="group-range">
+              <input type="range" min="0" max="100" step="1" value="0">
+            </div>
+            <div class="grid grid-cols-2 grid-gap margin-top">
+              <a href="#" class="button button-outline" id="group-color-btn">Colour</a>
+              <a href="#" class="button button-outline" id="group-clear-btn">Clear</a>
+            </div>
+          </div>
+          <div class="list media-list list-strong-ios inset-md" id="group-list">
+            <ul></ul>
+          </div>
+          <div class="block block-strong" id="group-empty" style="display:none">
+            <p>No groups yet. Create them on the console.</p>
+          </div>
+          <div class="block block-strong">
+            <p class="block-footer">Tap a group to recall its fixtures, then set a level.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -251,6 +355,9 @@
           </div>
           <div class="list list-strong-ios inset-md" id="cmd-log">
             <ul></ul>
+          </div>
+          <div class="block block-footer" style="text-align:center;">
+            <p id="client-version">&nbsp;</p>
           </div>
         </div>
       </div>

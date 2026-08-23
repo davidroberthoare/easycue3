@@ -80,7 +80,6 @@ fn asset(path: &str) -> Option<Asset> {
             file!("framework7-bundle.min.js", "application/javascript")
         }
         "manifest.json" => file!("manifest.json", "application/manifest+json"),
-        "sw.js" => file!("sw.js", "application/javascript"),
         "icon-192.png" => file!("icon-192.png", "image/png"),
         "icon-512.png" => file!("icon-512.png", "image/png"),
         _ => return None,

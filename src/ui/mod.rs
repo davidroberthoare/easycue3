@@ -1702,14 +1702,6 @@ fn render_remote_settings(ctx: &Context, app: &mut EasyCueApp) {
                             ui.ctx().copy_text(url.clone());
                         }
                     });
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "also try: http://easycue3.local:{}",
-                            server.port
-                        ))
-                        .small()
-                        .color(egui::Color32::GRAY),
-                    );
                     ui.add_space(6.0);
 
                     // QR code for pairing — regenerated only when the URL changes.

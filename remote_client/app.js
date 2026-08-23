@@ -6,6 +6,10 @@
  */
 'use strict';
 
+// Bump this whenever the embedded client changes — it's shown in the Cmd tab
+// footer so you can spot a stale build at a glance.
+const CLIENT_VERSION = '0.8.0-c13';
+
 const f7 = new Framework7({
   el: '#app',
   name: 'EasyCue3 Remote',
@@ -25,10 +29,14 @@ const S = {
   playback: {},
   curUniverse: 1,
   selected: new Set(),      // selected channel numbers (current universe)
+  selFixtures: new Set(),   // selected fixture ids (Fixtures select + Groups recall)
+  selMode: false,           // true when tapping a fixture toggles selection
+  recalledGroup: null,      // id of the group currently recalled on the Groups tab
   cmdContext: 'fixture',
   hold: {},                 // control key -> timestamp until which pushes are ignored
   suppress: false,          // true while we set range values programmatically
-  fixtureSheet: null,       // {sheet, fixtureId, ranges: {key: range}, colorPicker}
+  fixtureSheet: null,       // {sheet, fixtureId, ranges: {key: range}}
+  colorWheel: null,         // {popup, patch, prof, ranges: {r,g,b}, h, s}
   logCount: 0,
 };
 
@@ -36,6 +44,71 @@ const $$ = Dom7;
 
 function holdKey(key, ms) { S.hold[key] = Date.now() + (ms || 600); }
 function isHeld(key) { return (S.hold[key] || 0) > Date.now(); }
+
+// Framework7 8 range callbacks provide the range instance; read the value
+// from it rather than relying on a nonexistent second callback argument.
+function scalarRangeValue(range) {
+  const value = range.getValue();
+  return Array.isArray(value) ? value[0] : value;
+}
+
+// ----------------------------------------------------------- colour math ----
+// Mirrors the desktop circular HSV wheel (src/ui/color_wheel.rs): hue by
+// angle (red at 3 o'clock, clockwise), saturation by radius, value fixed 1.
+
+function hsvToRgb(h, s, v) {
+  h = ((h % 1) + 1) % 1;
+  if (s < 1e-6) return [v * 255, v * 255, v * 255];
+  const h6 = h * 6, i = Math.floor(h6) % 6, f = h6 - Math.floor(h6);
+  const p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+  let r, g, b;
+  switch (i) {
+    case 0: [r, g, b] = [v, t, p]; break;
+    case 1: [r, g, b] = [q, v, p]; break;
+    case 2: [r, g, b] = [p, v, t]; break;
+    case 3: [r, g, b] = [p, q, v]; break;
+    case 4: [r, g, b] = [t, p, v]; break;
+    default: [r, g, b] = [v, p, q]; break;
+  }
+  return [r * 255, g * 255, b * 255];
+}
+
+function rgbToHsv(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
+  const v = max;
+  const s = max < 1e-6 ? 0 : delta / max;
+  let h;
+  if (delta < 1e-6) h = 0;
+  else if (max === r) h = ((g - b) / delta) % 6;
+  else if (max === g) h = (b - r) / delta + 2;
+  else h = (r - g) / delta + 4;
+  return [((h / 6) % 1 + 1) % 1, s, v];
+}
+
+// Pre-rendered hue/sat disk (value 1), cached once.
+let wheelCanvas = null;
+function getWheelCanvas() {
+  if (wheelCanvas) return wheelCanvas;
+  wheelCanvas = document.createElement('canvas');
+  const N = 256;
+  wheelCanvas.width = N; wheelCanvas.height = N;
+  const g = wheelCanvas.getContext('2d');
+  const img = g.createImageData(N, N);
+  const cx = (N - 1) / 2, cy = (N - 1) / 2, radius = N / 2;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const dx = x - cx, dy = y - cy, dist = Math.hypot(dx, dy);
+      const i = (y * N + x) * 4;
+      if (dist > radius) { img.data[i + 3] = 0; continue; }
+      const hue = ((Math.atan2(dy, dx) / (Math.PI * 2)) + 1) % 1;
+      const sat = Math.min(1, dist / radius);
+      const [r, g2, b] = hsvToRgb(hue, sat, 1);
+      img.data[i] = r; img.data[i + 1] = g2; img.data[i + 2] = b; img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return wheelCanvas;
+}
 
 // ------------------------------------------------------------- transport ----
 
@@ -245,6 +318,14 @@ function renderPlayback() {
     masterRange.setValue(Math.round((pb.master != null ? pb.master : 1) * 100));
     S.suppress = false;
   }
+
+  if (soundMasterRange && !isHeld('sndmaster')) {
+    S.suppress = true;
+    soundMasterRange.setValue(Math.round((pb.sound_master != null ? pb.sound_master : 1) * 100));
+    S.suppress = false;
+  }
+
+  renderAudioStatus();
 }
 
 $$('#btn-go').on('click', (e) => { e.preventDefault(); send('cue_go'); });
@@ -263,6 +344,30 @@ $$('#blackout-btn').on('click', function (e) {
 });
 
 let masterRange = null;
+
+function renderAudioStatus() {
+  const pb = S.playback || {};
+  const st = S.structure;
+  const el = $$('#audio-status');
+  const cue = st && pb.audio_cue_index != null ? st.cues[pb.audio_cue_index] : null;
+  if (pb.audio_state === 'stopped' && !cue) {
+    el.css('display', 'none');
+    return;
+  }
+  el.css('display', 'block');
+  const label = cue
+    ? 'Q' + fmtCueNum(cue.number) + (cue.label ? ' ' + esc(cue.label) : '')
+    : 'SND';
+  let text;
+  if (pb.audio_state === 'fading_in') {
+    text = 'SND: ' + label + ' — fading in ' + Math.round((pb.audio_progress || 0) * 100) + '%';
+  } else if (pb.audio_state === 'fading_out') {
+    text = 'SND: ' + label + ' — fading out ' + Math.round((1 - (pb.audio_progress || 0)) * 100) + '%';
+  } else {
+    text = 'SND: ' + label + ' — playing';
+  }
+  $$('#audio-status-text').html(text);
+}
 
 // -------------------------------------------------------------- fixtures ----
 
@@ -304,9 +409,10 @@ function renderFixtures() {
   $$('#fixture-empty').css('display', has ? 'none' : 'block');
   const rows = st.patch.map((p) => {
     const prof = profileOf(p);
+    const sel = S.selFixtures.has(p.id) ? ' ec-fx-sel' : '';
     return (
       '<li data-fixture="' + p.id + '">' +
-        '<a href="#" class="item-link item-content fixture-row">' +
+        '<a href="#" class="item-link item-content fixture-row' + sel + '">' +
           '<div class="item-media"><span class="badge">' + p.id + '</span></div>' +
           '<div class="item-inner">' +
             '<div class="item-title-row"><div class="item-title">' + esc(p.label) + '</div>' +
@@ -321,6 +427,47 @@ function renderFixtures() {
     );
   });
   $$('#fixture-list ul').html(rows.join(''));
+  updateFixtureSelUI();
+}
+
+function updateFixtureSelUI() {
+  const n = S.selFixtures.size;
+  const show = S.selMode || n > 0;
+  $$('#fixture-level-block').css('display', show ? 'block' : 'none');
+  if (show) ensureFixtureRange();
+  $$('#fixture-sel-label').text(
+    n === 0 ? 'No fixtures selected' : n + ' fixture' + (n > 1 ? 's' : '') + ' selected'
+  );
+  $$('#fixture-list li').forEach((li) => {
+    const id = parseInt(li.getAttribute('data-fixture'), 10);
+    const row = li.querySelector('.fixture-row');
+    if (row) row.classList.toggle('ec-fx-sel', S.selFixtures.has(id));
+  });
+}
+
+function setSelectedFixturesLevel(level, quiet) {
+  level = Math.round(level);
+  if (!Number.isFinite(level)) return;
+  if (S.selFixtures.size === 0) {
+    if (!quiet) {
+      f7.toast.create({ text: 'Select fixtures first', closeTimeout: 1500 }).open();
+    }
+    return;
+  }
+  const ids = Array.from(S.selFixtures);
+  send('set_intensity', { fixture_ids: ids, intensity: level / 100 });
+  // Optimistic update where the intensity channel is visible to the client
+  // (RGB-only fixtures get virtual intensity server-side; the next push shows it).
+  ids.forEach((id) => {
+    const patch = S.structure && S.structure.patch.find((p) => p.id === id);
+    if (!patch) return;
+    const prof = profileOf(patch);
+    const uni = S.universes[patch.universe];
+    if (!prof || !uni) return;
+    const ip = prof.parameters.find((p) => p.is_intensity);
+    if (ip) uni[patch.start_address - 1 + ip.offset] = level;
+  });
+  updateFixtureRows();
 }
 
 function updateFixtureRows() {
@@ -340,7 +487,34 @@ function updateFixtureRows() {
 $$(document).on('click', '.fixture-row', function (e) {
   e.preventDefault();
   const id = parseInt($$(this).parent('li').attr('data-fixture'), 10);
+  if (S.selMode) {
+    if (S.selFixtures.has(id)) S.selFixtures.delete(id);
+    else S.selFixtures.add(id);
+    updateFixtureSelUI();
+    return;
+  }
   openFixtureSheet(id);
+});
+
+$$('#fixture-select-btn').on('click', (e) => {
+  e.preventDefault();
+  S.selMode = !S.selMode;
+  if (!S.selMode && S.selFixtures.size === 0) {
+    $$('#fixture-level-block').css('display', 'none');
+  }
+  $$('#fixture-select-btn').text(S.selMode ? 'Done' : 'Select');
+  updateFixtureSelUI();
+});
+
+$$('#fixture-level-block .button[data-level]').on('click', function (e) {
+  e.preventDefault();
+  setSelectedFixturesLevel(parseInt(this.getAttribute('data-level'), 10));
+});
+
+$$('#fixture-clear-sel').on('click', (e) => {
+  e.preventDefault();
+  S.selFixtures.clear();
+  updateFixtureSelUI();
 });
 
 function channelValue(patch, offset) {
@@ -362,23 +536,38 @@ function openFixtureSheet(fixtureId) {
     if (prof.is_rgb && ['red', 'green', 'blue'].includes(p.key)) return false; // color wheel
     return true;
   });
+  const intParams = sliderParams.filter((p) => p.is_intensity);
+  const otherParams = sliderParams.filter((p) => !p.is_intensity);
 
   let inner = '';
+  // Intensity first (dedicated channel or virtual for RGB-only fixtures).
   if (hasVirtualInt) {
     inner +=
-      '<div class="block-title">Int (virtual)</div>' +
-      '<div class="block"><div class="range-slider" data-param="virtual_int"></div></div>';
+      '<div class="block-title">Intensity</div>' +
+        '<div class="block"><div class="range-slider" data-param="virtual_int">' +
+          '<input type="range" min="0" max="100" step="1" value="0"></div></div>';
+  } else {
+    intParams.forEach((p) => {
+      inner +=
+        '<div class="block-title">' + esc(p.label) + '</div>' +
+        '<div class="block"><div class="range-slider" data-param="offset:' + p.offset + '">' +
+          '<input type="range" min="0" max="100" step="1" value="0"></div></div>';
+    });
   }
-  sliderParams.forEach((p) => {
-    inner +=
-      '<div class="block-title">' + esc(p.label) + '</div>' +
-      '<div class="block"><div class="range-slider" data-param="offset:' + p.offset + '"></div></div>';
-  });
+  // RGB colour picker right after intensity, previewing the current colour.
   if (prof.is_rgb) {
     inner +=
-      '<div class="block"><a href="#" class="button button-outline" id="fixture-color-btn">' +
-      'Colour…</a></div>';
+      '<div class="block"><a href="#" class="button button-outline" id="fixture-color-btn" ' +
+      'style="display:flex;align-items:center;justify-content:center;gap:8px;">' +
+      '<span class="ec-swatch" id="fixture-color-swatch"></span> RGB colour</a></div>';
   }
+  // The rest of the parameters.
+  otherParams.forEach((p) => {
+    inner +=
+      '<div class="block-title">' + esc(p.label) + '</div>' +
+      '<div class="block"><div class="range-slider" data-param="offset:' + p.offset + '">' +
+        '<input type="range" min="0" max="100" step="1" value="0"></div></div>';
+  });
 
   const sheet = f7.sheet.create({
     content:
@@ -415,55 +604,54 @@ function openFixtureSheet(fixtureId) {
       value,
       label: true,
       on: {
-        change(range, v) {
+        change(range) {
           if (S.suppress) return;
           holdKey('fx' + fixtureId + ':' + key);
-          sendFixtureParam(patch, prof, key, Math.round(v));
+          const value = scalarRangeValue(range);
+          if (Number.isFinite(value)) sendFixtureParam(patch, prof, key, Math.round(value));
         },
       },
     });
   });
 
-  let colorPicker = null;
   if (prof.is_rgb) {
-    const getRgb = (k) => {
-      const p = prof.parameters.find((q) => q.key === k);
-      return p ? Math.round(channelValue(patch, p.offset) * 2.55) : 0;
-    };
-    colorPicker = f7.colorPicker.create({
-      targetEl: '#fixture-color-btn',
-      // Popup gets full screen height — the wheel + sliders were cut off
-      // at the bottom in a sheet. cssClass lifts it above the fixture sheet.
-      openIn: 'popup',
-      popupCssClass: 'ec-color-popup',
-      modules: ['wheel', 'rgb-sliders'],
-      value: { rgb: [getRgb('red'), getRgb('green'), getRgb('blue')] },
-      on: {
-        change(cp, value) {
-          if (S.suppress || !value || !value.rgb) return;
-          holdKey('fxcolor' + fixtureId, 800);
-          const values = {};
-          const map = { red: 0, green: 1, blue: 2 };
-          Object.keys(map).forEach((k) => {
-            const p = prof.parameters.find((q) => q.key === k);
-            if (p) values[p.offset] = Math.round((value.rgb[map[k]] / 255) * 100);
-          });
-          sendParams(patch, values);
-        },
-      },
+    $$('#fixture-color-btn').on('click', (e) => {
+      e.preventDefault();
+      openColorWheel(patch, prof);
     });
-    // targetEl auto-opens the picker on click — no manual handler needed.
   }
 
-  S.fixtureSheet = { sheet, fixtureId, patch, prof, ranges, colorPicker };
+  S.fixtureSheet = { sheet, fixtureId, patch, prof, ranges };
+  updateFixtureColorButton();
+}
+
+/// CSS `rgb(...)` for a fixture's current colour ('' when dark), used by the
+/// colour button swatch.
+function fixtureRgbStyle(patch, prof) {
+  const uni = S.universes[patch.universe];
+  if (!uni) return '';
+  const get = (k) => {
+    const p = cwParam(prof, k);
+    return p ? Math.round((channelValue(patch, p.offset) || 0) * 2.55) : 0;
+  };
+  return 'rgb(' + get('red') + ',' + get('green') + ',' + get('blue') + ')';
+}
+
+function updateFixtureColorButton() {
+  const fs = S.fixtureSheet;
+  if (!fs || !fs.prof.is_rgb) return;
+  const swatch = document.querySelector('#fixture-color-swatch');
+  if (!swatch) return;
+  const bg = fixtureRgbStyle(fs.patch, fs.prof);
+  swatch.style.background = bg || '#333';
 }
 
 function closeFixtureSheet() {
   const fs = S.fixtureSheet;
   if (!fs) return;
   S.fixtureSheet = null;
+  closeColorWheel();
   Object.values(fs.ranges).forEach((r) => { try { r.destroy(); } catch (e) {} });
-  if (fs.colorPicker) { try { fs.colorPicker.destroy(); } catch (e) {} }
   // destroy() alone leaves the sheet element (and its duplicate IDs) in the
   // DOM — remove it explicitly or stale sheets swallow later interactions.
   const el = fs.sheet && fs.sheet.el;
@@ -492,6 +680,245 @@ function sendParams(patch, values) {
   updateFixtureRows();
 }
 
+// ------------------------------------------------------- colour wheel ----
+// Custom canvas wheel matching the desktop circular HSV picker (value = 1);
+// brightness is left to the intensity/virtual-intensity slider.
+
+function cwParam(prof, key) {
+  const profileKey = { r: 'red', g: 'green', b: 'blue' }[key] || key;
+  return prof.parameters.find((p) => p.key === profileKey) || null;
+}
+
+function openColorWheel(patch, prof) {
+  buildColorWheelPopup(patch.label || ('#' + patch.id), () => {
+    const rgb = { r: 0, g: 0, b: 0 };
+    Object.keys(rgb).forEach((k) => {
+      const p = cwParam(prof, k);
+      if (p) rgb[k] = channelValue(patch, p.offset);
+    });
+    return rgb;
+  }, (rgb) => {
+    const values = {};
+    Object.keys(rgb).forEach((k) => {
+      const p = cwParam(prof, k);
+      if (p) values[p.offset] = Math.round(rgb[k]);
+    });
+    if (Object.keys(values).length) {
+      sendParams(patch, values);
+      updateFixtureColorButton();
+    }
+  });
+}
+
+/// Colour wheel over the current fixture selection (Groups recall): applies
+/// the picked colour to every RGB-capable selected fixture.
+function openGroupColorWheel() {
+  const targets = Array.from(S.selFixtures)
+    .map((id) => {
+      const patch = S.structure && S.structure.patch.find((p) => p.id === id);
+      const prof = patch && profileOf(patch);
+      if (!patch || !prof || !prof.is_rgb) return null;
+      return { patch, prof };
+    })
+    .filter(Boolean);
+  if (targets.length === 0) {
+    f7.toast.create({ text: 'No RGB fixtures in selection', closeTimeout: 2000 }).open();
+    return;
+  }
+  buildColorWheelPopup('Group colour', () => {
+    const t = targets[0];
+    const rgb = { r: 0, g: 0, b: 0 };
+    Object.keys(rgb).forEach((k) => {
+      const p = cwParam(t.prof, k);
+      if (p) rgb[k] = channelValue(t.patch, p.offset);
+    });
+    return rgb;
+  }, (rgb) => {
+    targets.forEach((t) => {
+      const values = {};
+      Object.keys(rgb).forEach((k) => {
+        const p = cwParam(t.prof, k);
+        if (p) values[p.offset] = Math.round(rgb[k]);
+      });
+      if (Object.keys(values).length) sendParams(t.patch, values);
+    });
+  });
+}
+
+/// Shared circular HSV wheel overlay. `readRgb` returns the current colour as
+/// {r,g,b} 0–100; `apply(rgb)` is called on every change. A plain DOM overlay
+/// (not an F7 popup) so the wheel is fully synchronous and reliable.
+function buildColorWheelPopup(title, readRgb, apply) {
+  closeColorWheel();
+  const SIZE = 280;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'ec-wheel-overlay';
+  overlay.innerHTML =
+    '<div class="ec-wheel-card">' +
+      '<div class="ec-wheel-title">' +
+        '<span>' + esc(title) + '</span>' +
+        '<a href="#" class="link cw-close">Done</a>' +
+      '</div>' +
+      '<div class="ec-wheel-wrap">' +
+        '<canvas class="ec-wheel" id="cw-canvas" width="' + SIZE + '" height="' + SIZE + '"></canvas>' +
+        '<div class="block-title" style="margin-top:12px;margin-bottom:0;">RGB</div>' +
+        '<div style="width:100%;margin-top:4px;">' +
+          '<div class="range-slider" data-cw="r"><input type="range" min="0" max="100" step="1" value="0"></div>' +
+          '<div class="range-slider" data-cw="g"><input type="range" min="0" max="100" step="1" value="0"></div>' +
+          '<div class="range-slider" data-cw="b"><input type="range" min="0" max="100" step="1" value="0"></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  const canvas = overlay.querySelector('#cw-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Current colour from the universe (0–100 internal range).
+  const rgb = readRgb();
+  const cw = { overlay, canvas, ctx, rgb, h: 0, s: 0 };
+  const [h0, s0] = rgbToHsv(rgb.r / 100, rgb.g / 100, rgb.b / 100);
+  cw.h = h0; cw.s = s0;
+
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  ctx.drawImage(getWheelCanvas(), 0, 0, SIZE, SIZE);
+
+  function drawCrosshair() {
+    const cx = SIZE / 2, cy = SIZE / 2, radius = SIZE / 2;
+    const ang = cw.h * Math.PI * 2;
+    const dist = cw.s * radius;
+    const x = cx + Math.cos(ang) * dist;
+    const y = cy + Math.sin(ang) * dist;
+    ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  drawCrosshair();
+
+  function commit(rgbNew, h, s) {
+    cw.rgb = rgbNew;
+    if (h != null) { cw.h = h; cw.s = s; }
+    else { const [hh, ss] = rgbToHsv(cw.rgb.r / 100, cw.rgb.g / 100, cw.rgb.b / 100); cw.h = hh; cw.s = ss; }
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    ctx.drawImage(getWheelCanvas(), 0, 0, SIZE, SIZE);
+    drawCrosshair();
+    syncSliders();
+    holdKey('cw-popup', 700);
+    apply(cw.rgb);
+  }
+
+  function pickFromEvent(ev) {
+    const rect = canvas.getBoundingClientRect();
+    const cx = rect.width / 2, cy = rect.height / 2;
+    const radius = Math.min(rect.width, rect.height) / 2;
+    const dx = ev.clientX - rect.left - cx;
+    const dy = ev.clientY - rect.top - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > radius) return;
+    const h = ((Math.atan2(dy, dx) / (Math.PI * 2)) + 1) % 1;
+    const s = Math.min(1, dist / radius);
+    const [r, g, b] = hsvToRgb(h, s, 1);
+    commit({
+      r: Math.round(r / 2.55),
+      g: Math.round(g / 2.55),
+      b: Math.round(b / 2.55),
+    }, h, s);
+  }
+
+  // Track drag state explicitly — iOS Safari reports `buttons: 0` on touch
+  // pointermove, so the usual `ev.buttons & 1` guard would swallow drags.
+  let dragging = false;
+  canvas.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    dragging = true;
+    pickFromEvent(ev);
+    try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+  });
+  canvas.addEventListener('pointermove', (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    pickFromEvent(ev);
+  });
+  const endDrag = (ev) => {
+    dragging = false;
+    try { canvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+  };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // RGB sliders mirror the wheel.
+  const ranges = { r: null, g: null, b: null };
+  Object.keys(ranges).forEach((k) => {
+    const sliderEl = overlay.querySelector('.range-slider[data-cw="' + k + '"]');
+    ranges[k] = f7.range.create({
+      el: sliderEl,
+      min: 0, max: 100, step: 1, value: cw.rgb[k], label: true,
+      on: {
+        change(range) {
+          if (S.suppress) return;
+          const rgbNew = { r: cw.rgb.r, g: cw.rgb.g, b: cw.rgb.b };
+          const value = scalarRangeValue(range);
+          if (!Number.isFinite(value)) return;
+          rgbNew[k] = Math.round(value);
+          commit(rgbNew);
+        },
+      },
+    });
+  });
+
+  function syncSliders() {
+    Object.keys(ranges).forEach((k) => {
+      if (!isHeld('cw-popup')) {
+        S.suppress = true;
+        ranges[k].setValue(cw.rgb[k]);
+        S.suppress = false;
+      }
+    });
+  }
+
+  overlay.querySelector('.cw-close').addEventListener('click', (e) => {
+    e.preventDefault();
+    closeColorWheel();
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeColorWheel();
+  });
+
+  S.colorWheel = { overlay, canvas, ctx, ranges, rgb, h: cw.h, s: cw.s, syncSliders, readRgb };
+}
+
+function closeColorWheel() {
+  const cw = S.colorWheel;
+  if (!cw) return;
+  S.colorWheel = null;
+  Object.values(cw.ranges).forEach((r) => { try { r.destroy(); } catch (e) {} });
+  const el = cw.overlay;
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+/// Refresh an open colour wheel from pushed channel values (unless dragging).
+function updateColorWheel() {
+  const cw = S.colorWheel;
+  if (!cw || isHeld('cw-popup')) return;
+  cw.rgb = cw.readRgb();
+  const [h, s] = rgbToHsv(cw.rgb.r / 100, cw.rgb.g / 100, cw.rgb.b / 100);
+  cw.h = h; cw.s = s;
+  const SIZE = cw.canvas.width;
+  const ctx = cw.ctx;
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  ctx.drawImage(getWheelCanvas(), 0, 0, SIZE, SIZE);
+  const cx = SIZE / 2, cy = SIZE / 2, radius = SIZE / 2;
+  const ang = h * Math.PI * 2, dist = s * radius;
+  const x = cx + Math.cos(ang) * dist, y = cy + Math.sin(ang) * dist;
+  ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  cw.syncSliders();
+}
+
 /// Refresh open sheet controls from pushed state (unless the user is dragging).
 function updateFixtureSheet() {
   const fs = S.fixtureSheet;
@@ -508,11 +935,53 @@ function updateFixtureSheet() {
     fs.ranges[key].setValue(value);
     S.suppress = false;
   });
+  updateFixtureColorButton();
 }
 
 // -------------------------------------------------------------- channels ----
 
 let channelRange = null;
+let channelRangePending = false;
+
+function ensureChannelRange() {
+  if (channelRange || channelRangePending) return channelRange;
+  channelRangePending = true;
+  requestAnimationFrame(() => {
+    channelRangePending = false;
+    const el = document.querySelector('#channel-range');
+    if (!el || el.offsetWidth === 0) {
+      setTimeout(ensureChannelRange, 100);
+      return;
+    }
+    channelRange = f7.range.create({
+      el,
+      min: 0,
+      max: 100,
+      step: 1,
+      value: 0,
+      label: true,
+      on: {
+        // Live while dragging (throttled so venue wifi isn't flooded)…
+        change(range) {
+          if (S.suppress) return;
+          const now = Date.now();
+          if (now - channelRangeLastSend >= 80) {
+            channelRangeLastSend = now;
+            const value = scalarRangeValue(range);
+            if (Number.isFinite(value)) sendSelectedLevel(Math.round(value), true);
+          }
+        },
+        // …and the exact final value on release.
+        changed(range) {
+          if (S.suppress) return;
+          const value = scalarRangeValue(range);
+          if (Number.isFinite(value)) sendSelectedLevel(Math.round(value));
+        },
+      },
+    });
+  });
+  return channelRange;
+}
 
 function patchedChannels(universeId) {
   const set = {};
@@ -584,6 +1053,8 @@ $$('#channel-clear-sel').on('click', (e) => {
 });
 
 function sendSelectedLevel(level, quiet) {
+  level = Math.round(level);
+  if (!Number.isFinite(level)) return;
   if (S.selected.size === 0) {
     if (!quiet) {
       f7.toast.create({ text: 'Tap channels to select them first', closeTimeout: 1500 }).open();
@@ -674,14 +1145,8 @@ function openPatchSheet(existing) {
   let heading;
   let prefill;
   if (isEdit) {
-    const prof = profileOf(existing);
     heading = 'Edit #' + existing.id;
     prefill = existing;
-    profileLi =
-      '<li class="item-content"><div class="item-inner">' +
-        '<div class="item-title">Profile</div>' +
-        '<div class="item-after">' + esc(prof ? prof.name : existing.profile_id) + '</div>' +
-      '</div></li>';
   } else {
     heading = 'Add Fixture';
     const nextId = st.patch.reduce((m, p) => Math.max(m, p.id), 0) + 1;
@@ -693,20 +1158,23 @@ function openPatchSheet(existing) {
         return Math.max(m, p.start_address + (prof ? prof.channel_count : 1));
       }, 1);
     prefill = { id: nextId, label: 'Fixture ' + nextId, universe: 1, start_address: nextAddr };
-    const options = Object.keys(st.profiles)
-      .sort((a, b) => st.profiles[a].name.localeCompare(st.profiles[b].name))
-      .map((pid) =>
-        '<option value="' + esc(pid) + '">' + esc(st.profiles[pid].name) +
-        ' (' + st.profiles[pid].channel_count + ' ch)</option>')
-      .join('');
-    profileLi =
-      '<li class="item-content item-input">' +
-        '<div class="item-inner">' +
-          '<div class="item-title item-label">Profile</div>' +
-          '<div class="item-input-wrap"><select id="patch-profile">' + options + '</select></div>' +
-        '</div>' +
-      '</li>';
   }
+  // Profile picker — always a dropdown so existing fixtures can change profile
+  // too (the console re-patches, validating the new address range).
+  const options = Object.keys(st.profiles)
+    .sort((a, b) => st.profiles[a].name.localeCompare(st.profiles[b].name))
+    .map((pid) =>
+      '<option value="' + esc(pid) + '"' +
+      (isEdit && pid === existing.profile_id ? ' selected' : '') + '>' +
+      esc(st.profiles[pid].name) + ' (' + st.profiles[pid].channel_count + ' ch)</option>')
+    .join('');
+  profileLi =
+    '<li class="item-content item-input">' +
+      '<div class="item-inner">' +
+        '<div class="item-title item-label">Profile</div>' +
+        '<div class="item-input-wrap"><select id="patch-profile">' + options + '</select></div>' +
+      '</div>' +
+    '</li>';
 
   const sheet = f7.sheet.create({
     content:
@@ -766,6 +1234,7 @@ function openPatchSheet(existing) {
         id: existing.id,
         label,
         new_id: newId,
+        profile_id: $$('#patch-profile').val(),
         universe,
         start_address: address,
       });
@@ -802,6 +1271,84 @@ $$(document).on('click', '.patch-row', function (e) {
   const patch = S.structure && S.structure.patch.find((p) => p.id === id);
   if (patch) openPatchSheet(patch);
 });
+
+// ---------------------------------------------------------------- groups ----
+
+function renderGroups() {
+  const st = S.structure;
+  if (!st) return;
+  const has = st.groups.length > 0;
+  $$('#group-empty').css('display', has ? 'none' : 'block');
+  const rows = st.groups.map((g) => {
+    const names = (g.fixtures || []).map((id) => {
+      const p = st.patch.find((q) => q.id === id);
+      return p ? ('#' + id + (p.label ? ' ' + p.label : '')) : ('#' + id);
+    });
+    const sel = S.recalledGroup === g.id ? ' ec-gp-sel' : '';
+    return (
+      '<li data-group="' + g.id + '">' +
+        '<a href="#" class="item-link item-content group-row' + sel + '">' +
+          '<div class="item-media"><span class="badge">G' + g.id + '</span></div>' +
+          '<div class="item-inner">' +
+            '<div class="item-title-row"><div class="item-title">' +
+              esc(g.label || ('Group ' + g.id)) + '</div>' +
+              '<div class="item-after">' + g.fixtures.length + ' fx</div></div>' +
+            '<div class="item-subtitle">' + esc(names.join(', ')) + '</div>' +
+          '</div>' +
+        '</a>' +
+      '</li>'
+    );
+  });
+  $$('#group-list ul').html(rows.join(''));
+}
+
+$$(document).on('click', '.group-row', function (e) {
+  e.preventDefault();
+  const gid = parseInt($$(this).parent('li').attr('data-group'), 10);
+  const g = S.structure && S.structure.groups.find((x) => x.id === gid);
+  if (!g) return;
+  S.selFixtures = new Set(g.fixtures || []);
+  S.selMode = true;
+  S.recalledGroup = gid;
+  $$('#fixture-select-btn').text('Done');
+  $$('#group-list li').forEach((li) => {
+    const id = parseInt(li.getAttribute('data-group'), 10);
+    const row = li.querySelector('.group-row');
+    if (row) row.classList.toggle('ec-gp-sel', id === gid);
+  });
+  $$('#group-recalled-label').html(
+    'Recalled <b>G' + gid + '</b> — ' + g.fixtures.length + ' fixture' +
+    (g.fixtures.length === 1 ? '' : 's') + '. Set a level:'
+  );
+  $$('#group-recalled').css('display', 'block');
+  ensureGroupRange();
+  updateFixtureSelUI();
+  f7.toast.create({
+    text: 'Recalled G' + gid + ' (' + g.fixtures.length + ' fx)',
+    closeTimeout: 1500,
+  }).open();
+});
+
+$$('#group-recalled .button[data-level]').on('click', function (e) {
+  e.preventDefault();
+  setSelectedFixturesLevel(parseInt(this.getAttribute('data-level'), 10));
+});
+
+$$('#group-color-btn').on('click', (e) => {
+  e.preventDefault();
+  openGroupColorWheel();
+});
+
+$$('#group-clear-btn').on('click', (e) => {
+  e.preventDefault();
+  S.selFixtures.clear();
+  S.recalledGroup = null;
+  $$('#group-recalled').css('display', 'none');
+  $$('#group-list li .group-row').forEach((row) => row.classList.remove('ec-gp-sel'));
+  updateFixtureSelUI();
+});
+
+$$('#client-version').text('EasyCue3 Remote v' + CLIENT_VERSION);
 
 // ------------------------------------------------------------ command line ----
 
@@ -852,6 +1399,7 @@ function renderStructure() {
   renderCues();
   renderFixtures();
   renderChannelGrid();
+  renderGroups();
   renderPatch();
 }
 
@@ -864,6 +1412,7 @@ function renderLiveValues() {
     updateChannelCells();
     updateFixtureRows();
     updateFixtureSheet();
+    updateColorWheel();
   });
 }
 
@@ -877,42 +1426,123 @@ masterRange = f7.range.create({
   value: 100,
   label: true,
   on: {
-    change(range, v) {
+    change(range) {
       if (S.suppress) return;
       holdKey('master');
-      send('set_master', { value: v / 100 });
+      const value = scalarRangeValue(range);
+      if (Number.isFinite(value)) send('set_master', { value: value / 100 });
+    },
+  },
+});
+
+let soundMasterRange = null;
+soundMasterRange = f7.range.create({
+  el: '#sound-master-range',
+  min: 0,
+  max: 100,
+  step: 1,
+  value: 100,
+  label: true,
+  on: {
+    change(range) {
+      if (S.suppress) return;
+      holdKey('sndmaster');
+      const value = scalarRangeValue(range);
+      if (Number.isFinite(value)) send('set_sound_master', { value: value / 100 });
     },
   },
 });
 
 let channelRangeLastSend = 0;
-channelRange = f7.range.create({
-  el: '#channel-range',
-  min: 0,
-  max: 100,
-  step: 1,
-  value: 0,
-  label: true,
-  on: {
-    // Live while dragging (throttled so venue wifi isn't flooded)…
-    change(range, v) {
-      if (S.suppress) return;
-      const now = Date.now();
-      if (now - channelRangeLastSend >= 80) {
-        channelRangeLastSend = now;
-        sendSelectedLevel(Math.round(v), true);
-      }
-    },
-    // …and the exact final value on release.
-    changed(range, v) {
-      if (S.suppress) return;
-      sendSelectedLevel(Math.round(v));
-    },
-  },
-});
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+let fixtureRangeLastSend = 0;
+let fixtureRange = null;
+let fixtureRangePending = false;
+// Created lazily on first show — F7 range components created while their
+// parent is display:none can report undefined values on first interaction.
+function ensureFixtureRange() {
+  if (fixtureRange || fixtureRangePending) return fixtureRange;
+  fixtureRangePending = true;
+  requestAnimationFrame(() => {
+    fixtureRangePending = false;
+    const el = document.querySelector('#fixture-range');
+    if (!el || el.offsetWidth === 0) {
+      setTimeout(ensureFixtureRange, 100);
+      return;
+    }
+    fixtureRange = f7.range.create({
+      el,
+      min: 0,
+      max: 100,
+      step: 1,
+      value: 0,
+      label: true,
+      on: {
+        change(range) {
+          if (S.suppress) return;
+          const now = Date.now();
+          if (now - fixtureRangeLastSend >= 80) {
+            fixtureRangeLastSend = now;
+            const value = scalarRangeValue(range);
+            if (Number.isFinite(value)) setSelectedFixturesLevel(Math.round(value), true);
+          }
+        },
+        changed(range) {
+          if (S.suppress) return;
+          const value = scalarRangeValue(range);
+          if (Number.isFinite(value)) setSelectedFixturesLevel(Math.round(value));
+        },
+      },
+    });
+  });
+  return fixtureRange;
 }
+
+let groupRangeLastSend = 0;
+let groupRange = null;
+let groupRangePending = false;
+function ensureGroupRange() {
+  if (groupRange || groupRangePending) return groupRange;
+  groupRangePending = true;
+  requestAnimationFrame(() => {
+    groupRangePending = false;
+    const el = document.querySelector('#group-range');
+    if (!el || el.offsetWidth === 0) {
+      setTimeout(ensureGroupRange, 100);
+      return;
+    }
+    groupRange = f7.range.create({
+      el,
+      min: 0,
+      max: 100,
+      step: 1,
+      value: 0,
+      label: true,
+      on: {
+        change(range) {
+          if (S.suppress) return;
+          const now = Date.now();
+          if (now - groupRangeLastSend >= 80) {
+            groupRangeLastSend = now;
+            const value = scalarRangeValue(range);
+            if (Number.isFinite(value)) setSelectedFixturesLevel(Math.round(value), true);
+          }
+        },
+        changed(range) {
+          if (S.suppress) return;
+          const value = scalarRangeValue(range);
+          if (Number.isFinite(value)) setSelectedFixturesLevel(Math.round(value));
+        },
+      },
+    });
+  });
+  return groupRange;
+}
+
+// Ensure the level sliders are built while their view is actually visible
+// (F7 range components misbehave when created inside a hidden tab).
+$$('.tab-link[href="#view-fixtures"]').on('click', () => setTimeout(ensureFixtureRange, 60));
+$$('.tab-link[href="#view-groups"]').on('click', () => setTimeout(ensureGroupRange, 60));
+$$('.tab-link[href="#view-channels"]').on('click', () => setTimeout(ensureChannelRange, 60));
 
 connect();

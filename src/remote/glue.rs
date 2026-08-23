@@ -126,6 +126,9 @@ fn execute(app: &mut EasyCueApp, server: &RemoteServer, msg: ClientMessage) {
         ClientMessage::SetMaster { value } => {
             app.ui_state.lighting_master = value.clamp(0.0, 1.0);
         }
+        ClientMessage::SetSoundMaster { value } => {
+            app.ui_state.sound_master = value.clamp(0.0, 1.0);
+        }
         ClientMessage::SetBlackout { active } => {
             app.ui_state.blackout_active = active;
             app.ui_state.status_message = if active {
@@ -149,10 +152,11 @@ fn execute(app: &mut EasyCueApp, server: &RemoteServer, msg: ClientMessage) {
             id,
             label,
             new_id,
+            profile_id,
             universe,
             start_address,
         } => {
-            let result = update_patch(app, id, label, new_id, universe, start_address);
+            let result = update_patch(app, id, label, new_id, &profile_id, universe, start_address);
             report_patch_result(app, server, result.map(|_| format!("Updated fixture #{}", new_id)));
         }
         ClientMessage::PatchRemove { id } => {
@@ -176,14 +180,15 @@ fn report_patch_result(app: &mut EasyCueApp, server: &RemoteServer, result: anyh
     ));
 }
 
-/// Apply a remote patch edit. Label edits in place; ID/universe/address
-/// changes go through remove + re-add so the library's overlap validation
-/// runs. On validation failure the original patch is restored.
+/// Apply a remote patch edit. Label edits in place; ID/universe/address/
+/// profile changes go through remove + re-add so the library's overlap
+/// validation runs. On validation failure the original patch is restored.
 fn update_patch(
     app: &mut EasyCueApp,
     id: usize,
     label: String,
     new_id: usize,
+    profile_id: &str,
     universe: u16,
     start_address: u16,
 ) -> anyhow::Result<()> {
@@ -191,7 +196,10 @@ fn update_patch(
         anyhow::bail!("fixture #{} not found", id);
     };
 
-    if new_id == original.id && universe == original.universe && start_address == original.start_address
+    if new_id == original.id
+        && universe == original.universe
+        && start_address == original.start_address
+        && profile_id == original.profile_id
     {
         if let Some(patch) = app.fixtures.patch_list_mut().get_patch_mut(id) {
             patch.label = label;
@@ -203,7 +211,7 @@ fn update_patch(
     match app.fixtures.add_patch_with_id(
         new_id,
         label,
-        original.profile_id.clone(),
+        profile_id.to_string(),
         start_address,
         universe,
     ) {
@@ -334,11 +342,14 @@ fn publish(app: &EasyCueApp, server: &mut RemoteServer) {
         }
     }
 
-    // Channel levels for active universes — byte-compared, cheap.
+    // Channel levels for active universes — byte-compared, cheap. Values come
+    // from the effect-modulated display when an effect is running so the phone
+    // mirrors what the desktop panels show, not the pre-effect base look.
+    let display = display_universes(app);
     let active = active_universes(app);
     for &uni_id in &active {
         let idx = (uni_id as usize).saturating_sub(1);
-        let Some(universe) = app.universes.get(idx) else {
+        let Some(universe) = display.get(idx) else {
             continue;
         };
         let current = *universe.channels();
@@ -379,11 +390,12 @@ fn publish(app: &EasyCueApp, server: &mut RemoteServer) {
 fn rebuild_snapshot(app: &EasyCueApp, server: &RemoteServer, active: &[u16]) {
     let structure: serde_json::Value =
         serde_json::from_str(&server.shadow.structure_json).unwrap_or_default();
+    let display = display_universes(app);
     let universes: Vec<serde_json::Value> = active
         .iter()
         .filter_map(|&uni_id| {
             let idx = (uni_id as usize).saturating_sub(1);
-            app.universes
+            display
                 .get(idx)
                 .map(|u| serde_json::json!({ "universe": uni_id, "values": u.channels().to_vec() }))
         })
@@ -413,7 +425,38 @@ fn active_universes(app: &EasyCueApp) -> Vec<u16> {
     ids
 }
 
+/// Universes to publish: the effect-modulated staged look while an effect
+/// runs (matching the desktop panels), the base universes otherwise.
+fn display_universes(app: &EasyCueApp) -> &[crate::dmx::Universe] {
+    if let Some(d) = &app.effect_display {
+        &d.universes
+    } else {
+        &app.universes
+    }
+}
+
 fn build_playback(app: &EasyCueApp) -> PlaybackState {
+    let (audio_cue_index, audio_state, audio_progress) = {
+        #[cfg(feature = "audio")]
+        {
+            use crate::audio::AudioCueState;
+            let index = app
+                .audio_playback
+                .current_cue_id()
+                .and_then(|id| app.cue_list.cues().iter().position(|c| c.id == id));
+            let (state, progress) = match app.audio_playback.state() {
+                AudioCueState::Stopped => ("stopped", None),
+                AudioCueState::FadingIn { progress } => ("fading_in", Some(progress)),
+                AudioCueState::Playing => ("playing", None),
+                AudioCueState::FadingOut { progress } => ("fading_out", Some(progress)),
+            };
+            (index, state.to_string(), progress)
+        }
+        #[cfg(not(feature = "audio"))]
+        {
+            (None, "stopped".to_string(), None)
+        }
+    };
     PlaybackState {
         current_index: app.cue_list.current_index(),
         next_index: app.cue_list.next_any_index(),
@@ -421,6 +464,10 @@ fn build_playback(app: &EasyCueApp) -> PlaybackState {
         progress: app.playback.fade_progress(),
         blackout: app.ui_state.blackout_active,
         master: app.ui_state.lighting_master,
+        sound_master: app.ui_state.sound_master,
+        audio_cue_index,
+        audio_state,
+        audio_progress,
         status: app.ui_state.status_message.clone(),
     }
 }

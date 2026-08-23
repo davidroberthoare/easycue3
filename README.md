@@ -169,7 +169,7 @@ Restart EasyCue and the profile appears in the Patching panel dropdown. See `fix
 
 ## Remote control
 
-Control the console from a phone or tablet on the same wifi network — no app to install, no App Store. Enable it in **Settings → Remote Control...**, then scan the QR code (or open the shown URL) in the phone's browser. For the full-screen app-like experience, use the browser's "Add to Home Screen" option.
+Control the console from a phone or tablet on the same wifi network — no app to install, no App Store. Enable it in **Settings → Remote Control...**, then scan the QR code or open the shown IP address in the phone's browser. For the full-screen app-like experience, use the browser's "Add to Home Screen" option.
 
 - Cue playback: GO / BACK / STOP, double-tap a cue to jump to it, grand master, blackout
 - Fixture control: intensity, color picker, and profile-driven parameter sliders
@@ -240,7 +240,6 @@ EasyCue is built on top of excellent open source projects. Thank you to all main
 
 - [axum](https://github.com/tokio-rs/axum) - Web server framework for the embedded remote-control server (feature-gated).
 - [futures-util](https://github.com/rust-lang/futures-rs) - Async stream/sink utilities for the WebSocket bridge.
-- [mdns-sd](https://github.com/keepsimple1/mdns-sd) - mDNS service discovery (`easycue3.local`) for phone pairing.
 - [qrcode](https://github.com/kennytm/qrcode-rust) - QR code generation for the pairing dialog.
 - [Framework7](https://framework7.io/) - Mobile UI framework powering the phone/browser client (vendored, MIT licensed).
 

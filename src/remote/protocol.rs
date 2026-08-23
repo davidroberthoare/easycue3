@@ -61,6 +61,10 @@ pub enum ClientMessage {
     SetMaster {
         value: f32,
     },
+    /// Sound master 0.0–1.0.
+    SetSoundMaster {
+        value: f32,
+    },
     SetBlackout {
         active: bool,
     },
@@ -71,12 +75,14 @@ pub enum ClientMessage {
         universe: u16,
         start_address: u16,
     },
-    /// Edit an existing patch. `new_id` renumbers the fixture; profile changes
-    /// are not supported (delete + re-add instead, matching desktop behavior).
+    /// Edit an existing patch. `new_id` renumbers the fixture; a different
+    /// `profile_id` changes the profile (handled as delete + re-add so overlap
+    /// validation runs, mirroring the desktop behavior).
     PatchUpdate {
         id: usize,
         label: String,
         new_id: usize,
+        profile_id: String,
         universe: u16,
         start_address: u16,
     },
@@ -121,6 +127,14 @@ pub struct PlaybackState {
     pub blackout: bool,
     /// Grand master 0.0–1.0.
     pub master: f32,
+    /// Sound master 0.0–1.0.
+    pub sound_master: f32,
+    /// Index (into `structure.cues`) of the currently playing audio cue, if any.
+    pub audio_cue_index: Option<usize>,
+    /// "stopped" | "playing" | "fading_in" | "fading_out".
+    pub audio_state: String,
+    /// Fade progress 0–1 while an audio cue fades in or out.
+    pub audio_progress: Option<f32>,
     /// Desktop status line (mirrors the bottom status bar).
     pub status: String,
 }

@@ -44,7 +44,6 @@ pub struct RemoteServer {
     clients: Arc<AtomicUsize>,
     shutdown: Option<tokio::sync::oneshot::Sender<()>>,
     thread: Option<std::thread::JoinHandle<()>>,
-    mdns: Option<mdns_sd::ServiceDaemon>,
     /// Per-frame change-detection state, owned by the glue layer.
     pub(crate) shadow: glue::Shadow,
 }
@@ -67,8 +66,6 @@ impl RemoteServer {
         };
 
         let (thread, shutdown, bound_port) = server::spawn(port, shared)?;
-        let mdns = register_mdns(bound_port);
-
         Ok(Self {
             port: bound_port,
             cmd_rx,
@@ -77,7 +74,6 @@ impl RemoteServer {
             clients,
             shutdown: Some(shutdown),
             thread: Some(thread),
-            mdns,
             shadow: glue::Shadow::default(),
         })
     }
@@ -111,9 +107,6 @@ impl RemoteServer {
 
 impl Drop for RemoteServer {
     fn drop(&mut self) {
-        if let Some(mdns) = self.mdns.take() {
-            let _ = mdns.shutdown();
-        }
         if let Some(tx) = self.shutdown.take() {
             let _ = tx.send(());
         }
@@ -129,47 +122,4 @@ pub fn local_ip() -> Option<std::net::IpAddr> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
     Some(socket.local_addr().ok()?.ip())
-}
-
-/// Advertise the server over mDNS so phones can find `easycue3.local`.
-/// Failure is non-fatal — the QR code / IP URL still works.
-fn register_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
-    let daemon = match mdns_sd::ServiceDaemon::new() {
-        Ok(d) => d,
-        Err(e) => {
-            log::warn!("[remote] mDNS daemon failed to start: {}", e);
-            return None;
-        }
-    };
-    let ip = local_ip();
-    let addr_str = ip.map(|i| i.to_string()).unwrap_or_default();
-    let service = mdns_sd::ServiceInfo::new(
-        "_easycue3._tcp.local.",
-        "EasyCue3",
-        "easycue3.local.",
-        addr_str.as_str(),
-        port,
-        None,
-    );
-    match service {
-        Ok(info) => {
-            let info = info.enable_addr_auto();
-            match daemon.register(info) {
-                Ok(()) => {
-                    log::info!("[remote] mDNS registered as easycue3.local:{}", port);
-                    Some(daemon)
-                }
-                Err(e) => {
-                    log::warn!("[remote] mDNS registration failed: {}", e);
-                    let _ = daemon.shutdown();
-                    None
-                }
-            }
-        }
-        Err(e) => {
-            log::warn!("[remote] mDNS service info invalid: {}", e);
-            let _ = daemon.shutdown();
-            None
-        }
-    }
 }
