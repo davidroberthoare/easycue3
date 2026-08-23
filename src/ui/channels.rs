@@ -354,7 +354,7 @@ fn render_fixture_tile(
     if response.dragged() {
         let dy = response.drag_delta().y;
         if dy.abs() > 0.5 {
-            let delta = (-dy / tile_h).clamp(-1.0, 1.0);
+            let delta = (-dy / (2.0 * tile_h)).clamp(-1.0, 1.0);
             let new_intensity = (current_intensity + delta).clamp(0.0, 1.0);
             if !is_selected {
                 app.ui_state.selected_fixtures.clear();

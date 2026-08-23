@@ -38,12 +38,12 @@ pub enum TabKind {
 impl std::fmt::Display for TabKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TabKind::Channels => write!(f, "Channels"),
+            TabKind::Channels => write!(f, "Fixtures"),
             TabKind::Cues => write!(f, "Cues"),
             TabKind::Patching => write!(f, "Patching"),
             TabKind::Groups => write!(f, "Groups"),
             TabKind::Properties => write!(f, "Cue Properties"),
-            TabKind::InstrumentProperties => write!(f, "Instrument Properties"),
+            TabKind::InstrumentProperties => write!(f, "Fixture Properties"),
             TabKind::MagicSheet => write!(f, "Magic Sheet"),
             TabKind::Effects => write!(f, "Effects"),
             TabKind::ScriptViewer => write!(f, "Script Viewer"),
@@ -70,6 +70,15 @@ fn digit_key(d: usize) -> egui::Key {
     }
 }
 
+/// What the magic sheet autonumbering tool assigns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutonumberTarget {
+    /// Assign fixture numbers (patch IDs) to shapes.
+    Fixtures,
+    /// Assign group numbers to shapes.
+    Groups,
+}
+
 /// Ephemeral per-session state for the magic sheet panel (not saved to disk).
 pub struct MagicSheetState {
     pub edit_mode: bool,
@@ -83,6 +92,13 @@ pub struct MagicSheetState {
     pub clipboard: Vec<crate::magic_sheet::MagicSheetShape>,
     /// Whether a drag-select rubber-band is in progress.
     pub drag_select_start: Option<egui::Pos2>,
+    /// Autonumbering tool: when enabled, clicking a shape assigns the next
+    /// fixture (Fixtures) or group (Groups) number instead of selecting it.
+    pub autonumber_enabled: bool,
+    /// What the autonumbering tool assigns.
+    pub autonumber_target: AutonumberTarget,
+    /// The next number the autonumbering tool will place.
+    pub autonumber_next: usize,
 }
 
 impl MagicSheetState {
@@ -106,6 +122,9 @@ impl Default for MagicSheetState {
             canvas_zoom: 1.0,
             clipboard: Vec::new(),
             drag_select_start: None,
+            autonumber_enabled: false,
+            autonumber_target: AutonumberTarget::Fixtures,
+            autonumber_next: 1,
         }
     }
 }

@@ -120,7 +120,7 @@ pub fn render_groups_panel(ui: &mut egui::Ui, app: &mut EasyCueApp, state: &mut 
                             let response = ui.add(
                                 egui::TextEdit::singleline(buf)
                                     .desired_width(ui.available_width())
-                                    .hint_text("e.g. 1, 2, 3")
+                                    .hint_text("e.g. 1, 2, 3, 6-9")
                                     .code_editor(),
                             );
                             if response.changed() || response.lost_focus() {

@@ -24,23 +24,66 @@ impl Group {
         }
     }
 
-    /// Format a fixture ID list as a comma-separated string: "1, 2, 3".
+    /// Format a fixture ID list as a comma-separated string, collapsing runs of
+    /// 4+ consecutive IDs into ranges: "1, 2, 3, 6-9, 12, 13".
     pub fn fixtures_to_string(fixture_ids: &[usize]) -> String {
-        fixture_ids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
+        let mut ids: Vec<usize> = fixture_ids.to_vec();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut parts: Vec<String> = Vec::new();
+        let mut i = 0;
+        while i < ids.len() {
+            let start = ids[i];
+            let mut end = start;
+            while i + 1 < ids.len() && ids[i + 1] == ids[i] + 1 {
+                i += 1;
+                end = ids[i];
+            }
+            if end - start >= 3 {
+                parts.push(format!("{}-{}", start, end));
+            } else {
+                for id in start..=end {
+                    parts.push(id.to_string());
+                }
+            }
+            i += 1;
+        }
+        parts.join(", ")
     }
 
     /// Parse a comma-separated string like "1, 2, 3" into fixture IDs.
+    /// Ranges are supported: "6-9" expands to 6, 7, 8, 9.
     /// Invalid tokens and zeroes are silently skipped.
     pub fn parse_fixtures_string(s: &str) -> Vec<usize> {
-        let mut ids: Vec<usize> = s
-            .split(',')
-            .filter_map(|part| part.trim().parse::<usize>().ok())
-            .filter(|&id| id >= 1)
-            .collect();
+        let mut ids: Vec<usize> = Vec::new();
+        for part in s.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            if let Some((start, end)) = part.split_once('-') {
+                let start: usize = match start.trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let end: usize = match end.trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if start >= 1 && end >= start {
+                    for id in start..=end {
+                        ids.push(id);
+                    }
+                }
+                continue;
+            }
+            if let Ok(id) = part.parse::<usize>() {
+                if id >= 1 {
+                    ids.push(id);
+                }
+            }
+        }
+        ids.sort_unstable();
         ids.dedup();
         ids
     }
@@ -123,6 +166,42 @@ impl GroupList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_ranges_and_mixed_lists() {
+        assert_eq!(
+            Group::parse_fixtures_string("1,2,3,6-9,12,13"),
+            vec![1, 2, 3, 6, 7, 8, 9, 12, 13]
+        );
+        // Reversed input is normalised to ascending order.
+        assert_eq!(
+            Group::parse_fixtures_string("13, 6-9, 1,2,3"),
+            vec![1, 2, 3, 6, 7, 8, 9, 13]
+        );
+        // Single IDs still parse.
+        assert_eq!(Group::parse_fixtures_string("1, 2, 3"), vec![1, 2, 3]);
+        // Invalid tokens and zeroes are skipped.
+        assert_eq!(Group::parse_fixtures_string("1, x, 0, 5-2, 4"), vec![1, 4]);
+    }
+
+    #[test]
+    fn format_compresses_runs_into_ranges() {
+        assert_eq!(
+            Group::fixtures_to_string(&[1, 2, 3, 6, 7, 8, 9, 12, 13]),
+            "1, 2, 3, 6-9, 12, 13"
+        );
+        // Runs of exactly two stay flat.
+        assert_eq!(Group::fixtures_to_string(&[12, 13]), "12, 13");
+        // Input order is normalised.
+        assert_eq!(Group::fixtures_to_string(&[5, 1, 3, 2, 4]), "1-5");
+    }
+
+    #[test]
+    fn parse_and_format_round_trip() {
+        let list = "1, 2, 3, 6-9, 12, 13";
+        let ids = Group::parse_fixtures_string(list);
+        assert_eq!(Group::fixtures_to_string(&ids), list);
+    }
 
     #[test]
     fn renumber_to_free_id() {

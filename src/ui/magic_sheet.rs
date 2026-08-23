@@ -5,7 +5,7 @@
 //!            kept in sync with the Channels panel via `app.ui_state.selected_fixtures`.
 
 use super::channels::update_command_from_fixture_selection;
-use crate::app::EasyCueApp;
+use crate::app::{AutonumberTarget, EasyCueApp};
 use crate::fixtures::profiles::FixtureParameter;
 use crate::magic_sheet::ShapeKind;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
@@ -22,6 +22,11 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     ui.horizontal(|ui| {
         let label = if edit_mode { "▶ Live" } else { "✏ Edit" };
         ui.toggle_value(&mut app.magic_sheet_state.edit_mode, label);
+
+        // Autonumbering only applies while editing.
+        if !app.magic_sheet_state.edit_mode {
+            app.magic_sheet_state.autonumber_enabled = false;
+        }
 
         if app.magic_sheet_state.edit_mode {
             ui.separator();
@@ -139,6 +144,74 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     app.magic_sheet.remove_shape(id);
                 }
                 app.magic_sheet_state.selected_shape_ids.clear();
+            }
+
+            ui.separator();
+
+            // ── Autonumbering: assign the next fixture/group number by clicking ──
+            let auto = app.magic_sheet_state.autonumber_enabled;
+            if ui
+                .selectable_label(auto, "Auto #")
+                .on_hover_text(
+                    "Autonumbering: click shapes to assign the next fixture or group number",
+                )
+                .clicked()
+            {
+                app.magic_sheet_state.autonumber_enabled = !auto;
+                if app.magic_sheet_state.autonumber_enabled {
+                    app.magic_sheet_state.autonumber_next = 1;
+                }
+            }
+
+            if app.magic_sheet_state.autonumber_enabled {
+                let mut target = app.magic_sheet_state.autonumber_target;
+                egui::ComboBox::from_id_salt("autonumber_target")
+                    .selected_text(match target {
+                        AutonumberTarget::Fixtures => "Fixtures",
+                        AutonumberTarget::Groups => "Groups",
+                    })
+                    .width(80.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut target, AutonumberTarget::Fixtures, "Fixtures");
+                        ui.selectable_value(&mut target, AutonumberTarget::Groups, "Groups");
+                    });
+                if target != app.magic_sheet_state.autonumber_target {
+                    app.magic_sheet_state.autonumber_target = target;
+                    app.magic_sheet_state.autonumber_next = 1;
+                }
+
+                let limit = autonumber_limit(&app.fixtures, &app.groups, target);
+                // The "done" sentinel sits one past the last existing number so the
+                // box stays scrollable in both directions.
+                let max = limit.max(1) + 1;
+                let mut next = app.magic_sheet_state.autonumber_next;
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut next)
+                            .range(1..=max)
+                            .prefix("Next: ")
+                            .custom_formatter(move |value, _| {
+                                if value.round() as usize > limit {
+                                    "done".to_string()
+                                } else {
+                                    format!("{}", value.round() as usize)
+                                }
+                            })
+                            .custom_parser(|text| text.trim().parse::<f64>().ok()),
+                    )
+                    .changed()
+                {
+                    app.magic_sheet_state.autonumber_next = next.clamp(1, max);
+                }
+                let name = autonumber_name(
+                    &app.fixtures,
+                    &app.groups,
+                    target,
+                    app.magic_sheet_state.autonumber_next,
+                );
+                if !name.is_empty() {
+                    ui.label(egui::RichText::new(name).monospace().small());
+                }
             }
         }
 
@@ -365,8 +438,20 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         let shape_bbox = shape_bbox(kind, screen_center, w, h, rotation_deg);
         let resp = ui.allocate_rect(shape_bbox, Sense::click_and_drag());
 
+        // ── Autonumber mode (edit): click assigns the next fixture/group number ──
+        if edit_mode && app.magic_sheet_state.autonumber_enabled && !shift_held {
+            if resp.clicked() {
+                let target = app.magic_sheet_state.autonumber_target;
+                let next = app.magic_sheet_state.autonumber_next;
+                let limit = autonumber_limit(&app.fixtures, &app.groups, target);
+                if next <= limit {
+                    assign_autonumber(app, shape_id, target, next);
+                    app.magic_sheet_state.autonumber_next += 1;
+                }
+            }
+        }
         // ── Edit mode: click to select, drag to move ──────────────────────────
-        if edit_mode && !shift_held && app.magic_sheet_state.drag_select_start.is_none() {
+        else if edit_mode && !shift_held && app.magic_sheet_state.drag_select_start.is_none() {
             if resp.drag_started()
                 && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary))
             {
@@ -472,7 +557,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             app.ui_state.last_selected_fixture = group_fixtures.last().copied();
                         }
                     }
-                    let delta = (-dy / h).clamp(-1.0, 1.0);
+                    let delta = (-dy / (2.0 * h)).clamp(-1.0, 1.0);
                     adjust_selected_fixtures_intensity(app, delta);
                 }
             }
@@ -536,7 +621,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     }
 
     // ── Rubber-band selection (edit mode, no shift, drag on empty canvas) ────
-    if edit_mode && !shift_held {
+    if edit_mode && !app.magic_sheet_state.autonumber_enabled && !shift_held {
         // Start rubber band when drag begins on empty canvas
         if canvas_response.drag_started()
             && ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary))
@@ -677,6 +762,18 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         {
             app.ui_state.selected_fixtures.clear();
             update_command_from_fixture_selection(app);
+        }
+    }
+
+    // ── Autonumbering cursor: crosshair over the canvas while arming ──────
+    if edit_mode
+        && app.magic_sheet_state.autonumber_enabled
+        && canvas_rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default()))
+    {
+        let target = app.magic_sheet_state.autonumber_target;
+        let limit = autonumber_limit(&app.fixtures, &app.groups, target);
+        if app.magic_sheet_state.autonumber_next <= limit {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Crosshair);
         }
     }
 
@@ -1176,6 +1273,67 @@ fn align_shapes(app: &mut EasyCueApp, alignment: Alignment) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// ── Autonumbering helpers ──────────────────────────────────────────────
+
+/// Highest existing number the autonumbering tool may assign (max fixture ID
+/// for Channels, max group ID for Groups). 0 when nothing exists.
+fn autonumber_limit(
+    fixtures: &crate::fixtures::FixtureLibrary,
+    groups: &crate::groups::GroupList,
+    target: AutonumberTarget,
+) -> usize {
+    match target {
+        AutonumberTarget::Fixtures => fixtures
+            .patch_list()
+            .patches()
+            .iter()
+            .map(|p| p.id)
+            .max()
+            .unwrap_or(0),
+        AutonumberTarget::Groups => groups.groups.iter().map(|g| g.id).max().unwrap_or(0) as usize,
+    }
+}
+
+/// Human-readable name of the fixture/group that `number` refers to.
+/// Returns an empty string when the number has no fixture/group (or no label).
+fn autonumber_name(
+    fixtures: &crate::fixtures::FixtureLibrary,
+    groups: &crate::groups::GroupList,
+    target: AutonumberTarget,
+    number: usize,
+) -> String {
+    match target {
+        AutonumberTarget::Fixtures => match fixtures.patch_list().get_patch(number) {
+            Some(p) => p.label.clone(),
+            None => String::new(),
+        },
+        AutonumberTarget::Groups => match groups.get_group(number as u32) {
+            Some(g) => g.label.clone(),
+            None => String::new(),
+        },
+    }
+}
+
+/// Link a shape to the fixture/group with the given number, converting it
+/// away from a command shape if necessary.
+fn assign_autonumber(app: &mut EasyCueApp, shape_id: u32, target: AutonumberTarget, number: usize) {
+    if let Some(s) = app.magic_sheet.get_shape_mut(shape_id) {
+        s.command = None;
+        match target {
+            AutonumberTarget::Fixtures => {
+                s.fixture_id = Some(number);
+                s.group_id = None;
+                s.is_group = false;
+            }
+            AutonumberTarget::Groups => {
+                s.group_id = Some(number as u32);
+                s.fixture_id = None;
+                s.is_group = true;
+            }
+        }
+    }
+}
 
 fn canvas_to_screen(canvas_rect: Rect, offset: Vec2, zoom: f32, pos: [f32; 2]) -> Pos2 {
     let cx = canvas_rect.min.x + offset.x + pos[0] * zoom;

@@ -512,7 +512,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 ui.label(egui::RichText::new("Add Panel:").strong());
                 ui.separator();
 
-                if ui.button("Channels").clicked() {
+                if ui.button("Fixtures").clicked() {
                     app.dock_state
                         .main_surface_mut()
                         .push_to_focused_leaf(TabKind::Channels);
@@ -542,7 +542,7 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         .push_to_focused_leaf(TabKind::Properties);
                     ui.close_menu();
                 }
-                if ui.button("Instrument Properties").clicked() {
+                if ui.button("Fixture Properties").clicked() {
                     app.dock_state
                         .main_surface_mut()
                         .push_to_focused_leaf(TabKind::InstrumentProperties);
