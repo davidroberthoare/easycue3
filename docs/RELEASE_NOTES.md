@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.8.1
+
+- **Remote control — Groups & Fixtures parity.** New **Groups** tab: tap a group to recall its fixtures, then drive them with level buttons + a live slider, or paint a colour across the RGB fixtures. The **Fixtures** tab gained a Select mode (multi-pick fixtures with the same level slider) so the two pages work the same way.
+- **Remote control — colour matching the console.** The phone's colour picker is now the same circular HSV wheel as the desktop (hue by angle, saturation by radius, value 1), with RGB sliders; the fixture sheet also shows a live swatch on the RGB colour button. Fixture sheets order intensity first, then colour, then the other parameters.
+- **Remote control — more of the console on the phone.** Channel/fixture readouts now mirror effect-modulated values while an FX runs; a sound-master fader and audio cue status line joined the Cues page; patch edit lets you change a fixture's profile (validated with rollback); level buttons read Out → Full left-to-right everywhere.
+- **Magic Sheet — autonumbering.** New "Auto #" tool in the toolbar: choose **Fixtures** or **Groups**, watch the *next* number and its name in the toolbar, and click shapes to assign them in sequence. The counter stops at "done" once the last number is placed.
+- **Naming tidy-up** — the fixture-centric tab is now labelled **Fixtures** (was "Channels") and the properties panel **Fixture Properties** (was "Instrument Properties").
+- **Remote control — IP-only pairing.** Dropped mDNS (`easycue3.local`) and the service worker: pairing is by the console's local IP address (QR code in Settings → Remote Control). Simpler, and reliable on any venue wifi.
+
 ## v0.8.0
 
 - **New: Cue hotkeys (Ctrl+0…Ctrl+9)** — trigger cues from the keyboard when running a show. Assign any existing lighting, sound, or adjust cue in the new **Hotkeys** panel (View → Hotkeys):
