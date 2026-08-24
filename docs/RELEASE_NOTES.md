@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.8.3
+
+- **Custom fixture profiles can now be moved between machines.** Your own fixture profiles live in the app's config folder (not in the show file), so a show created on one computer wouldn't patch on another. The **Custom Fixture Profiles** window now has:
+  - **Export…** — save the selected profile as a JSON file (name defaults to `<id>.json`) to share or back up.
+  - **Import…** — pick one or more profile JSON files to bring into the app. Files are validated on import; invalid ones are reported and skipped.
+  - If an imported profile matches one that's already installed (by ID or by name), you're asked to **Replace** or **Skip** — with "Replace all remaining" / "Skip all remaining" when importing a batch. Replacing a bundled profile supersedes it with your copy.
+
 ## v0.8.2
 
 - **New: Absolute cues.** Lighting cues have an **Absolute** checkbox in Cue Properties. Ordinary cues are *tracking* — they store only the channels that changed, and anything they don't mention holds. An absolute cue instead stores a **full snapshot** of the output state: every patched channel across all universes, exactly as the board was outputting it.
