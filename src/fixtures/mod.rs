@@ -151,7 +151,6 @@ impl FixtureLibrary {
     }
 
     /// Whether a given profile ID is user-created (not bundled).
-    #[allow(dead_code)]
     pub fn is_user_profile(&self, id: &str) -> bool {
         self.user_profile_ids.contains(id)
     }

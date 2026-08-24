@@ -62,6 +62,21 @@ pub struct FixtureEditorState {
     pub message: Option<(String, bool)>,
     /// Suppress ID auto-fill after the first name keystroke
     pub name_changed: bool,
+
+    /// Profiles loaded from an Import that haven't been committed yet.
+    pub pending_imports: Vec<FixtureProfile>,
+    /// Collision found while importing; a modal asks replace-or-skip.
+    pub import_collision: Option<ImportCollision>,
+}
+
+/// A name/id collision encountered while importing a profile. The profile to
+/// import is kept here (removed from `pending_imports`) until the user decides.
+pub struct ImportCollision {
+    pub profile: FixtureProfile,
+    /// Name of the existing profile it collides with.
+    pub existing_name: String,
+    /// Whether the existing profile is a user profile (vs bundled).
+    pub existing_is_user: bool,
 }
 
 impl Default for FixtureEditorState {
@@ -77,6 +92,8 @@ impl Default for FixtureEditorState {
             edit_params: Vec::new(),
             message: None,
             name_changed: false,
+            pending_imports: Vec::new(),
+            import_collision: None,
         }
     }
 }
@@ -249,6 +266,71 @@ fn param_label(p: &FixtureParameter) -> &'static str {
     }
 }
 
+/// Write a profile to the user profiles directory and select it in the editor.
+fn commit_import(app: &mut EasyCueApp, profile: FixtureProfile) {
+    let id = profile.id.clone();
+    match app.fixtures.save_user_profile(profile, None) {
+        Ok(_) => {
+            app.ui_state.status_message = format!("Imported fixture profile '{}'", id);
+            let profile = app.fixtures.get_profile(&id).cloned();
+            if let Some(profile) = profile {
+                app.fixture_editor.load_profile(&profile);
+                app.fixture_editor.selected_id = Some(id.clone());
+                app.fixture_editor.is_new = false;
+            }
+        }
+        Err(e) => {
+            app.ui_state.status_message = format!("Import of '{}' failed: {}", id, e);
+        }
+    }
+}
+
+/// Find an existing profile (bundled or user) that `profile` collides with —
+/// same ID, or a name match ignoring case. Returns (existing id, name, is_user).
+fn find_collision(
+    fixtures: &crate::fixtures::FixtureLibrary,
+    profile: &FixtureProfile,
+) -> Option<(String, String, bool)> {
+    for (id, existing) in fixtures.profiles() {
+        if *id == profile.id || existing.name.eq_ignore_ascii_case(&profile.name) {
+            return Some((
+                id.clone(),
+                existing.name.clone(),
+                fixtures.is_user_profile(id),
+            ));
+        }
+    }
+    None
+}
+
+/// Process pending imports: commit any that don't collide with an existing
+/// profile; stop at the first collision and surface it via `import_collision`.
+fn advance_imports(app: &mut EasyCueApp) {
+    while !app.fixture_editor.pending_imports.is_empty() {
+        let profile = app.fixture_editor.pending_imports.remove(0);
+        match find_collision(&app.fixtures, &profile) {
+            Some((_, existing_name, is_user)) => {
+                app.fixture_editor.import_collision = Some(ImportCollision {
+                    profile,
+                    existing_name,
+                    existing_is_user: is_user,
+                });
+                return;
+            }
+            None => commit_import(app, profile),
+        }
+    }
+    app.fixture_editor.import_collision = None;
+}
+
+/// How the user resolved an import collision.
+enum ImportDecision {
+    Replace,
+    Skip,
+    ReplaceAll,
+    SkipAll,
+}
+
 pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
     if !app.ui_state.show_fixture_editor {
         return;
@@ -259,6 +341,9 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
     let mut delete_id: Option<String> = None;
     let mut select_id: Option<String> = None;
     let mut create_new = false;
+    let mut export_profile: Option<FixtureProfile> = None;
+    let mut import_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut import_decision: Option<ImportDecision> = None;
 
     egui::Window::new("Custom Fixture Profiles")
         .open(&mut open)
@@ -313,6 +398,36 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
 
                     if ui.button(format!("{} New Profile", ph::PLUS)).clicked() {
                         create_new = true;
+                    }
+
+                    ui.add_space(4.0);
+                    if ui
+                        .button(format!("{} Import…", ph::DOWNLOAD_SIMPLE))
+                        .on_hover_text("Import profile JSON file(s) from disk")
+                        .clicked()
+                    {
+                        if let Some(paths) = rfd::FileDialog::new()
+                            .set_title("Import Fixture Profiles")
+                            .add_filter("Fixture Profile", &["json"])
+                            .pick_files()
+                        {
+                            import_paths = paths;
+                        }
+                    }
+
+                    if let Some(sel) = &state.selected_id {
+                        ui.add_space(4.0);
+                        if ui
+                            .button(format!("{} Export…", ph::UPLOAD_SIMPLE))
+                            .on_hover_text(
+                                "Save this profile as a JSON file to move to another machine",
+                            )
+                            .clicked()
+                        {
+                            if let Some(p) = fixtures.get_profile(sel).cloned() {
+                                export_profile = Some(p);
+                            }
+                        }
                     }
 
                     if let Some(sel) = &state.selected_id {
@@ -535,6 +650,129 @@ pub fn render_fixture_editor(ctx: &Context, app: &mut EasyCueApp) {
                 });
             });
         });
+
+    // ── Import collision modal: replace or skip? ───────────────────────────
+    if let Some(collision) = &app.fixture_editor.import_collision {
+        egui::Modal::new(egui::Id::new("import_collision_modal")).show(ctx, |ui| {
+            ui.set_min_width(400.0);
+            ui.heading("Profile Already Exists");
+            ui.add_space(6.0);
+            ui.label(format!(
+                "Import \"{}\" (id: {})?",
+                collision.profile.name, collision.profile.id
+            ));
+            let source = if collision.existing_is_user {
+                "your custom profiles"
+            } else {
+                "the bundled profiles"
+            };
+            ui.label(
+                egui::RichText::new(format!(
+                    "A profile named \"{}\" already exists in {}.",
+                    collision.existing_name, source
+                ))
+                .color(egui::Color32::from_rgb(200, 140, 60)),
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                let replace_btn = egui::Button::new(egui::RichText::new("Replace").strong());
+                if ui.add(replace_btn).clicked() {
+                    import_decision = Some(ImportDecision::Replace);
+                }
+                if ui.button("Skip").clicked() {
+                    import_decision = Some(ImportDecision::Skip);
+                }
+            });
+            ui.horizontal(|ui| {
+                if ui.small_button("Replace all remaining").clicked() {
+                    import_decision = Some(ImportDecision::ReplaceAll);
+                }
+                if ui.small_button("Skip all remaining").clicked() {
+                    import_decision = Some(ImportDecision::SkipAll);
+                }
+            });
+        });
+    }
+
+    // Apply the import decision (one per frame).
+    match import_decision {
+        Some(ImportDecision::Replace) => {
+            if let Some(collision) = app.fixture_editor.import_collision.take() {
+                commit_import(app, collision.profile);
+            }
+            advance_imports(app);
+        }
+        Some(ImportDecision::Skip) => {
+            app.fixture_editor.import_collision = None;
+            advance_imports(app);
+        }
+        Some(ImportDecision::ReplaceAll) => {
+            let mut remaining = Vec::new();
+            if let Some(collision) = app.fixture_editor.import_collision.take() {
+                remaining.push(collision.profile);
+            }
+            remaining.append(&mut app.fixture_editor.pending_imports);
+            for profile in remaining {
+                commit_import(app, profile);
+            }
+        }
+        Some(ImportDecision::SkipAll) => {
+            app.fixture_editor.import_collision = None;
+            app.fixture_editor.pending_imports.clear();
+        }
+        None => {}
+    }
+
+    // ── Export ─────────────────────────────────────────────────────────────
+    if let Some(profile) = export_profile {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Export Fixture Profile")
+            .add_filter("Fixture Profile", &["json"])
+            .set_file_name(format!("{}.json", profile.id))
+            .save_file()
+        {
+            match serde_json::to_string_pretty(&profile) {
+                Ok(json) => match std::fs::write(&path, json) {
+                    Ok(_) => {
+                        app.ui_state.status_message = format!(
+                            "Exported fixture profile '{}' to {}",
+                            profile.id,
+                            path.display()
+                        );
+                    }
+                    Err(e) => {
+                        app.ui_state.status_message = format!("Export failed: {}", e);
+                    }
+                },
+                Err(e) => {
+                    app.ui_state.status_message = format!("Export failed: {}", e);
+                }
+            }
+        }
+    }
+
+    // ── Import ─────────────────────────────────────────────────────────────
+    if !import_paths.is_empty() {
+        let mut skipped = Vec::new();
+        for path in import_paths {
+            let label = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string());
+            match FixtureProfile::load_from_file(&path) {
+                Ok(profile) => app.fixture_editor.pending_imports.push(profile),
+                Err(e) => skipped.push(format!("{}: {}", label, e)),
+            }
+        }
+        if !skipped.is_empty() {
+            app.ui_state.status_message = format!(
+                "Import: {} file(s) skipped — {}",
+                skipped.len(),
+                skipped.join("; ")
+            );
+        }
+        advance_imports(app);
+    }
 
     if create_new {
         app.fixture_editor.blank_new();
