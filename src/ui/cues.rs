@@ -168,7 +168,9 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     }
 
     // ── Toolbar ──────────────────────────────────────────────────────────────
-    ui.horizontal(|ui| {
+    // `horizontal_wrapped` so the transport + edit buttons fall onto a second
+    // line instead of overflowing when the dock panel is narrow.
+    ui.horizontal_wrapped(|ui| {
         // ── Transport ───────────────────────────────────────────────────────
 
         // Resolve the on-deck target: typed cue number overrides the default next cue.
@@ -464,8 +466,9 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     const COL_NUM: f32 = 55.0;
     const COL_NUM_MIN: f32 = 42.0;
     const COL_LABEL_MIN: f32 = 80.0;
-    const COL_INFO: f32 = 140.0;
-    const COL_INFO_MIN: f32 = 72.0;
+    const COL_LABEL_MAX: f32 = 300.0;
+    const COL_INFO: f32 = 105.0;
+    const COL_INFO_MIN: f32 = 60.0;
     const COL_STATE: f32 = 55.0;
     const COL_STATE_MIN: f32 = 44.0;
 
@@ -477,7 +480,12 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         .column(Column::exact(COL_PLAY)) // play button
         .column(Column::exact(COL_ICON)) // type icon
         .column(Column::initial(COL_NUM).at_least(COL_NUM_MIN).clip(true))
-        .column(Column::remainder().at_least(COL_LABEL_MIN).clip(true))
+        .column(
+            Column::remainder()
+                .at_least(COL_LABEL_MIN)
+                .at_most(COL_LABEL_MAX)
+                .clip(true),
+        )
         .column(Column::initial(COL_INFO).at_least(COL_INFO_MIN).clip(true))
         .column(
             Column::initial(COL_STATE)

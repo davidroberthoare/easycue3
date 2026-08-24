@@ -36,6 +36,14 @@ pub use script_viewer::render_script_viewer_panel;
 
 /// Render the main UI
 pub fn render(ctx: &Context, app: &mut EasyCueApp) {
+    // Native window close requests must be canceled in the same frame or eframe
+    // proceeds directly to on_exit. Keep the normal teardown path intact by
+    // allowing the close only after the existing confirmation is accepted.
+    if ctx.input(|i| i.viewport().close_requested()) && !app.ui_state.quit_confirmed {
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        app.ui_state.show_quit_confirmation = true;
+    }
+
     // Handle global keyboard shortcuts (Cmd+S, Cmd+Q, etc.)
     handle_global_shortcuts(ctx, app);
 
@@ -896,6 +904,8 @@ fn render_quit_confirmation(ctx: &Context, app: &mut EasyCueApp) {
 
                     if ui.button("  Quit  ").clicked() {
                         log::info!("User confirmed quit");
+                        app.ui_state.show_quit_confirmation = false;
+                        app.ui_state.quit_confirmed = true;
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });

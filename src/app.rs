@@ -186,6 +186,8 @@ pub struct UiState {
     pub pending_delete_cue_id: Option<u32>,
     pub pending_update_cue_id: Option<u32>,
     pub show_quit_confirmation: bool,
+    /// Allows the native close request after the user confirms the quit dialog.
+    pub quit_confirmed: bool,
     pub show_device_selector: bool,
     pub show_colour_settings: bool,
     pub show_fixture_editor: bool,
@@ -278,6 +280,7 @@ impl Default for UiState {
             pending_delete_cue_id: None,
             pending_update_cue_id: None,
             show_quit_confirmation: false,
+            quit_confirmed: false,
             show_device_selector: false,
             show_colour_settings: false,
             show_fixture_editor: false,
