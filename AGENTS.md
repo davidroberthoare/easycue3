@@ -17,7 +17,7 @@ to save context tokens, I'll run manual tests myself. You can stop after doing a
 
 - `cargo test` has one pre-existing failure: `enttec_usb_pro::tests::test_protocol_message_format`. Unrelated to app logic — don't chase it.
 - `cargo fmt` is currently broken by a trailing-whitespace line in `src/command.rs:444` — use `rustfmt <files>` on the files you touched (or fix the whitespace) until the repo is cleaned.
-- Releasing: GitHub Action `.github/workflows/release.yml` builds on tag `v*` (with `--no-default-features --features audio,usb`) and packages `media`, `shows`, `fixture_profiles/` alongside the binary — plus the bundled PDFium library in a `lib/` subdir (users install nothing).
+- Releasing: GitHub Action `.github/workflows/release.yml` builds on tag `v*` (with `--no-default-features --features audio,usb,remote`) and packages `media`, `shows`, `fixture_profiles/` alongside the binary — plus the bundled PDFium library in a `lib/` subdir (users install nothing).
 
 ## Hard constraints
 

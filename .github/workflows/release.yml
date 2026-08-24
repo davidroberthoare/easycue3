@@ -44,7 +44,7 @@ jobs:
           key: linux-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build
-        run: cargo build --release --no-default-features --features audio,usb
+        run: cargo build --release --no-default-features --features audio,usb,remote
 
       - name: Download PDFium
         run: |
@@ -89,7 +89,7 @@ jobs:
           key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build
-        run: cargo build --release --no-default-features --features audio,usb
+        run: cargo build --release --no-default-features --features audio,usb,remote
 
       - name: Download PDFium
         shell: pwsh
@@ -139,10 +139,10 @@ jobs:
           key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build x86_64
-        run: cargo build --release --no-default-features --features audio,usb --target x86_64-apple-darwin
+        run: cargo build --release --no-default-features --features audio,usb,remote --target x86_64-apple-darwin
 
       - name: Build aarch64
-        run: cargo build --release --no-default-features --features audio,usb --target aarch64-apple-darwin
+        run: cargo build --release --no-default-features --features audio,usb,remote --target aarch64-apple-darwin
 
       - name: Create universal binary
         run: |
