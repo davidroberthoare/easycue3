@@ -300,6 +300,23 @@ fn render_lighting_cue_properties(
             }
             ui.end_row();
 
+            // Absolute (full-state snapshot)
+            ui.label("Absolute:");
+            let mut is_abs = cue.lighting_data().map(|d| d.absolute).unwrap_or(false);
+            if ui
+                .checkbox(&mut is_abs, "")
+                .on_hover_text(
+                    "Absolute cues store the full output state (every patched channel, \
+                     channels not stored = 0). Backward navigation stops hunting at the \
+                     closest absolute cue. Turning a tracking cue absolute expands it to \
+                     the full tracked state; turning it back collapses to the changes only.",
+                )
+                .changed()
+            {
+                app.set_cue_absolute(idx, is_abs);
+            }
+            ui.end_row();
+
             // Auto-follow
             ui.label("Auto-follow:");
             let mut af_enabled = cue.autofollow.is_some();

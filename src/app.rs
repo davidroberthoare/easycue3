@@ -2240,12 +2240,46 @@ impl EasyCueApp {
     }
 
     /// Overwrite the lighting data of the cue at `upd_idx` with the current live
-    /// universe levels (tracking-aware). Returns true if a lighting cue was updated.
+    /// universe levels. Tracking-aware: an absolute cue captures the full state
+    /// of every patched channel; a tracking cue stores only the channels that
+    /// differ from the tracked state before it. Returns true if a lighting cue was updated.
     pub fn capture_stage_to_cue(&mut self, upd_idx: usize) -> bool {
-        let upd_number = match self.cue_list.get_cue(upd_idx) {
-            Some(c) if c.is_lighting() => c.number,
+        let (is_absolute, upd_number) = match self.cue_list.get_cue(upd_idx) {
+            Some(c) if c.is_lighting() => (
+                c.lighting_data().map(|d| d.absolute).unwrap_or(false),
+                c.number,
+            ),
             _ => return false,
         };
+
+        // Absolute: snapshot every patched channel; channels at 0 are omitted
+        // (absence from an absolute cue means off).
+        if is_absolute {
+            let patched = self.patched_channel_keys();
+            let mut values: HashMap<u16, u8> = HashMap::new();
+            for (uni_idx, universe) in self.universes.iter().enumerate() {
+                let universe_num = (uni_idx + 1) as u16;
+                for ch in 1u16..=512 {
+                    let key = crate::cue::universe_key(universe_num, ch);
+                    if !patched.contains(&key) {
+                        continue;
+                    }
+                    if let Ok(live_val) = universe.get_channel(ch) {
+                        if live_val > 0 {
+                            values.insert(key, live_val);
+                        }
+                    }
+                }
+            }
+            if let Some(c) = self.cue_list.get_cue_mut(upd_idx) {
+                if let Some(d) = c.lighting_data_mut() {
+                    d.channel_values = values;
+                }
+            }
+            self.ui_state.status_message = format!("Captured stage to cue {:.1}", upd_number);
+            return true;
+        }
+
         let prev_tracked = if upd_idx > 0 {
             self.cue_list.tracked_state_up_to(upd_idx - 1)
         } else {
@@ -2274,6 +2308,71 @@ impl EasyCueApp {
         }
         self.ui_state.status_message = format!("Captured stage to cue {:.1}", upd_number);
         true
+    }
+
+    /// Keys (`universe_key`) of every DMX channel that belongs to a patched
+    /// fixture. Absolute cues snapshot only these channels.
+    fn patched_channel_keys(&self) -> HashSet<u16> {
+        let counts = self.fixtures.get_channel_counts();
+        let mut keys = HashSet::new();
+        for patch in self.fixtures.patch_list().patches() {
+            let count = counts.get(&patch.profile_id).copied().unwrap_or(1);
+            let end = patch.start_address.saturating_add(count).min(513);
+            for ch in patch.start_address..end {
+                keys.insert(crate::cue::universe_key(patch.universe, ch));
+            }
+        }
+        keys
+    }
+
+    /// Convert the lighting cue at `idx` to/from absolute mode, expanding or
+    /// collapsing its channel data so the flag change is correct.
+    ///
+    /// * To absolute: `channel_values` becomes the full tracked state at `idx`,
+    ///   restricted to patched channels (non-zero only; absence means 0).
+    /// * To tracking: `channel_values` is reduced to the patched channels that
+    ///   were non-zero and differ from the tracked state *before* the cue.
+    ///   Channels at 0 in the snapshot are dropped (as if they'd never been
+    ///   stored) — so lights that were off but on earlier can track back up;
+    ///   that's the designer's call to catch at the time.
+    pub fn set_cue_absolute(&mut self, idx: usize, absolute: bool) {
+        let current_absolute = self
+            .cue_list
+            .get_cue(idx)
+            .and_then(|c| c.lighting_data())
+            .map(|d| d.absolute)
+            .unwrap_or(false);
+        if current_absolute == absolute {
+            return;
+        }
+
+        let full = self.cue_list.tracked_state_up_to(idx);
+        let prev = if idx > 0 {
+            self.cue_list.tracked_state_up_to(idx - 1)
+        } else {
+            HashMap::new()
+        };
+        let patched = self.patched_channel_keys();
+
+        let values: HashMap<u16, u8> = if absolute {
+            full.iter()
+                .filter(|(&k, &v)| patched.contains(&k) && v > 0)
+                .map(|(&k, &v)| (k, v))
+                .collect()
+        } else {
+            full.iter()
+                .filter(|(&k, _)| patched.contains(&k))
+                .filter(|(&k, &v)| v != prev.get(&k).copied().unwrap_or(0))
+                .map(|(&k, &v)| (k, v))
+                .collect()
+        };
+
+        if let Some(c) = self.cue_list.get_cue_mut(idx) {
+            if let Some(d) = c.lighting_data_mut() {
+                d.channel_values = values;
+                d.absolute = absolute;
+            }
+        }
     }
 
     /// Set the fade-up and fade-down times (seconds, clamped 0–30) of a lighting cue.

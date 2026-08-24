@@ -90,6 +90,10 @@ RGB-only fixtures (no dedicated intensity channel) get a virtual intensity layer
 
 **RGBAWUV gotcha:** when storing color ratios, all non-RGB channels (Amber, White, UV) must be read from the universe explicitly — otherwise they default to 0.0 and snap to black when intensity is adjusted. See `src/ui/properties.rs`.
 
+## Absolute Cues
+
+The cue list is tracking-style: each lighting cue stores only its changes, and unmentioned channels hold. A cue marked **absolute** instead stores a full snapshot of every patched channel (absence = 0). Tracking replay (`tracked_state_up_to`, `effect_state_up_to`) anchors on the **closest absolute cue at or before the target index** instead of cue 0, so BACK/GOTO "stop hunting" at the last checkpoint. Forward playback (`PlaybackEngine::start`) fades to the snapshot, zeroing channels not in it. Converting a tracking cue to absolute expands it to the full tracked state; converting back collapses it to the deltas (channels at 0 are dropped, so off lights can track back up). "Update from Stage" snapshots the full state on an absolute cue, deltas on a tracking cue. See `docs/ABSOLUTE_CUES.md`.
+
 ## Effects
 
 Waveform effects (sine, square, sawtooth, random with smoothing) modulate fixture parameters (intensity, hue/saturation, pan/tilt/position) *relative to the base look*. Hue/Saturation work in HSV space on the RGB channels with brightness held constant. Because there are no HTP/LTP layers, the `EffectEngine` never writes into the stored universes — it modulates a per-frame clone in the output path (`app.rs`, just before `apply_masters`), so recording and tracking never see effect values. The UI *displays* the live modulated values in FX cyan via `app.effect_display` (staged universes + `EffectFootprint`), but all interactions edit the base. Cues carry `effect_actions` (start/stop, tracking-style); `CueList::effect_state_up_to` replays them for GOTO/BACK. While any effect runs, `update()` must keep requesting repaints. See `docs/EFFECTS.md`.
@@ -108,6 +112,7 @@ Audio file paths in show files are stored as bare filenames when the file lives 
 
 ## Documentation
 
+- `docs/ABSOLUTE_CUES.md` — absolute (full-state snapshot) cues: tracking anchor, playback semantics, conversion, show-file format
 - `docs/VIRTUAL_INTENSITY.md` — virtual intensity concept, algorithm, key files
 - `docs/EFFECTS.md` — effects concept, output-stage overlay architecture, key files
 - `docs/REMOTE.md` — phone remote: server/bridge architecture, protocol, client notes, testing (incl. `EASYCUE3_REMOTE` env override)

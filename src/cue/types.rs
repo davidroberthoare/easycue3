@@ -35,6 +35,16 @@ pub struct LightingData {
     /// effect keeps running through later cues until one stops it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effect_actions: Vec<crate::effects::EffectAction>,
+    /// Absolute cue: `channel_values` is a full snapshot of every patched
+    /// channel (channels absent from it are 0). Tracking replay and backward
+    /// navigation anchor on the closest preceding absolute cue; a tracking cue
+    /// stores only its changes from the prior state.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub absolute: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Default for LightingData {
@@ -44,6 +54,7 @@ impl Default for LightingData {
             fade_down: 3.0,
             channel_values: HashMap::new(),
             effect_actions: Vec::new(),
+            absolute: false,
         }
     }
 }
@@ -90,7 +101,10 @@ pub struct AudioOutputRoute {
     #[serde(default)]
     pub device_name: String,
     /// Per-route volume scale (0.0–1.0); multiplied with the cue's base volume.
-    #[serde(default = "default_route_volume", serialize_with = "crate::serde_helpers::round_f32_2")]
+    #[serde(
+        default = "default_route_volume",
+        serialize_with = "crate::serde_helpers::round_f32_2"
+    )]
     pub volume: f32,
     /// Stereo pan position: -1.0 = full left, 0.0 = center, 1.0 = full right.
     /// Uses constant-power pan law.
@@ -104,15 +118,24 @@ pub struct AudioOutputRoute {
 }
 
 #[cfg(feature = "audio")]
-fn default_route_volume() -> f32 { 1.0 }
+fn default_route_volume() -> f32 {
+    1.0
+}
 
 #[cfg(feature = "audio")]
-fn channel_offset_is_zero(v: &u16) -> bool { *v == 0 }
+fn channel_offset_is_zero(v: &u16) -> bool {
+    *v == 0
+}
 
 #[cfg(feature = "audio")]
 impl Default for AudioOutputRoute {
     fn default() -> Self {
-        Self { device_name: String::new(), volume: 1.0, pan: 0.0, channel_offset: 0 }
+        Self {
+            device_name: String::new(),
+            volume: 1.0,
+            pan: 0.0,
+            channel_offset: 0,
+        }
     }
 }
 
@@ -251,7 +274,9 @@ impl AdjustData {
 
 #[cfg(feature = "audio")]
 impl Default for AdjustData {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// The payload of a cue — what kind it is and its type-specific data
@@ -385,7 +410,9 @@ impl Cue {
 
     /// Get a channel value (returns 0 for non-lighting cues)
     pub fn get_channel(&self, channel: u16) -> u8 {
-        self.lighting_data().map(|d| d.get_channel(channel)).unwrap_or(0)
+        self.lighting_data()
+            .map(|d| d.get_channel(channel))
+            .unwrap_or(0)
     }
 }
 
@@ -393,7 +420,10 @@ impl serde::Serialize for Cue {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("autofollow", &self.autofollow.map(|v| (v * 100.0).round() / 100.0))?;
+        map.serialize_entry(
+            "autofollow",
+            &self.autofollow.map(|v| (v * 100.0).round() / 100.0),
+        )?;
         map.serialize_entry("id", &self.id)?;
         map.serialize_entry("label", &self.label)?;
         map.serialize_entry("number", &((self.number * 100.0).round() / 100.0))?;
@@ -434,32 +464,37 @@ impl<'de> serde::Deserialize<'de> for Cue {
                 let mut data: Option<serde_json::Value> = None;
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
-                        "id"         => id         = Some(map.next_value()?),
-                        "number"     => number     = Some(map.next_value()?),
-                        "label"      => label      = Some(map.next_value()?),
+                        "id" => id = Some(map.next_value()?),
+                        "number" => number = Some(map.next_value()?),
+                        "label" => label = Some(map.next_value()?),
                         "autofollow" => autofollow = Some(map.next_value()?),
-                        "type"       => cue_type   = Some(map.next_value()?),
-                        "data"       => data       = Some(map.next_value()?),
-                        _            => { let _ = map.next_value::<serde_json::Value>()?; }
+                        "type" => cue_type = Some(map.next_value()?),
+                        "data" => data = Some(map.next_value()?),
+                        _ => {
+                            let _ = map.next_value::<serde_json::Value>()?;
+                        }
                     }
                 }
                 let cue_type = cue_type.ok_or_else(|| serde::de::Error::missing_field("type"))?;
-                let data     = data.ok_or_else(|| serde::de::Error::missing_field("data"))?;
+                let data = data.ok_or_else(|| serde::de::Error::missing_field("data"))?;
                 let kind = match cue_type.as_str() {
                     "Lighting" => CueKind::Lighting(
-                        serde_json::from_value(data).map_err(serde::de::Error::custom)?
+                        serde_json::from_value(data).map_err(serde::de::Error::custom)?,
                     ),
                     #[cfg(feature = "audio")]
                     "Audio" => CueKind::Audio(
-                        serde_json::from_value(data).map_err(serde::de::Error::custom)?
+                        serde_json::from_value(data).map_err(serde::de::Error::custom)?,
                     ),
                     #[cfg(feature = "audio")]
                     "Adjust" => CueKind::Adjust(
-                        serde_json::from_value(data).map_err(serde::de::Error::custom)?
+                        serde_json::from_value(data).map_err(serde::de::Error::custom)?,
                     ),
-                    other => return Err(serde::de::Error::unknown_variant(
-                        other, &["Lighting", "Audio", "Adjust"],
-                    )),
+                    other => {
+                        return Err(serde::de::Error::unknown_variant(
+                            other,
+                            &["Lighting", "Audio", "Adjust"],
+                        ))
+                    }
                 };
                 Ok(Cue {
                     id: id.unwrap_or(0),
@@ -506,6 +541,30 @@ mod tests {
         // Keeps untouched show files byte-identical (and autosave comparison stable).
         let json = serde_json::to_string(&LightingData::default()).unwrap();
         assert!(!json.contains("effect_actions"));
+        assert!(!json.contains("absolute"));
+    }
+
+    #[test]
+    fn absolute_lighting_data_round_trips() {
+        let mut data = LightingData::default();
+        data.absolute = true;
+        data.set_channel(1, 50);
+        data.set_channel(2, 80);
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("\"absolute\":true"));
+
+        let back: LightingData = serde_json::from_str(&json).unwrap();
+        assert!(back.absolute);
+        assert_eq!(back.get_channel(1), 50);
+        assert_eq!(back.get_channel(2), 80);
+    }
+
+    #[test]
+    fn absolute_field_defaults_to_false_in_old_show_files() {
+        // A cue exactly as older versions saved it — no absolute field.
+        let json = r#"{"fade_up": 3.0, "fade_down": 2.0, "channel_values": {"10": 59}}"#;
+        let data: LightingData = serde_json::from_str(json).unwrap();
+        assert!(!data.absolute);
     }
 
     #[test]
@@ -546,7 +605,10 @@ mod tests {
         let json = serde_json::to_string(&AudioOutputRoute::default()).unwrap();
         assert!(!json.contains("channel_offset"));
 
-        let route = AudioOutputRoute { channel_offset: 2, ..Default::default() };
+        let route = AudioOutputRoute {
+            channel_offset: 2,
+            ..Default::default()
+        };
         let json = serde_json::to_string(&route).unwrap();
         assert!(json.contains("\"channel_offset\":2"));
     }

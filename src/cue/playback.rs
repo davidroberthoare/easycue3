@@ -1,6 +1,6 @@
 //! Lighting cue playback engine with crossfade support
 
-use crate::cue::{Cue, CueState, decode_universe_key};
+use crate::cue::{decode_universe_key, Cue, CueState};
 use crate::dmx::Universe;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -39,7 +39,9 @@ impl PlaybackEngine {
 
     /// Start fading to the given lighting cue. The caller has already decided which cue to fire.
     pub fn start(&mut self, cue: &Cue, universes: &[Universe]) {
-        let Some(data) = cue.lighting_data() else { return };
+        let Some(data) = cue.lighting_data() else {
+            return;
+        };
 
         self.ensure_capacity(universes.len());
 
@@ -52,8 +54,16 @@ impl PlaybackEngine {
 
         // Tracking mode: start targets from current live state, then overlay only
         // the channels explicitly set in this cue. Unspecified channels hold.
-        for i in 0..self.target_values.len() {
-            self.target_values[i] = self.previous_values[i];
+        // Absolute mode: the cue is a full snapshot — unspecified channels go to 0,
+        // so the fade lands on exactly what was captured.
+        if data.absolute {
+            for arr in self.target_values.iter_mut() {
+                arr.fill(0);
+            }
+        } else {
+            for i in 0..self.target_values.len() {
+                self.target_values[i] = self.previous_values[i];
+            }
         }
         for (&key, &value) in &data.channel_values {
             let (universe_1based, channel) = decode_universe_key(key);
@@ -68,7 +78,12 @@ impl PlaybackEngine {
         self.state = CueState::Fading { progress: 0.0 };
         self.current_cue_id = Some(cue.id);
 
-        log::info!("Starting cue {}: {} (fade: {}s)", cue.number, cue.label, data.fade_up);
+        log::info!(
+            "Starting cue {}: {} (fade: {}s)",
+            cue.number,
+            cue.label,
+            data.fade_up
+        );
     }
 
     /// Fade from the current live universe output to a pre-computed full channel state.
@@ -166,7 +181,8 @@ impl PlaybackEngine {
                         for ch in 1..=512u16 {
                             let prev = self.previous_values[ui][(ch - 1) as usize] as f32;
                             let target = self.target_values[ui][(ch - 1) as usize] as f32;
-                            let _ = universe.set_channel(ch, (prev + (target - prev) * progress) as u8);
+                            let _ =
+                                universe.set_channel(ch, (prev + (target - prev) * progress) as u8);
                         }
                     }
 

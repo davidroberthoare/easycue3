@@ -365,9 +365,15 @@ impl CueList {
     /// full tracked channel state at that point in the list.
     /// A channel explicitly stored as 0 in a cue means "turn this off".
     /// Channels absent from a cue track through unchanged from prior cues.
+    ///
+    /// When the list contains an *absolute* cue (a full-state snapshot), the
+    /// replay anchors on the closest absolute cue at or before `idx` instead of
+    /// starting from cue 0 — so backward navigation "stops hunting" at the last
+    /// snapshot. Channels absent from an absolute cue are 0.
     pub fn tracked_state_up_to(&self, idx: usize) -> HashMap<u16, u8> {
         let mut state: HashMap<u16, u8> = HashMap::new();
-        for cue in self.cues.iter().take(idx + 1) {
+        let start = self.anchor_index(idx);
+        for cue in self.cues.iter().skip(start).take(idx + 1 - start) {
             if let CueKind::Lighting(data) = &cue.kind {
                 for (&key, &value) in &data.channel_values {
                     if value == 0 {
@@ -384,10 +390,15 @@ impl CueList {
     /// Replay effect actions of lighting cues 0..=idx to produce the set of
     /// effects that should be running at that point: (effect_id, fixture IDs),
     /// in first-start order. The effect-state analogue of `tracked_state_up_to`.
+    ///
+    /// Like the channel state, the replay anchors on the closest absolute cue
+    /// at or before `idx`: an absolute cue's own `effect_actions` (if any)
+    /// define the starting effects, and anything started before it is dropped.
     pub fn effect_state_up_to(&self, idx: usize) -> Vec<(u32, Vec<usize>)> {
         use crate::effects::EffectAction;
         let mut state: Vec<(u32, Vec<usize>)> = Vec::new();
-        for cue in self.cues.iter().take(idx + 1) {
+        let start = self.anchor_index(idx);
+        for cue in self.cues.iter().skip(start).take(idx + 1 - start) {
             if let CueKind::Lighting(data) = &cue.kind {
                 for action in &data.effect_actions {
                     match action {
@@ -410,6 +421,21 @@ impl CueList {
             }
         }
         state
+    }
+
+    /// Index of the closest absolute lighting cue at or before `idx` (inclusive),
+    /// or 0 when the list has none. Used to anchor tracking replay so backward
+    /// navigation stops hunting at the last full-state snapshot.
+    fn anchor_index(&self, idx: usize) -> usize {
+        let mut start = 0;
+        for (i, cue) in self.cues.iter().take(idx + 1).enumerate() {
+            if let Some(data) = cue.lighting_data() {
+                if data.absolute {
+                    start = i;
+                }
+            }
+        }
+        start
     }
 
     // --- Utility ---
@@ -576,5 +602,110 @@ mod tests {
             .map(|c| c.adjust_data().and_then(|d| d.target_audio_cue))
             .collect();
         assert_eq!(targets, vec![Some(2.0), Some(3.0)]);
+    }
+
+    #[test]
+    fn tracked_state_stops_hunting_at_absolute_cue() {
+        let mut list = CueList::new();
+        let mut c1 = Cue::new_lighting(1.0);
+        c1.set_channel(1, 50);
+        let mut c2 = Cue::new_lighting(2.0);
+        c2.set_channel(1, 80);
+        c2.set_channel(2, 30);
+        c2.lighting_data_mut().unwrap().absolute = true;
+        let mut c3 = Cue::new_lighting(3.0);
+        c3.set_channel(3, 10);
+        // Explicit 0 = turn this channel off (recorded via capture, not set_channel).
+        c3.lighting_data_mut().unwrap().channel_values.insert(1, 0);
+        list.add_cue(c1);
+        list.add_cue(c2);
+        list.add_cue(c3);
+
+        // Before the absolute cue: plain tracking from cue 0.
+        assert_eq!(list.tracked_state_up_to(0), HashMap::from([(1, 50)]));
+        // At the absolute cue: its snapshot is the whole state (ch2 on, others off).
+        assert_eq!(
+            list.tracked_state_up_to(1),
+            HashMap::from([(1, 80), (2, 30)])
+        );
+        // After it: replay starts from the absolute snapshot, not cue 0.
+        assert_eq!(
+            list.tracked_state_up_to(2),
+            HashMap::from([(2, 30), (3, 10)])
+        );
+    }
+
+    #[test]
+    fn tracked_state_uses_closest_absolute_anchor() {
+        let mut list = CueList::new();
+        let mut c1 = Cue::new_lighting(1.0);
+        c1.set_channel(1, 50);
+        c1.set_channel(2, 50);
+        let mut c2 = Cue::new_lighting(2.0);
+        c2.set_channel(1, 80);
+        c2.lighting_data_mut().unwrap().absolute = true;
+        let mut c3 = Cue::new_lighting(3.0);
+        c3.set_channel(2, 60);
+        let mut c4 = Cue::new_lighting(4.0);
+        c4.set_channel(1, 90);
+        c4.set_channel(2, 90);
+        c4.set_channel(3, 90);
+        c4.lighting_data_mut().unwrap().absolute = true;
+        list.add_cue(c1);
+        list.add_cue(c2);
+        list.add_cue(c3);
+        list.add_cue(c4);
+
+        // Between the two absolutes: anchored on the earlier one, ch1 tracks to 80.
+        assert_eq!(
+            list.tracked_state_up_to(2),
+            HashMap::from([(1, 80), (2, 60)])
+        );
+        // On the later absolute: exactly its snapshot.
+        assert_eq!(
+            list.tracked_state_up_to(3),
+            HashMap::from([(1, 90), (2, 90), (3, 90)])
+        );
+    }
+
+    #[test]
+    fn effect_state_stops_hunting_at_absolute_cue() {
+        use crate::effects::EffectAction;
+
+        fn start(effect_id: u32, fixtures: &[usize]) -> EffectAction {
+            EffectAction::Start {
+                effect_id,
+                fixtures: fixtures.to_vec(),
+            }
+        }
+
+        let mut list = CueList::new();
+        let mut c1 = Cue::new_lighting(1.0);
+        c1.lighting_data_mut()
+            .unwrap()
+            .effect_actions
+            .push(start(1, &[1]));
+        let mut c2 = Cue::new_lighting(2.0);
+        c2.lighting_data_mut().unwrap().absolute = true;
+        let mut c3 = Cue::new_lighting(3.0);
+        c3.lighting_data_mut()
+            .unwrap()
+            .effect_actions
+            .push(start(2, &[2]));
+        let mut c4 = Cue::new_lighting(4.0);
+        c4.lighting_data_mut()
+            .unwrap()
+            .effect_actions
+            .push(start(3, &[3]));
+        list.add_cue(c1);
+        list.add_cue(c2);
+        list.add_cue(c3);
+        list.add_cue(c4);
+
+        assert_eq!(list.effect_state_up_to(0), vec![(1, vec![1])]);
+        // The absolute cue resets effects: nothing started before it survives.
+        assert_eq!(list.effect_state_up_to(1), Vec::<(u32, Vec<usize>)>::new());
+        assert_eq!(list.effect_state_up_to(2), vec![(2, vec![2])]);
+        assert_eq!(list.effect_state_up_to(3), vec![(2, vec![2]), (3, vec![3])]);
     }
 }

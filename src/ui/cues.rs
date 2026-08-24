@@ -688,17 +688,29 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 // Col 1: type icon
                 row.col(|ui| {
                     paint_bg(ui);
-                    let icon = if is_lighting {
-                        ph::LIGHTBULB
+                    // Absolute lighting cues get a distinct icon + colour so they
+                    // stand out from tracking cues at a glance.
+                    let is_absolute = cue.lighting_data().map(|d| d.absolute).unwrap_or(false);
+                    let (icon, icon_color) = if is_absolute {
+                        (
+                            ph::LIGHTBULB_FILAMENT,
+                            Some(egui::Color32::from_rgb(255, 196, 0)),
+                        )
+                    } else if is_lighting {
+                        (ph::LIGHTBULB, None)
                     } else if is_adjust {
-                        ph::SLIDERS
+                        (ph::SLIDERS, None)
                     } else {
-                        ph::SPEAKER_HIGH
+                        (ph::SPEAKER_HIGH, None)
                     };
                     ui.with_layout(
                         egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                         |ui| {
-                            ui.label(egui::RichText::new(icon).size(13.0));
+                            let mut text = egui::RichText::new(icon).size(13.0);
+                            if let Some(color) = icon_color {
+                                text = text.color(color);
+                            }
+                            ui.label(text);
                         },
                     );
                 });
