@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.8.2
+
+- **New: Absolute cues.** Lighting cues have an **Absolute** checkbox in Cue Properties. Ordinary cues are *tracking* — they store only the channels that changed, and anything they don't mention holds. An absolute cue instead stores a **full snapshot** of the output state: every patched channel across all universes, exactly as the board was outputting it.
+  - **Backward navigation stops hunting.** When you BACK or GOTO, the console reconstructs the target state by replaying cues from the top of the list. With absolute cues in place, that replay now **stops at the closest absolute cue** and works forward from its snapshot — so a cue way down the list no longer depends on every cue before it being right.
+  - **Playback reproduces the snapshot.** Firing an absolute cue fades *everything* (channels not in the cue go to 0), so it lands on precisely what was captured. Effects reset at the same boundary.
+  - **Convert after the fact.** Flipping a tracking cue to absolute expands it to the full tracked state automatically; flipping it back collapses it to just the changes. **Update from Stage** captures the full state on an absolute cue, or just the deltas on a tracking cue.
+  - Absolute cues show a distinct **amber filament-lightbulb** icon in the cue list.
+  - Only patched channels are snapshotted, so show files stay compact. See `docs/ABSOLUTE_CUES.md`.
+
 ## v0.8.1
 
 - **Remote control — Groups & Fixtures parity.** New **Groups** tab: tap a group to recall its fixtures, then drive them with level buttons + a live slider, or paint a colour across the RGB fixtures. The **Fixtures** tab gained a Select mode (multi-pick fixtures with the same level slider) so the two pages work the same way.
