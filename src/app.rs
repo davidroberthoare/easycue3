@@ -2608,12 +2608,6 @@ impl eframe::App for EasyCueApp {
     /// Returns normally so eframe can finish flushing its persisted settings and
     /// tear down the event loop — a forced `process::exit` here raced the
     /// settings write and occasionally corrupted `app.ron`.
-    #[cfg(feature = "glow")]
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.shutdown_sequence();
-    }
-
-    #[cfg(not(feature = "glow"))]
     fn on_exit(&mut self) {
         self.shutdown_sequence();
     }
