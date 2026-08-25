@@ -17,9 +17,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "target" / "release" / "easycue3"
-RUNS = 5
+RUNS = int(os.environ.get("RUNS", 5))
 WARMUP_SECONDS = 10.0
 MEASURE_SECONDS = 5.0
+
+# "all" opens every panel (incl. the Script Viewer with a real PDF) so the
+# benchmark exercises the worst-case multi-view layout.
+LAYOUT = os.environ.get("BENCH_LAYOUT", "default")
+AUTOSAVE = ROOT / "shows" / ".autosave.json"
+PDFIUM = ROOT / "target" / "debug" / "libpdfium.so"
 
 
 def find_window(pid, timeout=20):
@@ -77,12 +83,25 @@ def run_once(index, data_home):
         '{"last_file": "shows/default_show.json", '
         '"last_update_check": "Some(\\"2026-08-25T00:00:00.000000000Z\\")"}'
     )
+    # A newer, differing shows/.autosave.json triggers the startup "Recover
+    # Unsaved Work?" modal, which blocks the Space key that starts playback.
+    # Move it aside for the run (the app may regenerate one; we drop that) and
+    # restore the original afterwards.
+    autosave_backup = None
+    if AUTOSAVE.exists():
+        autosave_backup = data_home / "autosave-backup.json"
+        autosave_backup.write_bytes(AUTOSAVE.read_bytes())
+        AUTOSAVE.unlink()
     log_path = Path(tempfile.gettempdir()) / f"easycue3-perf-{os.getpid()}-{index}.csv"
     log_path.unlink(missing_ok=True)
 
     env = os.environ.copy()
     env["XDG_DATA_HOME"] = str(data_home)
     env["EASYCUE_PERF_LOG"] = str(log_path)
+    if LAYOUT == "all":
+        env["EASYCUE_PERF_LAYOUT"] = "all"
+        if PDFIUM.exists():
+            env["PDFIUM_LIBRARY_PATH"] = str(PDFIUM)
     run_log = Path(tempfile.gettempdir()) / f"easycue3-perf-{os.getpid()}-{index}.log"
     with run_log.open("w") as output:
         process = subprocess.Popen([str(APP)], cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT)
@@ -93,8 +112,12 @@ def run_once(index, data_home):
         subprocess.run(["xdotool", "windowactivate", "--sync", window], check=False)
         subprocess.run(["xdotool", "windowfocus", window], check=False)
         time.sleep(0.5)
-        subprocess.run(["xdotool", "key", "--window", window, "space"], check=False)
-        time.sleep(MEASURE_SECONDS)
+        # Fire GO repeatedly so fades keep running for the whole window (the
+        # app only repaints continuously while something animates).
+        end = time.monotonic() + MEASURE_SECONDS
+        while time.monotonic() < end:
+            subprocess.run(["xdotool", "key", "--window", window, "space"], check=False)
+            time.sleep(2.0)
         # This is intentional: the request is a repeated launch/measure/kill
         # stress test. PerfLogger flushes periodically, so SIGTERM retains the
         # samples without adding a flush syscall to every frame.
@@ -105,11 +128,16 @@ def run_once(index, data_home):
         if process.poll() is None:
             process.kill()
             process.wait()
+        if AUTOSAVE.exists():
+            AUTOSAVE.unlink()
+        if autosave_backup is not None:
+            AUTOSAVE.write_bytes(autosave_backup.read_bytes())
 
 
 def main():
     if not APP.exists():
         raise SystemExit(f"missing binary: {APP}")
+    print(f"layout={LAYOUT!r} runs={RUNS}", flush=True)
     with tempfile.TemporaryDirectory(prefix="easycue3-perf-home-") as home:
         data_home = Path(home)
         for index in range(1, RUNS + 1):

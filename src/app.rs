@@ -371,7 +371,12 @@ impl PerfLogger {
         match std::fs::File::create(&path) {
             Ok(file) => {
                 let mut writer = BufWriter::new(file);
-                if writeln!(writer, "timestamp_ms,frame_time_ms").is_err() {
+                if writeln!(
+                    writer,
+                    "timestamp_ms,frame_time_ms,ui_render_ms,dmx_send_ms,update_cpu_ms"
+                )
+                .is_err()
+                {
                     log::warn!("[perf] Could not initialize log file {:?}", path);
                     return None;
                 }
@@ -389,9 +394,19 @@ impl PerfLogger {
         }
     }
 
-    fn record(&mut self, stable_dt: f32) {
+    /// `ui_render_ms` / `dmx_send_ms` are the CPU-side times for the UI pass and
+    /// DMX output, logged so a frame-time spike can be attributed to real CPU
+    /// work vs. present/wait time (frame_time - ui_render - dmx).
+    fn record(&mut self, stable_dt: f32, ui_render_ms: f32, dmx_send_ms: f32, update_cpu_ms: f32) {
         let timestamp_ms = self.started.elapsed().as_secs_f64() * 1000.0;
-        let _ = writeln!(self.writer, "{timestamp_ms:.3},{:.6}", stable_dt * 1000.0);
+        let _ = writeln!(
+            self.writer,
+            "{timestamp_ms:.3},{:.6},{:.6},{:.6},{:.6}",
+            stable_dt * 1000.0,
+            ui_render_ms,
+            dmx_send_ms,
+            update_cpu_ms
+        );
         self.records += 1;
         if self.records % 64 == 0 {
             self.flush();
@@ -407,6 +422,18 @@ impl Drop for PerfLogger {
     fn drop(&mut self) {
         self.flush();
     }
+}
+
+/// Continuous-repaint cadence while the output animates (see the scheduling
+/// block in `update`). Slightly above one 60Hz refresh period so the present
+/// path never races the swapchain (the cause of periodic ~30ms frame stalls).
+/// `EASYCUE_REPAINT_MS` overrides for benchmarking or faster displays.
+fn repaint_cadence() -> std::time::Duration {
+    let ms = std::env::var("EASYCUE_REPAINT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(20);
+    std::time::Duration::from_millis(ms.clamp(1, 1000))
 }
 
 /// Main application state
@@ -665,6 +692,17 @@ impl EasyCueApp {
         style.spacing.indent = 20.0;
         style.spacing.slider_width = 150.0;
 
+        // Benchmark override: EASYCUE_PIXELS_PER_POINT scales the whole UI
+        // (fewer fragments on a fill-bound GPU). No-op when unset.
+        if let Ok(ppp) = std::env::var("EASYCUE_PIXELS_PER_POINT") {
+            if let Ok(ppp) = ppp.parse::<f32>() {
+                if (0.25..=3.0).contains(&ppp) {
+                    ctx.set_pixels_per_point(ppp);
+                    log::info!("[perf] EASYCUE_PIXELS_PER_POINT={ppp}");
+                }
+            }
+        }
+
         ctx.set_style(style);
         log::info!("Applied cobalt dark theme");
     }
@@ -906,6 +944,17 @@ impl EasyCueApp {
             app.ui_state.show_autosave_prompt = true;
             app.ui_state.autosave_path = Some(autosave_path);
             log::info!("Autosave recovery available on startup");
+        }
+
+        // Benchmark-only hook (no-op when unset): EASYCUE_PERF_LAYOUT=all opens
+        // every panel — including the Script Viewer with a real PDF — so the
+        // frame-time harness can measure the worst-case multi-view layout.
+        if std::env::var("EASYCUE_PERF_LAYOUT").as_deref() == Ok("all") {
+            app.dock_state
+                .main_surface_mut()
+                .push_to_focused_leaf(TabKind::ScriptViewer);
+            app.script_viewer.data.pdf_path = Some(std::path::PathBuf::from("lorem.pdf"));
+            log::info!("[perf] EASYCUE_PERF_LAYOUT=all: opened Script Viewer (media/lorem.pdf)");
         }
 
         log::info!(
@@ -2613,10 +2662,7 @@ impl eframe::App for EasyCueApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        if let Some(perf_logger) = &mut self.perf_logger {
-            let stable_dt = ctx.input(|input| input.stable_dt);
-            perf_logger.record(stable_dt);
-        }
+        let frame_cpu_start = std::time::Instant::now();
         if !self.ui_state.theme_initialized {
             Self::configure_cobalt_theme(ctx);
             self.ui_state.theme_initialized = true;
@@ -2895,6 +2941,18 @@ impl eframe::App for EasyCueApp {
         crate::ui::render(ctx, self);
         let ui_render_time = ui_render_start.elapsed();
 
+        // PerfLogger is recorded at the end of the frame so it can attribute a
+        // frame-time spike to CPU-side UI/DMX work vs. present/wait time.
+        if let Some(perf_logger) = &mut self.perf_logger {
+            let stable_dt = ctx.input(|input| input.stable_dt);
+            perf_logger.record(
+                stable_dt,
+                ui_render_time.as_secs_f64() as f32 * 1000.0,
+                dmx_send_time.as_secs_f64() as f32 * 1000.0,
+                frame_cpu_start.elapsed().as_secs_f64() as f32 * 1000.0,
+            );
+        }
+
         if self.ui_state.show_debug_ui {
             egui::Window::new(format!("{} Debug Info", egui_phosphor::regular::BUG))
                 .default_pos([10.0, 10.0])
@@ -2949,32 +3007,71 @@ impl eframe::App for EasyCueApp {
                 });
         }
 
-        if self.playback.is_playing() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        // ── Repaint scheduling ─────────────────────────────────────────────
+        // Continuous frames are requested only while something is actually
+        // animating: a DMX fade in progress, a running effect, audio playback,
+        // a pending autofollow or audio-master ramp, the debug overlay, or the
+        // keep-alive cases below. When the output is static the app sleeps and
+        // wakes on input — egui repaints on demand, so a static show burns no
+        // CPU or GPU.
+        //
+        // The cadence is deliberately a little longer than one display refresh
+        // (16.67ms @ 60Hz). egui-wgpu's present path (X11/Mesa) lets the loop
+        // race ahead of the swapchain when the request is <= the refresh
+        // period; the queue fills up and ~every third frame stalls 30ms+
+        // (perceived 30-40fps with hitches). A 20ms floor paces the loop to
+        // the display instead: rock-steady 60fps with zero hitches (measured
+        // via EASYCUE_PERF_LOG). On 120/144Hz panels this caps animation at
+        // ~50fps — still hitch-free; set EASYCUE_REPAINT_MS (e.g. 9) if the
+        // display is faster than 60Hz.
+        let cadence = repaint_cadence();
+        let mut next_repaint: Option<std::time::Duration> = None;
+        let mut schedule = |d: std::time::Duration| {
+            next_repaint = Some(match next_repaint {
+                Some(prev) => prev.min(d),
+                None => d,
+            });
+        };
+        // Fade in progress: interpolated DMX values change every frame.
+        if self.playback.fade_progress().is_some() {
+            schedule(cadence);
         }
         // Effects animate the DMX output every frame; without this the app
         // idles and a running effect freezes between input events.
         if self.effect_engine.is_active() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            schedule(cadence);
         }
         #[cfg(feature = "audio")]
         if self.audio_playback.is_playing() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            schedule(cadence);
+        }
+        // A pending autofollow must fire even when the output is static —
+        // wake at the remaining delay rather than spinning at the cadence.
+        if let Some((start, delay)) = self.autofollow_timer {
+            let remaining = (delay - start.elapsed().as_secs_f32()).max(0.001);
+            schedule(std::time::Duration::from_secs_f32(remaining));
+        }
+        #[cfg(feature = "audio")]
+        if self.sound_fade.is_some() {
+            schedule(cadence);
         }
         // Keep the loop alive while an audio output is dead so the recovery
         // scan re-runs even when no cues are playing or effect is animating.
-        // Slower than the 16ms playback cadence — recovery is throttled to 2s.
+        // Slower than the playback cadence — recovery is throttled to 2s.
         #[cfg(feature = "audio")]
         if self.audio_player.any_output_failed() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+            schedule(std::time::Duration::from_millis(500));
         }
         // Keep the loop alive while DMX hardware is being reconnected.
         #[cfg(feature = "usb")]
         if self.dmx_reconnecting() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            schedule(std::time::Duration::from_millis(250));
         }
         if self.ui_state.show_debug_ui {
-            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            schedule(cadence);
+        }
+        if let Some(delay) = next_repaint {
+            ctx.request_repaint_after(delay);
         }
 
         // Persist file path only if it changed (avoid redundant saves every frame)

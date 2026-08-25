@@ -63,6 +63,59 @@ The chromaticity picker (`src/ui/chromaticity.rs`) is empty — replaced by
 Cargo.lock history showed egui/eframe/glow/glutin/winit were **unchanged since
 the first commit**, ruling out a renderer dependency bump as the regression cause.
 
+## 2026-08 finding: the 30–40fps "slowness" is swapchain frame pacing, not render cost
+
+Measured with the extended `EASYCUE_PERF_LOG` CSV (adds `ui_render_ms`,
+`dmx_send_ms`, `update_cpu_ms` columns) on the reference machine, default
+7-tab layout, playback running:
+
+| quantity | value |
+|---|---|
+| total CPU per frame (`update_cpu`, everything incl. UI + DMX) | median **0.8ms**, mean 1.4ms, max 4.6ms |
+| CPU UI render (`ui_render`) | median **0.76ms**, max 3.9ms |
+| DMX send | ~0.04ms |
+
+So the app is **not** CPU-bound. Nor is it fill-rate bound: halving the window
+(1024×576) and quartering the UI via `EASYCUE_PIXELS_PER_POINT=0.5` changed
+nothing (identical mean/median/p95). `perf` shows only a diffuse tail (alloc,
+tessellation, text layout) — no single app hotspot.
+
+The actual pattern is a **frame-pacing cycle**: ~2 fast frames (~10ms) then one
+~34ms stall, repeating every ~3 frames. The app renders in ~2ms, races ahead of
+the 60Hz swapchain (`egui-wgpu` default `PresentMode::AutoVsync` = Fifo, depth
+2–3), fills the queue, and every third `acquire` blocks ~30ms. That stall is the
+"30–40fps" the FPS counter shows.
+
+**Fix (`src/app.rs`): request continuous repaints at a 20ms cadence instead of
+16ms.** A cadence slightly *above* one refresh period (16.67ms @ 60Hz) means the
+loop never produces frames faster than the display consumes them, so the
+swapchain never fills and the periodic stalls vanish. Result (5 runs each, same
+harness, playback animating):
+
+| config | median | p95 | max |
+|---|---|---|---|
+| old (16ms cadence) | ~10.7ms (hitching) | **~34.8ms** | ~41ms |
+| new (20ms cadence) | **16.667ms** | **16.667ms** | ~30ms (rare, on cue-fire/audio-load) |
+| new + all 8 views incl. PDF script viewer | **16.667ms** | **16.667ms** | ~35ms (same rare cue-fire frames) |
+
+Rock-steady 60fps (the display's maximum) with zero hitches in every run. The
+remaining rare ~30ms one-offs coincide with GO presses that load/stop audio
+samples on the main thread — a separate, pre-existing cost.
+
+**Trade-off:** on 120/144Hz displays the 20ms floor caps animation at ~50fps
+(still hitch-free). Override with `EASYCUE_REPAINT_MS=9` (or 7) on fast panels.
+
+**Bonus — repaints are now animation-gated.** The scheduler in `update()` only
+requests continuous frames while something actually animates: a fade in
+progress (`fade_progress()`), a running effect, audio playback, a pending
+autofollow (wakes at the *remaining* delay, not at full cadence), the audio-
+master ramp, DMX reconnect, or a dead audio output's recovery scan. When the
+output is static (e.g. an `Active` cue holding levels), the app sleeps and
+wakes on input — verified: zero PerfLogger records accumulate while static.
+
+Benchmark note: with gating, the harness must keep pressing GO so fades run for
+the whole sampling window (it now does — Space every 2s).
+
 ## Frame-time measurement tooling
 
 ### In-app instrumentation: `EASYCUE_PERF_LOG`
@@ -78,6 +131,10 @@ EASYCUE_PERF_LOG=/tmp/perf.csv ./target/release/easycue3
 ```
 
 - `frame_time_ms` is egui's `stable_dt` (inter-frame delta) × 1000.
+- Since the 2026-08 finding the CSV also carries `ui_render_ms` (CPU time of the
+  UI pass), `dmx_send_ms`, and `update_cpu_ms` (total CPU time of the whole
+  `update()` frame) — use these to attribute a spike to CPU work vs.
+  present/swapchain wait (frame_time − update_cpu).
 - Writes are buffered; flushed every 64 records and on shutdown. Intended to be
   parsed after the process exits.
 - egui only repaints on demand, so **idle frames produce few samples**. Start
@@ -92,12 +149,38 @@ compiled in).
 ```bash
 cargo build --release
 python3 scripts/benchmark_frame_time.py
+# environment:
+#   RUNS=n            runs (default 5)
+#   BENCH_LAYOUT=all  worst-case layout: default 7 tabs + Script Viewer with
+#                     media/lorem.pdf (needs PDFIUM_LIBRARY_PATH, auto-set from
+#                     target/debug/libpdfium.so if present)
 ```
 
 Per run it: launches the app (isolated `XDG_DATA_HOME`), waits 10 s, sends
 Space to start playback, samples for 5 s, then SIGTERMs the process. Prints
 per-run `samples / mean / median / min / max / p95` (5 runs by default; set
 `RUNS`).
+
+2026-08 changes to the harness (and why):
+- **Moves `shows/.autosave.json` aside per run** — a newer autosave triggers the
+  "Recover Unsaved Work?" modal at startup, which blocked the Space key that
+  starts playback (the old harness silently measured idle: empty CSV).
+- **Presses Space every 2s during sampling** — with repaints now animation-gated
+  (see above), a single GO would let fades finish and the app fall idle mid-run.
+- **`BENCH_LAYOUT=all`** sets `EASYCUE_PERF_LAYOUT=all` in the app (a startup
+  hook that opens the Script Viewer tab and points it at `media/lorem.pdf`;
+  no-op when unset) so the worst-case multi-view layout — fixtures list, cue
+  list, magic sheet, fixture properties, script viewer — is measured together.
+
+Other benchmark/diagnostic env vars (all no-op when unset):
+- `EASYCUE_REPAINT_MS` — continuous-repaint cadence (default 20; the 16ms value
+  reproduces the old hitching).
+- `EASYCUE_PIXELS_PER_POINT` — UI scale override (used to prove fill-rate
+  independence; on this machine it changes nothing).
+- `EASYCUE_PRESENT_MODE` (`vsync|novsync|mailbox|immediate`) and
+  `EASYCUE_FRAME_LATENCY` — wgpu swapchain knobs, wired in `main.rs`; present
+  mode and latency changes did not fix the pacing stalls (only the repaint
+  cadence did).
 
 Caveats:
 - The 5 s sampling window mixes a little idle + active playback (identical

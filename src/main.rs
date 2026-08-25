@@ -54,10 +54,37 @@ fn main() -> eframe::Result<()> {
     if let Some(icon_data) = icon {
         viewport = viewport.with_icon(icon_data);
     }
+
+    // Present-mode override for A/B benchmarking (EASYCUE_PRESENT_MODE=mailbox
+    // | novsync | vsync). Falls back to egui-wgpu's default AutoVsync when unset.
+    let mut wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default();
+    if let Ok(mode) = std::env::var("EASYCUE_PRESENT_MODE") {
+        wgpu_options.present_mode = match mode.as_str() {
+            "mailbox" => eframe::wgpu::PresentMode::Mailbox,
+            "novsync" => eframe::wgpu::PresentMode::AutoNoVsync,
+            "immediate" => eframe::wgpu::PresentMode::Immediate,
+            _ => eframe::wgpu::PresentMode::AutoVsync,
+        };
+        log::info!("[startup] EASYCUE_PRESENT_MODE={mode} -> {:?}", wgpu_options.present_mode);
+    }
+    // EASYCUE_FRAME_LATENCY=<n> caps the swapchain frame latency (default 2).
+    // 1 makes the app pace with the display instead of racing ahead and
+    // periodically hitting the full swapchain (the cause of ~every-3rd-frame
+    // 30ms+ hitches on 60Hz displays).
+    if let Ok(latency) = std::env::var("EASYCUE_FRAME_LATENCY") {
+        if let Ok(latency) = latency.parse::<u32>() {
+            wgpu_options.desired_maximum_frame_latency = Some(latency);
+            log::info!(
+                "[startup] EASYCUE_FRAME_LATENCY={latency} -> {:?}",
+                wgpu_options.desired_maximum_frame_latency
+            );
+        }
+    }
     
     let native_options = eframe::NativeOptions {
         viewport,
         persist_window: true,  // Save window position
+        wgpu_options,
         ..Default::default()
     };
     log::info!("[startup] Native window configured in {:.2}ms", window_setup_start.elapsed().as_secs_f64() * 1000.0);
