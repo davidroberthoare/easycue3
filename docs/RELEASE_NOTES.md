@@ -1,5 +1,18 @@
 # Release Notes
 
+## v0.8.5
+
+- **Faster, steadier rendering (wgpu).** EasyCue3 now renders through wgpu —
+  Vulkan on Linux, Metal on macOS — instead of OpenGL, roughly halving typical
+  frame times.
+- **No more 30–40fps hitches.** Animation now paces cleanly with your display
+  (a solid 60fps on a 60Hz screen) instead of stuttering every few frames. The
+  cause was the app racing ahead of the swapchain — fixed by a repaint cadence
+  tuned just above one refresh period.
+- **Idles when nothing is moving.** During a show the app only redraws while
+  something is actually animating (a fade, an effect, audio). When a cue is
+  holding levels, it stops rendering entirely, saving CPU and battery.
+
 ## v0.8.3
 
 - **Custom fixture profiles can now be moved between machines.** Your own fixture profiles live in the app's config folder (not in the show file), so a show created on one computer wouldn't patch on another. The **Custom Fixture Profiles** window now has:
