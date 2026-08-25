@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 # UI Framework - using egui 0.31 for lumina-video compatibility
 egui = "0.31"
-eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts", "x11", "wayland", "persistence"] }
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "persistence"] }
 egui_dock = { version = "0.16", features = ["serde"] }  # Dockable panels with persistence
 egui_extras = "0.31"  # Extra widgets including Table
 

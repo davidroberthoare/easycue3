@@ -13,6 +13,7 @@ use crate::media::MediaManager;
 use crate::show::{CueColorSettings, RgbaColor, ShowFile};
 use egui_dock::DockState;
 use std::collections::{HashMap, HashSet};
+use std::io::{BufWriter, Write};
 
 #[cfg(feature = "audio")]
 use crate::audio::{AudioPlaybackEngine, AudioPlayer};
@@ -347,6 +348,67 @@ impl Default for PersistedDmxBackend {
     }
 }
 
+/// Optional per-frame instrumentation used by the run-over-run benchmark.
+/// It is inert unless EASYCUE_PERF_LOG is set; writes remain buffered until
+/// shutdown so the measurement does not flush I/O on every frame.
+struct PerfLogger {
+    started: std::time::Instant,
+    writer: BufWriter<std::fs::File>,
+    records: u32,
+}
+
+impl PerfLogger {
+    fn from_env() -> Option<Self> {
+        let setting = std::env::var("EASYCUE_PERF_LOG").ok()?;
+        if setting.is_empty() || setting == "0" {
+            return None;
+        }
+        let path = if setting == "1" {
+            std::env::temp_dir().join(format!("easycue3-perf-{}.csv", std::process::id()))
+        } else {
+            std::path::PathBuf::from(setting)
+        };
+        match std::fs::File::create(&path) {
+            Ok(file) => {
+                let mut writer = BufWriter::new(file);
+                if writeln!(writer, "timestamp_ms,frame_time_ms").is_err() {
+                    log::warn!("[perf] Could not initialize log file {:?}", path);
+                    return None;
+                }
+                log::info!("[perf] Writing frame timings to {:?}", path);
+                Some(Self {
+                    started: std::time::Instant::now(),
+                    writer,
+                    records: 0,
+                })
+            }
+            Err(e) => {
+                log::warn!("[perf] Could not create log file {:?}: {}", path, e);
+                None
+            }
+        }
+    }
+
+    fn record(&mut self, stable_dt: f32) {
+        let timestamp_ms = self.started.elapsed().as_secs_f64() * 1000.0;
+        let _ = writeln!(self.writer, "{timestamp_ms:.3},{:.6}", stable_dt * 1000.0);
+        self.records += 1;
+        if self.records % 64 == 0 {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        let _ = self.writer.flush();
+    }
+}
+
+impl Drop for PerfLogger {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
 /// Main application state
 pub struct EasyCueApp {
     pub universes: Vec<Universe>,
@@ -432,6 +494,9 @@ pub struct EasyCueApp {
     update_check_rx: Option<std::sync::mpsc::Receiver<crate::update::UpdateCheckState>>,
     /// When we last checked for updates, persisted to throttle the automatic startup check.
     last_update_check: Option<chrono::DateTime<chrono::Utc>>,
+
+    /// Optional benchmark-only frame timing logger.
+    perf_logger: Option<PerfLogger>,
 
     /// Auto-reconnect state for a lost DMX hardware device (None = not trying).
     /// After the hardware backend reports loss, the app falls back to Virtual
@@ -607,6 +672,7 @@ impl EasyCueApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let app_init_start = std::time::Instant::now();
         log::info!("[startup] EasyCueApp::new begin");
+        let perf_logger = PerfLogger::from_env();
 
         let theme_start = std::time::Instant::now();
         Self::configure_cobalt_theme(&cc.egui_ctx);
@@ -756,6 +822,7 @@ impl EasyCueApp {
             update_state: crate::update::UpdateCheckState::Unknown,
             update_check_rx: None,
             last_update_check,
+            perf_logger,
             #[cfg(feature = "usb")]
             dmx_reconnect: None,
         };
@@ -2465,14 +2532,15 @@ impl EasyCueApp {
     }
 }
 
-impl eframe::App for EasyCueApp {
-    /// Ordered shutdown: stop audio, auto-save the show, close the DMX backend.
-    /// Returns normally so eframe can finish flushing its persisted settings and
-    /// tear down the event loop — a forced `process::exit` here raced the
-    /// settings write and occasionally corrupted `app.ron`.
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+/// Ordered shutdown body shared by the feature-gated `eframe::App::on_exit`
+/// implementations (glow and wgpu builds have different trait signatures).
+impl EasyCueApp {
+    fn shutdown_sequence(&mut self) {
         let shutdown_start = std::time::Instant::now();
         log::warn!("[shutdown] on_exit invoked; beginning shutdown sequence");
+        if let Some(perf_logger) = &mut self.perf_logger {
+            perf_logger.flush();
+        }
 
         #[cfg(feature = "audio")]
         {
@@ -2533,8 +2601,28 @@ impl eframe::App for EasyCueApp {
         // silently reset the UI layout and the last-loaded show. Returning lets
         // eframe finish the write, join the thread, and exit the process itself.
     }
+}
+
+impl eframe::App for EasyCueApp {
+    /// Ordered shutdown: stop audio, auto-save the show, close the DMX backend.
+    /// Returns normally so eframe can finish flushing its persisted settings and
+    /// tear down the event loop — a forced `process::exit` here raced the
+    /// settings write and occasionally corrupted `app.ron`.
+    #[cfg(feature = "glow")]
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.shutdown_sequence();
+    }
+
+    #[cfg(not(feature = "glow"))]
+    fn on_exit(&mut self) {
+        self.shutdown_sequence();
+    }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if let Some(perf_logger) = &mut self.perf_logger {
+            let stable_dt = ctx.input(|input| input.stable_dt);
+            perf_logger.record(stable_dt);
+        }
         if !self.ui_state.theme_initialized {
             Self::configure_cobalt_theme(ctx);
             self.ui_state.theme_initialized = true;
