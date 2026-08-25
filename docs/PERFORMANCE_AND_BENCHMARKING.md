@@ -86,24 +86,32 @@ the 60Hz swapchain (`egui-wgpu` default `PresentMode::AutoVsync` = Fifo, depth
 2–3), fills the queue, and every third `acquire` blocks ~30ms. That stall is the
 "30–40fps" the FPS counter shows.
 
-**Fix (`src/app.rs`): request continuous repaints at a 20ms cadence instead of
-16ms.** A cadence slightly *above* one refresh period (16.67ms @ 60Hz) means the
+**Fix (`src/app.rs`): request continuous repaints at a cadence *above* one
+display refresh instead of 16ms.** A cadence above the refresh period means the
 loop never produces frames faster than the display consumes them, so the
-swapchain never fills and the periodic stalls vanish. Result (5 runs each, same
-harness, playback animating):
+swapchain never fills and the periodic stalls vanish. First shipped at 20ms
+(rock-steady 60fps); since **0.8.6 the default is 33ms (~30fps)** — the UI has
+no fast animation, ~30fps looks smooth and costs a fraction of the CPU on old
+machines (measured ~90% → ~30-40% during a fade). The DMX senders are
+unaffected: they run on their own threads (USB Pro 40Hz, Open DMX 30Hz,
+Art-Net 40Hz) and just repeat the latest frame.
+
+Result of the 20ms/60fps fix (5 runs each, same harness, playback animating):
 
 | config | median | p95 | max |
 |---|---|---|---|
 | old (16ms cadence) | ~10.7ms (hitching) | **~34.8ms** | ~41ms |
-| new (20ms cadence) | **16.667ms** | **16.667ms** | ~30ms (rare, on cue-fire/audio-load) |
-| new + all 8 views incl. PDF script viewer | **16.667ms** | **16.667ms** | ~35ms (same rare cue-fire frames) |
+| 20ms cadence | **16.667ms** | **16.667ms** | ~30ms (rare, on cue-fire/audio-load) |
+| 20ms + all 8 views incl. PDF script viewer | **16.667ms** | **16.667ms** | ~35ms (same rare cue-fire frames) |
 
 Rock-steady 60fps (the display's maximum) with zero hitches in every run. The
 remaining rare ~30ms one-offs coincide with GO presses that load/stop audio
 samples on the main thread — a separate, pre-existing cost.
 
-**Trade-off:** on 120/144Hz displays the 20ms floor caps animation at ~50fps
-(still hitch-free). Override with `EASYCUE_REPAINT_MS=9` (or 7) on fast panels.
+**Trade-off:** at 33ms the app targets ~30fps by default. Override with
+`EASYCUE_REPAINT_MS` (e.g. `20` for 60fps, `9` on a 120Hz panel). Note the
+override is a *floor*, not a strict limiter — input events (dragging a slider,
+scrolling) still repaint immediately, so interactions stay responsive.
 
 **Bonus — repaints are now animation-gated.** The scheduler in `update()` only
 requests continuous frames while something actually animates: a fade in
@@ -114,7 +122,9 @@ output is static (e.g. an `Active` cue holding levels), the app sleeps and
 wakes on input — verified: zero PerfLogger records accumulate while static.
 
 Benchmark note: with gating, the harness must keep pressing GO so fades run for
-the whole sampling window (it now does — Space every 2s).
+the whole sampling window (it now does — Space every 2s). At 33ms the harness's
+sample count is ~half of the 60fps runs — compare medians (≈33ms) and that p95
+stays ≈ median (no hitches).
 
 ## Frame-time measurement tooling
 
@@ -173,8 +183,8 @@ per-run `samples / mean / median / min / max / p95` (5 runs by default; set
   list, magic sheet, fixture properties, script viewer — is measured together.
 
 Other benchmark/diagnostic env vars (all no-op when unset):
-- `EASYCUE_REPAINT_MS` — continuous-repaint cadence (default 20; the 16ms value
-  reproduces the old hitching).
+- `EASYCUE_REPAINT_MS` — continuous-repaint cadence (default 33 since 0.8.6; the
+  16ms value reproduces the old hitching, 20ms gives steady 60fps).
 - `EASYCUE_PIXELS_PER_POINT` — UI scale override (used to prove fill-rate
   independence; on this machine it changes nothing).
 - `EASYCUE_PRESENT_MODE` (`vsync|novsync|mailbox|immediate`) and

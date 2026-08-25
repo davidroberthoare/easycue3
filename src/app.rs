@@ -181,6 +181,10 @@ pub struct UiState {
     pub audio_file_cache: HashMap<std::path::PathBuf, bool>,
 
     pub show_debug_ui: bool,
+    /// Recent frame timestamps (egui `input.time`) used by the debug overlay to
+    /// report the *actual* repaint rate over the last second. `stable_dt` is a
+    /// predicted timestep (usually 1/60) and can't show that.
+    pub debug_frame_times: std::collections::VecDeque<f64>,
     pub theme_initialized: bool,
 
     // Dialog states
@@ -315,6 +319,7 @@ impl Default for UiState {
             #[cfg(feature = "audio")]
             audio_file_cache: HashMap::new(),
             show_debug_ui: false,
+            debug_frame_times: std::collections::VecDeque::new(),
             color_wheel: crate::ui::ColorWheel::new(),
             last_wheel_fixture_id: None,
             selected_effect_id: None,
@@ -425,14 +430,19 @@ impl Drop for PerfLogger {
 }
 
 /// Continuous-repaint cadence while the output animates (see the scheduling
-/// block in `update`). Slightly above one 60Hz refresh period so the present
-/// path never races the swapchain (the cause of periodic ~30ms frame stalls).
-/// `EASYCUE_REPAINT_MS` overrides for benchmarking or faster displays.
+/// block in `update`). Defaults to 33ms (~30fps): the UI has no fast animation
+/// (only sliders, PDF reading, colour pickers), so ~30fps keeps a show running
+/// at a fraction of the CPU cost of 60fps while still looking smooth. The DMX
+/// hardware senders (USB Pro / Open DMX / Art-Net) run on their own threads at
+/// their own rates (40/30/40Hz), so this only bounds how often the *values*
+/// are refreshed — fades get ~30 distinct steps/second, which is visually fine.
+/// `EASYCUE_REPAINT_MS` overrides (e.g. 20 for 60fps on fast machines, 9 for a
+/// 120Hz panel).
 fn repaint_cadence() -> std::time::Duration {
     let ms = std::env::var("EASYCUE_REPAINT_MS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(20);
+        .unwrap_or(33);
     std::time::Duration::from_millis(ms.clamp(1, 1000))
 }
 
@@ -2954,14 +2964,49 @@ impl eframe::App for EasyCueApp {
         }
 
         if self.ui_state.show_debug_ui {
+            // Rolling repaint-rate measurement. `stable_dt` is egui's predicted
+            // timestep (usually 1/60) even in reactive mode, so it can't show
+            // how often we *actually* repaint — count frames over the last second.
+            let (repaint_fps, frame_times) = ctx.input(|i| {
+                let t = i.time;
+                let times = &mut self.ui_state.debug_frame_times;
+                times.push_back(t);
+                while let Some(&front) = times.front() {
+                    if t - front > 1.0 {
+                        times.pop_front();
+                    } else {
+                        break;
+                    }
+                }
+                let fps = match (times.front().copied(), times.back().copied()) {
+                    (Some(front), Some(back)) if back > front && times.len() >= 2 => {
+                        (times.len() - 1) as f32 / (back - front) as f32
+                    }
+                    _ => 0.0,
+                };
+                (fps, times.len())
+            });
+            let target_ms = repaint_cadence().as_millis();
             egui::Window::new(format!("{} Debug Info", egui_phosphor::regular::BUG))
                 .default_pos([10.0, 10.0])
                 .default_width(280.0)
                 .show(ctx, |ui| {
-                    ui.label(format!("FPS: {:.1}", ctx.input(|i| 1.0 / i.stable_dt)));
                     ui.label(format!(
-                        "Frame time: {:.2}ms",
+                        "Repaint rate (1s): {:.1} fps over {} frames",
+                        repaint_fps, frame_times
+                    ));
+                    ui.label(format!(
+                        "Repaint target: {:.0}ms ({} fps)",
+                        target_ms,
+                        1000.0 / target_ms as f32
+                    ));
+                    ui.label(format!(
+                        "stable_dt: {:.2}ms",
                         ctx.input(|i| i.stable_dt * 1000.0)
+                    ));
+                    ui.label(format!(
+                        "unstable_dt: {:.2}ms",
+                        ctx.input(|i| i.unstable_dt * 1000.0)
                     ));
                     ui.separator();
                     ui.label(egui::RichText::new("Performance:").strong());
@@ -3015,15 +3060,13 @@ impl eframe::App for EasyCueApp {
         // wakes on input — egui repaints on demand, so a static show burns no
         // CPU or GPU.
         //
-        // The cadence is deliberately a little longer than one display refresh
-        // (16.67ms @ 60Hz). egui-wgpu's present path (X11/Mesa) lets the loop
-        // race ahead of the swapchain when the request is <= the refresh
-        // period; the queue fills up and ~every third frame stalls 30ms+
-        // (perceived 30-40fps with hitches). A 20ms floor paces the loop to
-        // the display instead: rock-steady 60fps with zero hitches (measured
-        // via EASYCUE_PERF_LOG). On 120/144Hz panels this caps animation at
-        // ~50fps — still hitch-free; set EASYCUE_REPAINT_MS (e.g. 9) if the
-        // display is faster than 60Hz.
+        // The cadence defaults to 33ms (~30fps) — the UI is mostly static and
+        // ~30fps is plenty smooth for sliders/PDFs/colour pickers, at a third
+        // of the CPU of 60fps. It also stays above one 60Hz display refresh
+        // (16.67ms), so the loop never races ahead of the swapchain and never
+        // hits the periodic ~30ms stalls that made 0.8.4 feel like 30-40fps
+        // (see docs/PERFORMANCE_AND_BENCHMARKING.md). The DMX/audio output
+        // threads are independent and unaffected. EASYCUE_REPAINT_MS overrides.
         let cadence = repaint_cadence();
         let mut next_repaint: Option<std::time::Duration> = None;
         let mut schedule = |d: std::time::Duration| {

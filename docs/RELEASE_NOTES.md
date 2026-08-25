@@ -1,5 +1,20 @@
 # Release Notes
 
+## v0.8.6
+
+- **Lighter on older machines.** The UI now animates at ~30fps instead of 60 —
+  the console has no fast animation (just sliders, PDF reading and colour
+  pickers), and ~30fps looks smooth while using a fraction of the CPU. During
+  a fade, CPU load drops from ~90% to ~30–40% on older hardware, and the UI
+  still looks smooth. DMX output is unaffected: the USB Pro / Open DMX /
+  Art-Net senders keep running on their own threads at 40/30/40Hz.
+  Override with the `EASYCUE_REPAINT_MS` environment variable if you want
+  different pacing (e.g. `20` for 60fps).
+- **Trustworthy debug overlay.** The Debug Info window now reports the *actual*
+  repaint rate over the last second (plus the target interval and both egui
+  timesteps) instead of a fixed `1/60` prediction — so you can see the app
+  genuinely idle or hit its target rate, rather than always showing 60fps.
+
 ## v0.8.5
 
 - **Faster, steadier rendering (wgpu).** EasyCue3 now renders through wgpu —
