@@ -1,5 +1,26 @@
 # Release Notes
 
+## v0.8.7
+
+- **Audio cues: start time, looping, and a live progress readout.**
+  - **Start Time** — audio cues can begin partway through the file (seconds from
+    the start; defaults to 0.0). `Length` counts from the start time, so a 30s
+    file starting at 10s can play up to 20s of material.
+  - **Loop** — audio cues can loop: the file restarts when it reaches the end
+    and keeps playing until you stop it or its length expires.
+  - **Progress in the cue list** — while an audio cue plays, its Info column
+    turns into a live countdown (remaining seconds) with a left-to-right
+    progress fill; cues without a length show elapsed time instead. Looping
+    cues show a ↻ icon.
+- **Right-click = toggle.** In the fixture list and the magic sheet, right-click
+  now does exactly what Ctrl/Cmd+click does — toggling the fixture, channel, or
+  shape's membership in the selection — for faster multi-picking without the
+  keyboard.
+- **Duplicate cue.** A new copy button in the Cue list toolbar (before Delete)
+  duplicates the selected cue right where you're working: the copy is numbered
+  between the original and the next cue (or the next whole number at the end of
+  the list) and is selected ready to edit.
+
 ## v0.8.6
 
 - **Lighter on older machines.** The UI now animates at ~30fps instead of 60 —
