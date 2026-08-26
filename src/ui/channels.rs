@@ -133,7 +133,7 @@ fn render_instrument_list(ui: &mut Ui, app: &mut EasyCueApp) {
     } else {
         ui.label(
             egui::RichText::new(
-                "Click to select · Shift-click range · Ctrl-click toggle · Drag to adjust",
+                "Click to select · Shift-click range · Ctrl-click/Right-click toggle · Drag to adjust",
             )
             .small(),
         );
@@ -318,11 +318,13 @@ fn render_fixture_tile(
         ui.allocate_exact_size(Vec2::new(tile_w, tile_h), Sense::click_and_drag());
 
     let tile_clicked = response.clicked();
+    let tile_right_clicked = response.secondary_clicked();
 
-    // Selection handling
-    if tile_clicked {
+    // Selection handling. Right-click behaves exactly like Ctrl/Cmd+click:
+    // it toggles the tile's membership in the selection.
+    if tile_clicked || tile_right_clicked {
         let modifiers = ui.input(|i| i.modifiers);
-        if modifiers.shift {
+        if modifiers.shift && !tile_right_clicked {
             if let Some(last_id) = app.ui_state.last_selected_fixture {
                 let all = app.fixtures.patch_list().patches();
                 let a = all.iter().position(|p| p.id == last_id);
@@ -335,7 +337,7 @@ fn render_fixture_tile(
                 }
             }
             app.ui_state.last_selected_fixture = Some(fixture_id);
-        } else if modifiers.command || modifiers.ctrl {
+        } else if modifiers.command || modifiers.ctrl || tile_right_clicked {
             if is_selected {
                 app.ui_state.selected_fixtures.remove(&fixture_id);
             } else {
@@ -484,7 +486,7 @@ fn render_fixture_tile(
         ));
     }
 
-    tile_clicked
+    tile_clicked || tile_right_clicked
 }
 
 fn intensity_color(intensity: f32) -> Color32 {
@@ -726,11 +728,13 @@ fn render_channel_box(ui: &mut Ui, app: &mut EasyCueApp, channel: u16) {
         }
     }
 
-    // Handle click to select channels and update command line
-    if response.clicked() {
+    // Handle click to select channels and update command line.
+    // Right-click behaves exactly like Ctrl/Cmd+click: it toggles the channel.
+    let right_clicked = response.secondary_clicked();
+    if response.clicked() || right_clicked {
         let modifiers = ui.input(|i| i.modifiers);
 
-        if modifiers.shift {
+        if modifiers.shift && !right_clicked {
             // Shift+click: add range to selection
             if let Some(last_ch) = app.ui_state.last_selected_channel {
                 let start = last_ch.min(channel);
@@ -756,8 +760,8 @@ fn render_channel_box(ui: &mut Ui, app: &mut EasyCueApp, channel: u16) {
                 app.ui_state.last_selected_channel = Some(channel);
                 app.ui_state.status_message = format!("Ch {}", channel);
             }
-        } else if modifiers.command || modifiers.ctrl {
-            // Ctrl/Cmd+click: toggle selection
+        } else if modifiers.command || modifiers.ctrl || right_clicked {
+            // Ctrl/Cmd+click (or right-click): toggle selection
             if is_selected {
                 app.ui_state.selected_channels.remove(&channel);
                 app.ui_state.channel_base_levels.remove(&channel);

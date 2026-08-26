@@ -457,9 +457,10 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             {
                 drag_started_on_shape = true;
             }
-            if resp.clicked() {
+            if resp.clicked() || resp.secondary_clicked() {
                 let modifiers = ui.input(|i| i.modifiers);
-                if modifiers.command || modifiers.ctrl {
+                let additive = modifiers.command || modifiers.ctrl || resp.secondary_clicked();
+                if additive {
                     if app.magic_sheet_state.selected_shape_ids.contains(&shape_id) {
                         app.magic_sheet_state.selected_shape_ids.remove(&shape_id);
                     } else {
@@ -491,7 +492,8 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             }
         } else if !edit_mode && !shift_held {
             // ── Live mode: click to select fixture / group ────────────────────
-            if resp.clicked() {
+            // Right-click behaves exactly like Ctrl/Cmd+click.
+            if resp.clicked() || resp.secondary_clicked() {
                 if is_command_shape {
                     // Command shape: run the stored command through the command line.
                     if let Some(cmd) = command {
@@ -500,7 +502,7 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     }
                 } else {
                     let modifiers = ui.input(|i| i.modifiers);
-                    let additive = modifiers.command || modifiers.ctrl;
+                    let additive = modifiers.command || modifiers.ctrl || resp.secondary_clicked();
 
                     if let Some(fid) = fixture_id {
                         // Single-fixture shape

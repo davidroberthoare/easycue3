@@ -9,14 +9,15 @@
 
 use crate::audio::{route_source::RouteSource, AudioCueState, AudioPlayer};
 use crate::cue::Cue;
-use rodio::{Decoder, Player};
+use rodio::{Decoder, Player, Source};
 use std::fs::File;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// A freshly-decoded source routed onto one stereo pair of a device stream.
-type RoutedDecoder = RouteSource<Decoder<std::io::BufReader<std::fs::File>>>;
+/// A decoded source routed onto one stereo pair of a device stream, boxed so it
+/// can either be a plain stream or a looping `Repeat` wrapper.
+type RoutedSource = Box<dyn rodio::Source<Item = f32> + Send>;
 
 /// In-progress volume ramp on a single output-device route.
 #[derive(Clone, Copy)]
@@ -73,6 +74,10 @@ struct ActiveAudioStream {
     fade_out_duration: f32,
     fade_start: Option<Instant>,
     length: Option<f32>,
+    /// Seconds into the file where playback begins (seek offset).
+    start_time: f32,
+    /// Restart the file from the beginning when it reaches the end.
+    looped: bool,
     play_start: Instant,
 }
 
@@ -122,22 +127,18 @@ impl AudioPlaybackEngine {
         let mut device_sinks = Vec::with_capacity(route_sinks.len());
         for rp in route_sinks {
             // Each device sink needs its own decoder — re-open the file.
-            let file = match File::open(&resolved) {
-                Ok(f) => f,
-                Err(e) => {
-                    log::error!("Audio: cannot open {}: {}", resolved.display(), e);
-                    continue;
-                }
+            let seek_to = std::time::Duration::from_secs_f32(data.start_time.max(0.0));
+            let Some((routed, pan_ctrl)) = Self::build_route_source(
+                &resolved,
+                &rp.device_name,
+                rp.pan,
+                rp.device_channels,
+                rp.channel_offset,
+                seek_to,
+                data.loop_playback,
+            ) else {
+                continue;
             };
-            let raw = match Decoder::try_from(file) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error!("Audio: decode error on '{}': {}", rp.device_name, e);
-                    continue;
-                }
-            };
-            let (routed, pan_ctrl) =
-                RouteSource::new(raw, rp.pan, rp.device_channels, rp.channel_offset);
             rp.player.set_volume(initial_volume * rp.volume);
             rp.player.append(routed);
             device_sinks.push(DeviceSink {
@@ -165,22 +166,28 @@ impl AudioPlaybackEngine {
             fade_out_duration: data.fade_out,
             fade_start,
             length: data.length,
+            start_time: data.start_time.max(0.0),
+            looped: data.loop_playback,
             play_start: Instant::now(),
         });
 
         log::info!(
-            "Audio start: cue {:.2} '{}' routes={} fade_in={:.1}s",
+            "Audio start: cue {:.2} '{}' routes={} fade_in={:.1}s start={:.1}s loop={}",
             cue.number,
             cue.label,
             data.output_routes.len().max(1),
             data.fade_in,
+            data.start_time,
+            data.loop_playback,
         );
         true
     }
 
     /// Open the file and build a `RouteSource` positioned at `seek_to`.
-    /// Shared by `join_device` (Adjust, starting from silence) and
-    /// `recover_device` (sleep/resume, preserving current position & volume).
+    /// Shared by `start` (Audio cues), `join_device` (Adjust, starting from
+    /// silence) and `recover_device` (sleep/resume, preserving current position
+    /// & volume). When `loop_playback` is set the source is wrapped so it
+    /// restarts from the beginning once the file runs out.
     fn build_route_source(
         audio_path: &std::path::Path,
         device_name: &str,
@@ -188,7 +195,8 @@ impl AudioPlaybackEngine {
         device_channels: std::num::NonZero<u16>,
         channel_offset: u16,
         seek_to: std::time::Duration,
-    ) -> Option<(RoutedDecoder, Arc<AtomicU32>)> {
+        loop_playback: bool,
+    ) -> Option<(RoutedSource, Arc<AtomicU32>)> {
         let file = File::open(audio_path).ok()?;
         let raw = Decoder::try_from(file).ok()?;
         let (mut routed, pan_ctrl) = RouteSource::new(raw, pan, device_channels, channel_offset);
@@ -200,7 +208,12 @@ impl AudioPlaybackEngine {
                 e
             );
         }
-        Some((routed, pan_ctrl))
+        let source: RoutedSource = if loop_playback {
+            Box::new(routed.repeat_infinite())
+        } else {
+            Box::new(routed)
+        };
+        Some((source, pan_ctrl))
     }
 
     /// Open a new device sink on `stream` for an output (device + channel pair) it
@@ -219,13 +232,15 @@ impl AudioPlaybackEngine {
         }
         let sink = player.new_player(device_name).ok()?;
         let elapsed = stream.play_start.elapsed();
+        let seek_to = std::time::Duration::from_secs_f32(stream.start_time + elapsed.as_secs_f32());
         let (routed, pan_ctrl) = Self::build_route_source(
             &stream.audio_path,
             device_name,
             0.0,
             player.device_channels(device_name),
             channel_offset,
-            elapsed,
+            seek_to,
+            stream.looped,
         )?;
         sink.set_volume(0.0);
         sink.append(routed);
@@ -258,6 +273,8 @@ impl AudioPlaybackEngine {
         let mut reattached = 0usize;
         for stream in self.streams.iter_mut() {
             let elapsed = stream.play_start.elapsed();
+            let seek_to =
+                std::time::Duration::from_secs_f32(stream.start_time + elapsed.as_secs_f32());
             let mut idx = 0;
             while idx < stream.device_sinks.len() {
                 if stream.device_sinks[idx].device_name != device_name {
@@ -289,7 +306,8 @@ impl AudioPlaybackEngine {
                     pan,
                     player.device_channels(device_name),
                     channel_offset,
-                    elapsed,
+                    seek_to,
+                    stream.looped,
                 ) {
                     Some(r) => r,
                     None => {
@@ -567,6 +585,15 @@ impl AudioPlaybackEngine {
             .iter()
             .find(|s| s.cue_id == cue_id)
             .map(|s| s.state)
+    }
+
+    /// Seconds of playback so far for a stream (counted from the cue start,
+    /// i.e. after the start-time seek). Drives the countdown progress display.
+    pub fn stream_elapsed(&self, cue_id: u32) -> Option<f32> {
+        self.streams
+            .iter()
+            .find(|s| s.cue_id == cue_id)
+            .map(|s| s.play_start.elapsed().as_secs_f32())
     }
 
     pub fn current_cue_id(&self) -> Option<u32> {

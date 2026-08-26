@@ -2289,6 +2289,24 @@ impl EasyCueApp {
         assigned_id
     }
 
+    /// Duplicate the cue with the given stable ID. The copy is inserted right
+    /// after the original in the list, numbered between the original and the
+    /// next cue (or the next whole number at the end of the list). Returns the
+    /// new cue's stable ID, or None if `id` isn't a cue in the list.
+    pub fn duplicate_cue(&mut self, id: u32) -> Option<u32> {
+        let anchor_idx = self.cue_list.cues().iter().position(|c| c.id == id)?;
+        let number = self.cue_list.number_for_insert_after(anchor_idx);
+        let mut dup = self.cue_list.get_cue(anchor_idx).cloned()?;
+        dup.id = 0;
+        dup.number = number;
+        let new_id = self.cue_list.next_id();
+        self.cue_list.add_cue(dup);
+        #[cfg(feature = "audio")]
+        self.ui_state.audio_file_cache.clear();
+        log::info!("Duplicated cue id {} as {:.1} (id {})", id, number, new_id);
+        Some(new_id)
+    }
+
     /// Select a cue by stable ID and keep the legacy per-kind selection fields in sync.
     pub fn select_cue(&mut self, id: u32) {
         self.ui_state.selected_cue_id = Some(id);

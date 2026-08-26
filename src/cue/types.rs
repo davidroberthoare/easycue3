@@ -178,6 +178,17 @@ pub struct AudioData {
     /// None = play until the file ends.
     #[serde(default, serialize_with = "crate::serde_helpers::round_option_f32_2")]
     pub length: Option<f32>,
+    /// Seconds into the audio file where the cue starts playing (seek offset).
+    /// Defaults to 0.0: the start of the file. `length` counts from here.
+    #[serde(
+        default,
+        skip_serializing_if = "start_time_is_zero",
+        serialize_with = "crate::serde_helpers::round_f32_2"
+    )]
+    pub start_time: f32,
+    /// Loop the audio file until the cue is stopped (or `length` expires).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub loop_playback: bool,
     /// Output routing: one entry per physical device. Volume and pan are absolute per-device levels.
     /// Defaults to a single default-device route at full volume.
     #[serde(default = "default_output_routes")]
@@ -190,6 +201,11 @@ fn default_output_routes() -> Vec<AudioOutputRoute> {
 }
 
 #[cfg(feature = "audio")]
+fn start_time_is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
+#[cfg(feature = "audio")]
 impl AudioData {
     pub fn new(path: PathBuf) -> Self {
         Self {
@@ -198,6 +214,8 @@ impl AudioData {
             fade_out: 0.0,
             notes: String::new(),
             length: None,
+            start_time: 0.0,
+            loop_playback: false,
             output_routes: vec![AudioOutputRoute::default()],
         }
     }
@@ -611,5 +629,29 @@ mod tests {
         };
         let json = serde_json::to_string(&route).unwrap();
         assert!(json.contains("\"channel_offset\":2"));
+    }
+
+    #[cfg(feature = "audio")]
+    #[test]
+    fn audio_start_time_and_loop_round_trip_and_default_to_off() {
+        // New fields default to off/zero so old show files load cleanly and
+        // untouched files stay byte-identical.
+        let json = r#"{"audio_path": "a.wav", "fade_in": 1.0, "fade_out": 2.0}"#;
+        let data: AudioData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.start_time, 0.0);
+        assert!(!data.loop_playback);
+        let out = serde_json::to_string(&data).unwrap();
+        assert!(!out.contains("start_time"));
+        assert!(!out.contains("loop_playback"));
+
+        let mut data = AudioData::new(std::path::PathBuf::from("a.wav"));
+        data.start_time = 12.5;
+        data.loop_playback = true;
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("\"start_time\":12.5"));
+        assert!(json.contains("\"loop_playback\":true"));
+        let back: AudioData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.start_time, 12.5);
+        assert!(back.loop_playback);
     }
 }

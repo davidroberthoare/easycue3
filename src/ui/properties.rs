@@ -561,9 +561,18 @@ fn render_audio_cue_properties(
 
     let Some(idx) = abs_idx else { return };
 
-    let (path, fade_in, fade_out, length) = cue
+    let (path, fade_in, fade_out, length, start_time, loop_playback) = cue
         .audio_data()
-        .map(|d| (d.audio_path.clone(), d.fade_in, d.fade_out, d.length))
+        .map(|d| {
+            (
+                d.audio_path.clone(),
+                d.fade_in,
+                d.fade_out,
+                d.length,
+                d.start_time,
+                d.loop_playback,
+            )
+        })
         .unwrap_or_default();
 
     let filename = path
@@ -666,6 +675,39 @@ fn render_audio_cue_properties(
                 if let Some(c) = app.cue_list.get_cue_mut(idx) {
                     if let Some(d) = c.audio_data_mut() {
                         d.fade_out = fo;
+                    }
+                }
+            }
+            ui.end_row();
+
+            ui.label("Start Time:");
+            let mut st = start_time;
+            if ui
+                .add(
+                    egui::DragValue::new(&mut st)
+                        .speed(0.1)
+                        .range(0.0..=3600.0)
+                        .suffix("s"),
+                )
+                .changed()
+            {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.audio_data_mut() {
+                        d.start_time = st.max(0.0);
+                    }
+                }
+            }
+            if st == 0.0 {
+                ui.label(egui::RichText::new("(file start)").color(egui::Color32::GRAY));
+            }
+            ui.end_row();
+
+            ui.label("Loop:");
+            let mut looped = loop_playback;
+            if ui.checkbox(&mut looped, "").changed() {
+                if let Some(c) = app.cue_list.get_cue_mut(idx) {
+                    if let Some(d) = c.audio_data_mut() {
+                        d.loop_playback = looped;
                     }
                 }
             }

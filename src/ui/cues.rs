@@ -324,6 +324,21 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             app.ui_state.status_message = format!("Added adjust cue {:.1}", next_number);
         }
 
+        if ui
+            .button(format!("{}", ph::COPY))
+            .on_hover_text("Duplicate the selected cue")
+            .clicked()
+        {
+            if let Some(id) = app.ui_state.selected_cue_id {
+                if let Some(new_id) = app.duplicate_cue(id) {
+                    app.select_cue(new_id);
+                    app.ui_state.status_message = "Duplicated cue".to_string();
+                }
+            } else {
+                app.ui_state.status_message = "Select a cue first".to_string();
+            }
+        }
+
         if ui.button(format!("{}", ph::TRASH)).clicked() {
             if app.ui_state.selected_cue_id.is_some() {
                 app.ui_state.pending_delete_cue_id = app.ui_state.selected_cue_id;
@@ -586,11 +601,17 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     {
                         cue.audio_data()
                             .map(|d| {
-                                d.audio_path
+                                let name = d
+                                    .audio_path
                                     .file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or("?")
-                                    .to_string()
+                                    .to_string();
+                                if d.loop_playback {
+                                    format!("{} {}", ph::REPEAT, name)
+                                } else {
+                                    name
+                                }
                             })
                             .unwrap_or_default()
                     }
@@ -608,6 +629,10 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 } else {
                     None
                 };
+                #[cfg(feature = "audio")]
+                let audio_length = cue.audio_data().and_then(|d| d.length);
+                #[cfg(not(feature = "audio"))]
+                let _audio_length: Option<f32> = None;
                 #[cfg(feature = "audio")]
                 let is_audio_fading = is_audio_active
                     && matches!(
@@ -769,12 +794,57 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         ui.id().with(("cue-info", cue_id)),
                         egui::Sense::click(),
                     );
+                    let (text, text_color) = {
+                        // While an audio cue plays, the info field becomes a live
+                        // countdown (remaining seconds when a length is set, elapsed
+                        // otherwise) over a left-to-right progress fill.
+                        #[cfg(feature = "audio")]
+                        {
+                            if is_audio_active {
+                                if let Some(elapsed) = app.audio_playback.stream_elapsed(cue_id) {
+                                    if let Some(len) = audio_length {
+                                        let frac = (elapsed / len).clamp(0.0, 1.0);
+                                        if frac > 0.0 {
+                                            let fill = egui::Rect::from_min_max(
+                                                rect.min,
+                                                egui::pos2(
+                                                    rect.min.x + rect.width() * frac,
+                                                    rect.max.y,
+                                                ),
+                                            );
+                                            ui.painter().rect_filled(
+                                                fill,
+                                                0.0,
+                                                egui::Color32::from_rgba_unmultiplied(
+                                                    60, 150, 230, 55,
+                                                ),
+                                            );
+                                        }
+                                        (
+                                            format!("{:.1}s", (len - elapsed).max(0.0)),
+                                            egui::Color32::from_rgb(170, 215, 255),
+                                        )
+                                    } else {
+                                        (format!("{:.1}s", elapsed), egui::Color32::WHITE)
+                                    }
+                                } else {
+                                    (info_text.clone(), egui::Color32::WHITE)
+                                }
+                            } else {
+                                (info_text.clone(), egui::Color32::WHITE)
+                            }
+                        }
+                        #[cfg(not(feature = "audio"))]
+                        {
+                            (info_text.clone(), egui::Color32::WHITE)
+                        }
+                    };
                     ui.painter().text(
                         rect.left_center() + egui::vec2(4.0, 0.0),
                         egui::Align2::LEFT_CENTER,
-                        info_text,
+                        text,
                         egui::FontId::proportional(11.0),
-                        egui::Color32::WHITE,
+                        text_color,
                     );
                     row_responses.push(resp);
                 });
