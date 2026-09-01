@@ -519,16 +519,33 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         app.ui_state.last_selected_fixture = *fixture_id;
                         update_command_from_fixture_selection(app);
                     } else if let Some(gid) = group_id {
-                        // Group shape — always additive: clicking a group adds its fixtures
-                        // to the current selection so multiple groups can be built up easily.
+                        // Group shape — same selection semantics as a fixture
+                        // shape: a plain click replaces the selection with just
+                        // this group's fixtures; an additive click (Ctrl/Cmd/
+                        // right) toggles the group as a unit.
                         let group_fixtures = app.groups.resolve_fixtures(*gid);
-                        if !group_fixtures.is_empty() {
+                        if additive {
+                            let all_selected = !group_fixtures.is_empty()
+                                && group_fixtures
+                                    .iter()
+                                    .all(|fid| app.ui_state.selected_fixtures.contains(fid));
+                            if all_selected {
+                                for fid in &group_fixtures {
+                                    app.ui_state.selected_fixtures.remove(fid);
+                                }
+                            } else {
+                                for fid in &group_fixtures {
+                                    app.ui_state.selected_fixtures.insert(*fid);
+                                }
+                            }
+                        } else {
+                            app.ui_state.selected_fixtures.clear();
                             for fid in &group_fixtures {
                                 app.ui_state.selected_fixtures.insert(*fid);
                             }
-                            app.ui_state.last_selected_fixture = group_fixtures.last().copied();
-                            update_command_from_fixture_selection(app);
                         }
+                        app.ui_state.last_selected_fixture = group_fixtures.last().copied();
+                        update_command_from_fixture_selection(app);
                     }
                 }
             }
@@ -547,12 +564,17 @@ pub fn render_magic_sheet_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             app.ui_state.last_selected_fixture = *fixture_id;
                         }
                     } else if let Some(gid) = group_id {
-                        // Drag on a group shape: select the group's fixtures if none are selected
+                        // Drag on a group shape — same semantics as a fixture:
+                        // if this group isn't already the selection, replace the
+                        // selection with just it; if it's already selected, keep
+                        // everything and adjust all selected groups together.
                         let group_fixtures = app.groups.resolve_fixtures(*gid);
-                        let any_selected = group_fixtures
-                            .iter()
-                            .any(|fid| app.ui_state.selected_fixtures.contains(fid));
-                        if !any_selected && !group_fixtures.is_empty() {
+                        let group_selected = !group_fixtures.is_empty()
+                            && group_fixtures
+                                .iter()
+                                .all(|fid| app.ui_state.selected_fixtures.contains(fid));
+                        if !group_selected && !group_fixtures.is_empty() {
+                            app.ui_state.selected_fixtures.clear();
                             for fid in &group_fixtures {
                                 app.ui_state.selected_fixtures.insert(*fid);
                             }

@@ -137,12 +137,15 @@ fn handle_dropped_files(app: &mut EasyCueApp, files: Vec<egui::DroppedFile>) -> 
 }
 
 pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
+    let show_mode = app.show_mode;
+
     // ── Drag-and-drop overlay ─────────────────────────────────────────────────
     // Paint a highlighted border + hint text whenever files are being dragged
     // over the window, so the user knows the panel is a valid drop target.
+    // Not in show mode — adding cues mid-show must not be possible.
     let panel_rect = ui.max_rect();
     let hovered_files = ui.ctx().input(|i| i.raw.hovered_files.clone());
-    if !hovered_files.is_empty() {
+    if !show_mode && !hovered_files.is_empty() {
         let overlay_painter = ui.ctx().layer_painter(egui::LayerId::new(
             egui::Order::Foreground,
             egui::Id::new("cue_drop_overlay"),
@@ -170,273 +173,256 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Toolbar ──────────────────────────────────────────────────────────────
     // `horizontal_wrapped` so the transport + edit buttons fall onto a second
     // line instead of overflowing when the dock panel is narrow.
-    ui.horizontal_wrapped(|ui| {
-        // ── Transport ───────────────────────────────────────────────────────
 
-        // Resolve the on-deck target: typed cue number overrides the default next cue.
-        let next_idx = app.cue_list.next_any_index();
-        let go_target_idx: Option<usize> = {
-            let input = app.ui_state.go_cue_input.trim();
-            if input.is_empty() {
-                next_idx
-            } else {
-                input.parse::<f32>().ok().and_then(|num| {
-                    app.cue_list
-                        .cues()
-                        .iter()
-                        .position(|c| (c.number - num).abs() < 0.005)
-                })
-            }
-        };
-        let next_hint = next_idx
-            .and_then(|i| app.cue_list.get_cue(i))
-            .map(|c| format!("{:.1}", c.number))
-            .unwrap_or_default();
-
-        let go_enabled = go_target_idx.is_some();
-        let back_enabled = app.cue_list.previous_any_index().is_some();
-
-        // On-deck number box — slightly taller to visually match adjacent buttons
-        let btn_h = ui.spacing().interact_size.y;
-        let ondeck_resp = ui.add_sized(
-            [45.0, btn_h + 2.0],
-            egui::TextEdit::singleline(&mut app.ui_state.go_cue_input)
-                .hint_text(&next_hint)
-                .font(egui::TextStyle::Monospace),
-        );
-        let enter_in_box =
-            ondeck_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-
-        let go_btn_color = EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
-        let go_btn = egui::Button::new(format!("{} GO", ph::PLAY)).fill(go_btn_color);
-        if ui.add_enabled(go_enabled, go_btn).clicked() || (go_enabled && enter_in_box) {
-            if app.ui_state.go_cue_input.trim().is_empty() {
-                if app.go_next() {
-                    let label = app
-                        .cue_list
-                        .current_index()
-                        .and_then(|i| app.cue_list.get_cue(i))
-                        .map(|c| format!("Q{:.1} {}", c.number, c.label))
-                        .unwrap_or_default();
-                    app.ui_state.status_message = format!("GO {} {}", ph::CARET_RIGHT, label);
-                }
-            } else if let Some(abs_idx) = go_target_idx {
-                let label_str = app
-                    .cue_list
-                    .get_cue(abs_idx)
-                    .map(|c| format!("Q{:.1} {}", c.number, c.label))
-                    .unwrap_or_default();
-                if app.go_to_cue(abs_idx) {
-                    app.ui_state.go_cue_input.clear();
-                    app.ui_state.status_message = format!("GO {} {}", ph::CARET_RIGHT, label_str);
-                }
-            }
-        }
-
-        let back_btn = egui::Button::new(format!("{} BACK", ph::SKIP_BACK)).fill(if back_enabled {
-            egui::Color32::from_rgb(50, 80, 120)
+    // Resolve the on-deck target: typed cue number overrides the default next cue.
+    // Shared by the design-mode toolbar and the show-mode transport row.
+    let next_idx = app.cue_list.next_any_index();
+    let go_target_idx: Option<usize> = {
+        let input = app.ui_state.go_cue_input.trim();
+        if input.is_empty() {
+            next_idx
         } else {
-            egui::Color32::from_rgb(30, 40, 60)
-        });
-        if ui.add_enabled(back_enabled, back_btn).clicked() {
-            app.go_back();
-            app.ui_state.status_message = "BACK".to_string();
+            input.parse::<f32>().ok().and_then(|num| {
+                app.cue_list
+                    .cues()
+                    .iter()
+                    .position(|c| (c.number - num).abs() < 0.005)
+            })
         }
+    };
+    let next_hint = next_idx
+        .and_then(|i| app.cue_list.get_cue(i))
+        .map(|c| format!("{:.1}", c.number))
+        .unwrap_or_default();
 
-        if ui.button(format!("{} STOP", ph::STOP)).clicked() {
-            app.playback.stop();
-            #[cfg(feature = "audio")]
-            app.audio_playback.stop_all();
-            app.ui_state.status_message = "STOP".to_string();
-        }
+    let go_enabled = go_target_idx.is_some();
+    let back_enabled = app.cue_list.previous_any_index().is_some();
 
-        ui.separator();
+    if show_mode {
+        render_show_transport(ui, app, next_hint, go_target_idx, go_enabled, back_enabled);
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            // ── Transport ───────────────────────────────────────────────────
+            // On-deck number box — slightly taller to visually match adjacent buttons
+            let btn_h = ui.spacing().interact_size.y;
+            let ondeck_resp = ui.add_sized(
+                [45.0, btn_h + 2.0],
+                egui::TextEdit::singleline(&mut app.ui_state.go_cue_input)
+                    .hint_text(&next_hint)
+                    .font(egui::TextStyle::Monospace),
+            );
+            let enter_in_box =
+                ondeck_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-        // Edit actions
-        if ui
-            .button(format!("{} LX", ph::PLUS))
-            .on_hover_text("Record a lighting cue from the current live output")
-            .clicked()
-        {
-            let id = app.record_cue();
-            // Jump into the new cue as the actively running cue.
-            if let Some(idx) = app.cue_list.cues().iter().position(|c| c.id == id) {
-                app.jump_to_cue(idx);
+            let go_btn_color = EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
+            let go_btn = egui::Button::new(format!("{} GO", ph::PLAY)).fill(go_btn_color);
+            if ui.add_enabled(go_enabled, go_btn).clicked() || (go_enabled && enter_in_box) {
+                go_button_action(app, go_target_idx);
             }
-            // go_to_cue clears the selection; re-select so the properties panel shows it.
-            app.select_cue(id);
-            // There is no cue after the newest one — blank the on-deck box.
-            app.ui_state.go_cue_input.clear();
-            // Activate the new cue's label field so the operator can rename it.
-            app.ui_state.focus_cue_edit = Some((id, crate::app::CueEditField::Label));
-        }
 
-        #[cfg(feature = "audio")]
-        if ui
-            .button(format!("{} Snd", ph::PLUS))
-            .on_hover_text("Add an audio file cue")
-            .clicked()
-        {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Audio Files", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
-                .set_title("Select Audio File")
-                .pick_file()
+            let back_btn =
+                egui::Button::new(format!("{} BACK", ph::SKIP_BACK)).fill(if back_enabled {
+                    egui::Color32::from_rgb(50, 80, 120)
+                } else {
+                    egui::Color32::from_rgb(30, 40, 60)
+                });
+            if ui.add_enabled(back_enabled, back_btn).clicked() {
+                app.go_back();
+                app.ui_state.status_message = "BACK".to_string();
+            }
+
+            if ui.button(format!("{} STOP", ph::STOP)).clicked() {
+                stop_playback(app);
+            }
+
+            ui.separator();
+
+            // Edit actions
+            if ui
+                .button(format!("{} LX", ph::PLUS))
+                .on_hover_text("Record a lighting cue from the current live output")
+                .clicked()
+            {
+                let id = app.record_cue();
+                // Jump into the new cue as the actively running cue.
+                if let Some(idx) = app.cue_list.cues().iter().position(|c| c.id == id) {
+                    app.jump_to_cue(idx);
+                }
+                // go_to_cue clears the selection; re-select so the properties panel shows it.
+                app.select_cue(id);
+                // There is no cue after the newest one — blank the on-deck box.
+                app.ui_state.go_cue_input.clear();
+                // Activate the new cue's label field so the operator can rename it.
+                app.ui_state.focus_cue_edit = Some((id, crate::app::CueEditField::Label));
+            }
+
+            #[cfg(feature = "audio")]
+            if ui
+                .button(format!("{} Snd", ph::PLUS))
+                .on_hover_text("Add an audio file cue")
+                .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Audio Files", &["mp3", "wav", "flac", "ogg", "aac", "m4a"])
+                    .set_title("Select Audio File")
+                    .pick_file()
+                {
+                    let next_number = app.next_cue_insert_number();
+                    let filename = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Audio")
+                        .to_string();
+                    let mut cue = crate::cue::Cue::new_audio(next_number, path);
+                    cue.label = format!("{}", filename);
+                    let id = app.cue_list.next_id();
+                    app.cue_list.add_cue(cue);
+                    app.ui_state.selected_cue_id = Some(id);
+                    app.ui_state.status_message = format!("Added audio cue {:.1}", next_number);
+                    app.ui_state.audio_file_cache.clear();
+                }
+            }
+
+            #[cfg(feature = "audio")]
+            if ui
+                .button(format!("{} Adj", ph::PLUS))
+                .on_hover_text("Add a sound adjust cue (volume ramp / stop)")
+                .clicked()
             {
                 let next_number = app.next_cue_insert_number();
-                let filename = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Audio")
-                    .to_string();
-                let mut cue = crate::cue::Cue::new_audio(next_number, path);
-                cue.label = format!("{}", filename);
+                // Auto-target: find the most recent audio cue in the list so the
+                // Adjust operates on that cue's volume directly rather than the
+                // global master (which starts at 1.0 and makes UP fades confusing).
+                let prev_audio_num: Option<f32> = app
+                    .cue_list
+                    .cues()
+                    .iter()
+                    .rev()
+                    .find_map(|c| c.audio_data().map(|_| c.number));
+                let mut cue = crate::cue::Cue::new_adjust(next_number);
+                if let crate::cue::CueKind::Adjust(ref mut d) = cue.kind {
+                    d.target_audio_cue = prev_audio_num;
+                }
                 let id = app.cue_list.next_id();
                 app.cue_list.add_cue(cue);
                 app.ui_state.selected_cue_id = Some(id);
-                app.ui_state.status_message = format!("Added audio cue {:.1}", next_number);
-                app.ui_state.audio_file_cache.clear();
+                app.ui_state.status_message = format!("Added adjust cue {:.1}", next_number);
             }
-        }
 
-        #[cfg(feature = "audio")]
-        if ui
-            .button(format!("{} Adj", ph::PLUS))
-            .on_hover_text("Add a sound adjust cue (volume ramp / stop)")
-            .clicked()
-        {
-            let next_number = app.next_cue_insert_number();
-            // Auto-target: find the most recent audio cue in the list so the
-            // Adjust operates on that cue's volume directly rather than the
-            // global master (which starts at 1.0 and makes UP fades confusing).
-            let prev_audio_num: Option<f32> = app
-                .cue_list
-                .cues()
-                .iter()
-                .rev()
-                .find_map(|c| c.audio_data().map(|_| c.number));
-            let mut cue = crate::cue::Cue::new_adjust(next_number);
-            if let crate::cue::CueKind::Adjust(ref mut d) = cue.kind {
-                d.target_audio_cue = prev_audio_num;
-            }
-            let id = app.cue_list.next_id();
-            app.cue_list.add_cue(cue);
-            app.ui_state.selected_cue_id = Some(id);
-            app.ui_state.status_message = format!("Added adjust cue {:.1}", next_number);
-        }
-
-        if ui
-            .button(format!("{}", ph::COPY))
-            .on_hover_text("Duplicate the selected cue")
-            .clicked()
-        {
-            if let Some(id) = app.ui_state.selected_cue_id {
-                if let Some(new_id) = app.duplicate_cue(id) {
-                    app.select_cue(new_id);
-                    app.ui_state.status_message = "Duplicated cue".to_string();
+            if ui
+                .button(format!("{}", ph::COPY))
+                .on_hover_text("Duplicate the selected cue")
+                .clicked()
+            {
+                if let Some(id) = app.ui_state.selected_cue_id {
+                    if let Some(new_id) = app.duplicate_cue(id) {
+                        app.select_cue(new_id);
+                        app.ui_state.status_message = "Duplicated cue".to_string();
+                    }
+                } else {
+                    app.ui_state.status_message = "Select a cue first".to_string();
                 }
-            } else {
-                app.ui_state.status_message = "Select a cue first".to_string();
             }
-        }
 
-        if ui.button(format!("{}", ph::TRASH)).clicked() {
-            if app.ui_state.selected_cue_id.is_some() {
-                app.ui_state.pending_delete_cue_id = app.ui_state.selected_cue_id;
-            } else {
-                app.ui_state.status_message = "Select a cue first".to_string();
+            if ui.button(format!("{}", ph::TRASH)).clicked() {
+                if app.ui_state.selected_cue_id.is_some() {
+                    app.ui_state.pending_delete_cue_id = app.ui_state.selected_cue_id;
+                } else {
+                    app.ui_state.status_message = "Select a cue first".to_string();
+                }
             }
-        }
 
-        ui.separator();
+            ui.separator();
 
-        // Masters — compact
-        let bo_text = if app.ui_state.blackout_active {
-            "●"
-        } else {
-            ph::LIGHTBULB
-        };
-        let bo_fill = if app.ui_state.blackout_active {
-            egui::Color32::from_rgb(80, 40, 40)
-        } else {
-            egui::Color32::from_rgb(50, 50, 50)
-        };
-        if ui
-            .add(
-                egui::Button::new(bo_text)
-                    .fill(bo_fill)
-                    .min_size(egui::vec2(26.0, 20.0)),
-            )
-            .clicked()
-        {
-            if app.ui_state.blackout_active {
-                app.ui_state.lighting_master = app.ui_state.previous_lighting_master;
-                app.ui_state.blackout_active = false;
+            // Masters — compact
+            let bo_text = if app.ui_state.blackout_active {
+                "●"
             } else {
-                app.ui_state.previous_lighting_master = app.ui_state.lighting_master;
-                app.ui_state.lighting_master = 0.0;
-                app.ui_state.blackout_active = true;
-            }
-        }
-        let mut lx_pct = (app.ui_state.lighting_master * 100.0) as i32;
-        if ui
-            .add(
-                egui::DragValue::new(&mut lx_pct)
-                    .speed(1.0)
-                    .range(0..=100)
-                    .suffix("%")
-                    .prefix("LX "),
-            )
-            .changed()
-        {
-            app.ui_state.lighting_master = lx_pct as f32 / 100.0;
-            app.ui_state.blackout_active = false;
-        }
-
-        #[cfg(feature = "audio")]
-        {
-            let mute_text = if app.ui_state.audio_mute_active {
-                ph::SPEAKER_SLASH
-            } else {
-                ph::SPEAKER_HIGH
+                ph::LIGHTBULB
             };
-            let mute_fill = if app.ui_state.audio_mute_active {
+            let bo_fill = if app.ui_state.blackout_active {
                 egui::Color32::from_rgb(80, 40, 40)
             } else {
                 egui::Color32::from_rgb(50, 50, 50)
             };
             if ui
                 .add(
-                    egui::Button::new(mute_text)
-                        .fill(mute_fill)
+                    egui::Button::new(bo_text)
+                        .fill(bo_fill)
                         .min_size(egui::vec2(26.0, 20.0)),
                 )
                 .clicked()
             {
-                if app.ui_state.audio_mute_active {
-                    app.ui_state.sound_master = app.ui_state.previous_sound_master;
-                    app.ui_state.audio_mute_active = false;
+                if app.ui_state.blackout_active {
+                    app.ui_state.lighting_master = app.ui_state.previous_lighting_master;
+                    app.ui_state.blackout_active = false;
                 } else {
-                    app.ui_state.previous_sound_master = app.ui_state.sound_master;
-                    app.ui_state.sound_master = 0.0;
-                    app.ui_state.audio_mute_active = true;
+                    app.ui_state.previous_lighting_master = app.ui_state.lighting_master;
+                    app.ui_state.lighting_master = 0.0;
+                    app.ui_state.blackout_active = true;
                 }
             }
-            let mut snd_pct = (app.ui_state.sound_master * 100.0) as i32;
+            let mut lx_pct = (app.ui_state.lighting_master * 100.0) as i32;
             if ui
                 .add(
-                    egui::DragValue::new(&mut snd_pct)
+                    egui::DragValue::new(&mut lx_pct)
                         .speed(1.0)
                         .range(0..=100)
                         .suffix("%")
-                        .prefix("SND "),
+                        .prefix("LX "),
                 )
                 .changed()
             {
-                app.ui_state.sound_master = snd_pct as f32 / 100.0;
-                app.ui_state.audio_mute_active = false;
+                app.ui_state.lighting_master = lx_pct as f32 / 100.0;
+                app.ui_state.blackout_active = false;
             }
-        }
-    });
+
+            #[cfg(feature = "audio")]
+            {
+                let mute_text = if app.ui_state.audio_mute_active {
+                    ph::SPEAKER_SLASH
+                } else {
+                    ph::SPEAKER_HIGH
+                };
+                let mute_fill = if app.ui_state.audio_mute_active {
+                    egui::Color32::from_rgb(80, 40, 40)
+                } else {
+                    egui::Color32::from_rgb(50, 50, 50)
+                };
+                if ui
+                    .add(
+                        egui::Button::new(mute_text)
+                            .fill(mute_fill)
+                            .min_size(egui::vec2(26.0, 20.0)),
+                    )
+                    .clicked()
+                {
+                    if app.ui_state.audio_mute_active {
+                        app.ui_state.sound_master = app.ui_state.previous_sound_master;
+                        app.ui_state.audio_mute_active = false;
+                    } else {
+                        app.ui_state.previous_sound_master = app.ui_state.sound_master;
+                        app.ui_state.sound_master = 0.0;
+                        app.ui_state.audio_mute_active = true;
+                    }
+                }
+                let mut snd_pct = (app.ui_state.sound_master * 100.0) as i32;
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut snd_pct)
+                            .speed(1.0)
+                            .range(0..=100)
+                            .suffix("%")
+                            .prefix("SND "),
+                    )
+                    .changed()
+                {
+                    app.ui_state.sound_master = snd_pct as f32 / 100.0;
+                    app.ui_state.audio_mute_active = false;
+                }
+            }
+        });
+    }
 
     ui.add_space(4.0);
     ui.separator();
@@ -445,6 +431,11 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     // ── Pre-compute display state ─────────────────────────────────────────────
     let footer_reserved = FOOTER_HEIGHT + TABLE_HEADER_H + FOOTER_GAP;
     let available_height = (ui.available_height() - footer_reserved).max(0.0);
+
+    // One-shot scroll target: after a GO/BACK/goto/arrow the play head moves and
+    // we bring the on-deck row into view, centred — keeping the just-fired
+    // (active) cue visible above it, plus at least one row below the on-deck.
+    let scroll_to_row = app.ui_state.pending_cue_scroll.take();
 
     let selected_id = app.ui_state.selected_cue_id;
     let next_any_idx = app.cue_list.next_any_index();
@@ -487,6 +478,24 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     const COL_STATE: f32 = 55.0;
     const COL_STATE_MIN: f32 = 44.0;
 
+    // Show Mode uses larger row text (easier to read from across the room) and
+    // taller rows to fit it.
+    let (row_h, num_font, label_font, info_font) = if show_mode {
+        (
+            30.0,
+            egui::FontId::proportional(17.0),
+            egui::FontId::proportional(16.0),
+            egui::FontId::proportional(13.0),
+        )
+    } else {
+        (
+            22.0,
+            egui::FontId::default(),
+            egui::FontId::proportional(14.0),
+            egui::FontId::proportional(11.0),
+        )
+    };
+
     let table = TableBuilder::new(ui)
         .id_salt("cue_list_table")
         .striped(true)
@@ -509,6 +518,14 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
         )
         .min_scrolled_height(0.0)
         .max_scroll_height(available_height);
+
+    // Keep the on-deck row in view, centred — so the active cue above it stays
+    // on screen and at least one row below the on-deck is visible too.
+    let table = if let Some(row) = scroll_to_row {
+        table.scroll_to_row(row, Some(egui::Align::Center))
+    } else {
+        table
+    };
 
     table.reset();
 
@@ -534,7 +551,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
             });
         })
         .body(|body| {
-            body.rows(22.0, cue_count, |mut row| {
+            body.rows(row_h, cue_count, |mut row| {
                 let abs_idx = row.index();
                 let cue = app.cue_list.get_cue(abs_idx).unwrap();
                 let cue_id = cue.id;
@@ -739,7 +756,8 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     ui.with_layout(
                         egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                         |ui| {
-                            let mut text = egui::RichText::new(icon).size(13.0);
+                            let mut text =
+                                egui::RichText::new(icon).size(if show_mode { 15.0 } else { 13.0 });
                             if let Some(color) = icon_color {
                                 text = text.color(color);
                             }
@@ -761,28 +779,50 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("{:.1}", cue_number),
-                        egui::FontId::default(),
+                        num_font.clone(),
                         ui.style().visuals.text_color(),
                     );
                     row_responses.push(resp);
                 });
 
-                // Col 3: label (editable inline)
+                // Col 3: label — inline-editable in design mode; a plain read-only label
+                // in show mode so a stray click can't rename a cue mid-show.
                 row.col(|ui| {
                     paint_bg(ui);
-                    let mut label = cue_label.clone();
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut label).desired_width(ui.available_width()),
-                    );
-                    if resp.changed() {
-                        if let Some(c) = app.cue_list.get_cue_mut(abs_idx) {
-                            c.label = label;
+                    if show_mode {
+                        let rect = ui.max_rect();
+                        let resp = ui.interact(
+                            rect,
+                            ui.id().with(("cue-label", cue_id)),
+                            egui::Sense::click(),
+                        );
+                        ui.painter().text(
+                            rect.left_center() + egui::vec2(4.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            cue_label,
+                            label_font.clone(),
+                            ui.style().visuals.text_color(),
+                        );
+                        if resp.clicked() {
+                            clicked_id = Some(cue_id);
                         }
+                        row_responses.push(resp);
+                    } else {
+                        let mut label = cue_label.clone();
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(&mut label)
+                                .desired_width(ui.available_width()),
+                        );
+                        if resp.changed() {
+                            if let Some(c) = app.cue_list.get_cue_mut(abs_idx) {
+                                c.label = label;
+                            }
+                        }
+                        if resp.clicked() {
+                            clicked_id = Some(cue_id);
+                        }
+                        row_responses.push(resp);
                     }
-                    if resp.clicked() {
-                        clicked_id = Some(cue_id);
-                    }
-                    row_responses.push(resp);
                 });
 
                 // Col 4: info
@@ -843,7 +883,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                         rect.left_center() + egui::vec2(4.0, 0.0),
                         egui::Align2::LEFT_CENTER,
                         text,
-                        egui::FontId::proportional(11.0),
+                        info_font.clone(),
                         text_color,
                     );
                     row_responses.push(resp);
@@ -894,7 +934,7 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                             rect.left_center() + egui::vec2(4.0, 0.0),
                             egui::Align2::LEFT_CENTER,
                             state_str,
-                            egui::FontId::proportional(11.0),
+                            info_font.clone(),
                             egui::Color32::from_rgb(200, 200, 100),
                         );
                     }
@@ -906,28 +946,31 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                     clicked_id = Some(cue_id);
                 }
 
-                // Context menu
-                if let Some(first) = row_responses.first() {
-                    let combined = row_responses
-                        .iter()
-                        .skip(1)
-                        .fold(first.clone(), |a, r| a.union(r.clone()));
-                    combined.context_menu(|ui| {
-                        if ui.button("Fire (Go To)").clicked() {
-                            go_to_abs_idx = Some(abs_idx);
-                            ui.close_menu();
-                        }
-                        ui.separator();
-                        if ui.button("Edit in Properties").clicked() {
-                            app.select_cue(cue_id);
-                            ui.close_menu();
-                        }
-                        ui.separator();
-                        if ui.button("Delete").clicked() {
-                            app.ui_state.pending_delete_cue_id = Some(cue_id);
-                            ui.close_menu();
-                        }
-                    });
+                // Context menu — hidden in show mode so a stray right-click can't reach
+                // the edit/delete actions.
+                if !show_mode {
+                    if let Some(first) = row_responses.first() {
+                        let combined = row_responses
+                            .iter()
+                            .skip(1)
+                            .fold(first.clone(), |a, r| a.union(r.clone()));
+                        combined.context_menu(|ui| {
+                            if ui.button("Fire (Go To)").clicked() {
+                                go_to_abs_idx = Some(abs_idx);
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            if ui.button("Edit in Properties").clicked() {
+                                app.select_cue(cue_id);
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            if ui.button("Delete").clicked() {
+                                app.ui_state.pending_delete_cue_id = Some(cue_id);
+                                ui.close_menu();
+                            }
+                        });
+                    }
                 }
             });
         });
@@ -1013,16 +1056,103 @@ pub fn render_cues_panel(ui: &mut Ui, app: &mut EasyCueApp) {
     }
 
     // ── Drag-and-drop file processing ─────────────────────────────────────────
-    // Consume any files dropped onto the window this frame, preserving their order.
-    let dropped_files = ui.ctx().input(|i| i.raw.dropped_files.clone());
-    if !dropped_files.is_empty() {
-        let status = handle_dropped_files(app, dropped_files);
-        if !status.is_empty() {
-            app.ui_state.status_message = status;
+    // Consume any files dropped onto the window this frame, preserving their
+    // order. Skipped in show mode — adding cues mid-show must not be possible.
+    if !show_mode {
+        let dropped_files = ui.ctx().input(|i| i.raw.dropped_files.clone());
+        if !dropped_files.is_empty() {
+            let status = handle_dropped_files(app, dropped_files);
+            if !status.is_empty() {
+                app.ui_state.status_message = status;
+            }
         }
     }
 
     render_footer(ui, app);
+}
+
+/// Fire the GO button's target: the typed on-deck number if present, else the
+/// default next cue. Shared by the design-mode toolbar and the show transport.
+fn go_button_action(app: &mut EasyCueApp, go_target_idx: Option<usize>) {
+    if app.ui_state.go_cue_input.trim().is_empty() {
+        if app.go_next() {
+            let label = app
+                .cue_list
+                .current_index()
+                .and_then(|i| app.cue_list.get_cue(i))
+                .map(|c| format!("Q{:.1} {}", c.number, c.label))
+                .unwrap_or_default();
+            app.ui_state.status_message = format!("GO {} {}", ph::CARET_RIGHT, label);
+        }
+    } else if let Some(abs_idx) = go_target_idx {
+        let label_str = app
+            .cue_list
+            .get_cue(abs_idx)
+            .map(|c| format!("Q{:.1} {}", c.number, c.label))
+            .unwrap_or_default();
+        if app.go_to_cue(abs_idx) {
+            app.ui_state.go_cue_input.clear();
+            app.ui_state.status_message = format!("GO {} {}", ph::CARET_RIGHT, label_str);
+        }
+    }
+}
+
+/// Halt lighting playback and all audio (the STOP action).
+fn stop_playback(app: &mut EasyCueApp) {
+    app.playback.stop();
+    #[cfg(feature = "audio")]
+    app.audio_playback.stop_all();
+    app.ui_state.status_message = "STOP".to_string();
+}
+
+/// Show Mode transport row: big GO / BACK / STOP buttons plus the on-deck
+/// number box (goto), sized for a board operator. Nothing else — no edit
+/// buttons, no masters — so a stray click can't change the show.
+fn render_show_transport(
+    ui: &mut Ui,
+    app: &mut EasyCueApp,
+    next_hint: String,
+    go_target_idx: Option<usize>,
+    go_enabled: bool,
+    back_enabled: bool,
+) {
+    ui.horizontal(|ui| {
+        let btn_h = 38.0;
+        let ondeck_resp = ui.add_sized(
+            [60.0, btn_h],
+            egui::TextEdit::singleline(&mut app.ui_state.go_cue_input)
+                .hint_text(&next_hint)
+                .font(egui::TextStyle::Monospace),
+        );
+        let enter_in_box =
+            ondeck_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+        let go_btn_color = EasyCueApp::color32_from_rgba(app.cue_colors.status_on_deck);
+        let go_btn = egui::Button::new(format!("{}  GO", ph::PLAY))
+            .fill(go_btn_color)
+            .min_size(egui::vec2(100.0, btn_h));
+        if ui.add_enabled(go_enabled, go_btn).clicked() || (go_enabled && enter_in_box) {
+            go_button_action(app, go_target_idx);
+        }
+
+        let back_btn = egui::Button::new(format!("{}  BACK", ph::SKIP_BACK))
+            .fill(if back_enabled {
+                egui::Color32::from_rgb(50, 80, 120)
+            } else {
+                egui::Color32::from_rgb(30, 40, 60)
+            })
+            .min_size(egui::vec2(100.0, btn_h));
+        if ui.add_enabled(back_enabled, back_btn).clicked() {
+            app.go_back();
+            app.ui_state.status_message = "BACK".to_string();
+        }
+
+        let stop_btn =
+            egui::Button::new(format!("{}  STOP", ph::STOP)).min_size(egui::vec2(100.0, btn_h));
+        if ui.add(stop_btn).clicked() {
+            stop_playback(app);
+        }
+    });
 }
 
 fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
@@ -1095,42 +1225,46 @@ fn render_footer(ui: &mut Ui, app: &mut EasyCueApp) {
 
                     ui.separator();
 
-                    // Command line
-                    ui.with_layout(
-                        egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true),
-                        |ui| {
-                            ui.horizontal(|ui| {
-                                let ctx_icon = match app.ui_state.command_context {
-                                    crate::command::CommandContext::Lighting => ph::LIGHTBULB,
-                                    crate::command::CommandContext::Sound => ph::SPEAKER_HIGH,
-                                    _ => ph::KEYBOARD,
-                                };
-                                ui.label(egui::RichText::new(ctx_icon).size(16.0));
-                                let hint = if app.ui_state.goto_mode {
-                                    "Goto cue... (Enter to go, Esc to cancel)"
-                                } else {
-                                    "Enter command..."
-                                };
-                                let resp = ui.add(
-                                    egui::TextEdit::singleline(&mut app.ui_state.command_input)
-                                        .desired_width(ui.available_width() - 80.0)
-                                        .hint_text(hint)
-                                        .font(egui::TextStyle::Monospace),
-                                );
-                                if resp.lost_focus()
-                                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                                {
-                                    crate::ui::execute_command_line(app);
-                                }
-                                if ui.button(ph::ARROW_BEND_DOWN_LEFT).clicked() {
-                                    crate::ui::execute_command_line(app);
-                                }
-                                if ui.button("✖").clicked() {
-                                    app.ui_state.command_input.clear();
-                                }
-                            });
-                        },
-                    );
+                    // Command line — hidden in show mode. Goto stays available
+                    // via the big on-deck box in the transport row (and Ctrl+G).
+                    if !app.show_mode {
+                        ui.with_layout(
+                            egui::Layout::left_to_right(egui::Align::Center)
+                                .with_main_justify(true),
+                            |ui| {
+                                ui.horizontal(|ui| {
+                                    let ctx_icon = match app.ui_state.command_context {
+                                        crate::command::CommandContext::Lighting => ph::LIGHTBULB,
+                                        crate::command::CommandContext::Sound => ph::SPEAKER_HIGH,
+                                        _ => ph::KEYBOARD,
+                                    };
+                                    ui.label(egui::RichText::new(ctx_icon).size(16.0));
+                                    let hint = if app.ui_state.goto_mode {
+                                        "Goto cue... (Enter to go, Esc to cancel)"
+                                    } else {
+                                        "Enter command..."
+                                    };
+                                    let resp = ui.add(
+                                        egui::TextEdit::singleline(&mut app.ui_state.command_input)
+                                            .desired_width(ui.available_width() - 80.0)
+                                            .hint_text(hint)
+                                            .font(egui::TextStyle::Monospace),
+                                    );
+                                    if resp.lost_focus()
+                                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                    {
+                                        crate::ui::execute_command_line(app);
+                                    }
+                                    if ui.button(ph::ARROW_BEND_DOWN_LEFT).clicked() {
+                                        crate::ui::execute_command_line(app);
+                                    }
+                                    if ui.button("✖").clicked() {
+                                        app.ui_state.command_input.clear();
+                                    }
+                                });
+                            },
+                        );
+                    }
                 });
             });
     });

@@ -89,7 +89,7 @@ Cheap FTDI-chip "USB to DMX512" cables (e.g. DSD TECH's) have no onboard microco
 | Key | Action |
 |-----|--------|
 | Space | GO (fire next cue) |
-| B | BACK |
+| Shift+Space | BACK (fire previous cue) |
 | S | STOP |
 | Escape | Pause — freeze lighting in place, fade out audio |
 | ↑ / ↓ | Move selection and set on-deck cue (cue list) |
@@ -191,6 +191,12 @@ Run a show straight off your PDF script instead of (or alongside) the cue list. 
 - Markers persist in the show file, and the PDF is referenced by filename via the `media/` directory (same portable convention as audio cues).
 
 The script feature needs a PDFium library, which is bundled in a `lib/` subdirectory of every download — nothing to install separately.
+
+---
+
+## Show mode
+
+An operator-safe mode for running the show. Toggle it from **View → Show Mode**: the workspace swaps to a minimal two-panel layout (Cue list + Script Viewer), the Cue list shrinks to big GO / BACK / STOP buttons with read-only labels, and the Script Viewer is locked to Playback mode. Only transport operations remain — GO, BACK, STOP, goto, cue-list scrolling and script page-turning. Design and Show layouts save independently, so switching back restores your full workspace. See `docs/SHOW_MODE.md`.
 
 ---
 

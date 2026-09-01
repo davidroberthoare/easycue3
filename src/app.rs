@@ -256,6 +256,16 @@ pub struct UiState {
     pub selected_effect_id: Option<u32>,
     /// Effect chosen in the Cue Properties "add effect action" combo.
     pub cue_props_effect_choice: Option<u32>,
+
+    /// One-shot: scroll the cue-list table so the on-deck row (index) is kept in
+    /// view the next time the Cues panel renders. Set whenever the play head
+    /// moves (GO / BACK / goto / arrows) so the operator always sees what's next.
+    pub pending_cue_scroll: Option<usize>,
+
+    /// When a *fading* cue fires, this holds the `PlaybackEngine` fade id to wait
+    /// for before advancing the script viewer to the on-deck cue's page. `None`
+    /// means no follow-up is armed (or the cue had no fade and followed at once).
+    pub script_follow_on_fade_complete: Option<u64>,
 }
 
 impl Default for UiState {
@@ -324,6 +334,8 @@ impl Default for UiState {
             last_wheel_fixture_id: None,
             selected_effect_id: None,
             cue_props_effect_choice: None,
+            pending_cue_scroll: None,
+            script_follow_on_fade_complete: None,
         }
     }
 }
@@ -479,6 +491,14 @@ pub struct EasyCueApp {
     pub show_title: String,
     pub current_file_path: Option<std::path::PathBuf>,
     pub dock_state: DockState<TabKind>,
+    /// Design-mode dock layout (the full workspace), persisted to eframe storage.
+    pub design_dock_state: DockState<TabKind>,
+    /// Show-mode dock layout (operator-safe subset), persisted to eframe storage.
+    pub show_dock_state: DockState<TabKind>,
+    /// "Show Mode": only GO / BACK / STOP / goto / cuelist scrolling / script
+    /// page-turning are possible; the workspace swaps to `show_dock_state` and
+    /// the Cues + Script Viewer toolbars are simplified. Persisted.
+    pub show_mode: bool,
     pub cue_colors: CueColorSettings,
 
     /// Hotkey assignments (Ctrl+0…9 → cue + trigger mode), saved with the show.
@@ -514,6 +534,10 @@ pub struct EasyCueApp {
 
     /// Last saved file path to persistent storage (avoid redundant saves).
     last_persisted_file_path: Option<std::path::PathBuf>,
+    /// Set when the workspace layout/mode changed in a way that should be
+    /// flushed to persistent storage promptly (mode toggle), even if nothing
+    /// else is dirty.
+    layout_persist_dirty: bool,
     /// Operator-selected DMX backend to restore on the next launch.
     preferred_dmx_backend: PersistedDmxBackend,
     /// Last DMX preference written to persistent storage.
@@ -763,15 +787,34 @@ impl EasyCueApp {
         log::info!("DMX Backend: {}", dmx_backend.name());
 
         let dock_load_start = std::time::Instant::now();
-        let dock_state = if let Some(storage) = cc.storage {
+        // Two persisted dock layouts — design (the full workspace, backwards
+        // compatible with the pre-show-mode "dock_state" key) and show (the
+        // operator-safe subset). The active one is loaded per the saved mode.
+        let design_dock_state = if let Some(storage) = cc.storage {
             eframe::get_value(storage, "dock_state")
                 .unwrap_or_else(|| Self::create_default_dock_layout())
         } else {
             Self::create_default_dock_layout()
         };
+        let show_dock_state = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, "show_dock_state")
+                .unwrap_or_else(Self::create_default_show_layout)
+        } else {
+            Self::create_default_show_layout()
+        };
+        let show_mode: bool = cc
+            .storage
+            .and_then(|storage| eframe::get_value(storage, "show_mode"))
+            .unwrap_or(false);
+        let dock_state = if show_mode {
+            show_dock_state.clone()
+        } else {
+            design_dock_state.clone()
+        };
         log::info!(
-            "[startup] Dock layout restored in {:.2}ms",
-            dock_load_start.elapsed().as_secs_f64() * 1000.0
+            "[startup] Dock layout restored in {:.2}ms (show_mode={})",
+            dock_load_start.elapsed().as_secs_f64() * 1000.0,
+            show_mode
         );
 
         #[cfg(feature = "audio")]
@@ -847,6 +890,9 @@ impl EasyCueApp {
             show_title: "Example Show".to_string(),
             current_file_path: None,
             dock_state,
+            design_dock_state,
+            show_dock_state,
+            show_mode,
             cue_colors: CueColorSettings::default(),
             hotkeys: crate::hotkeys::HotkeyMap::default(),
             hotkey_runtime: crate::hotkeys::HotkeyRuntime::default(),
@@ -862,6 +908,7 @@ impl EasyCueApp {
             #[cfg(feature = "remote")]
             last_persisted_remote_settings: remote_settings,
             last_persisted_file_path: None,
+            layout_persist_dirty: false,
             preferred_dmx_backend: saved_dmx_backend.clone().unwrap_or_default(),
             last_persisted_dmx_backend: saved_dmx_backend.unwrap_or_default(),
             startup_had_saved_dmx_backend: had_saved_dmx_backend,
@@ -1006,9 +1053,61 @@ impl EasyCueApp {
         dock_state
     }
 
+    /// The operator-safe layout used in Show Mode: just the Cue list and the
+    /// Script Viewer, side by side. Everything else is hidden so a clumsy click
+    /// can't land on an editing panel.
+    fn create_default_show_layout() -> DockState<TabKind> {
+        let mut dock_state = DockState::new(vec![TabKind::Cues]);
+        let tree = dock_state.main_surface_mut();
+        let _ = tree.split_right(
+            egui_dock::NodeIndex::root(),
+            0.55,
+            vec![TabKind::ScriptViewer],
+        );
+        dock_state
+    }
+
     pub fn reset_dock_layout(&mut self) {
-        self.dock_state = Self::create_default_dock_layout();
-        log::info!("Reset UI layout to default");
+        self.dock_state = if self.show_mode {
+            Self::create_default_show_layout()
+        } else {
+            Self::create_default_dock_layout()
+        };
+        log::info!(
+            "Reset {} UI layout to default",
+            if self.show_mode { "show" } else { "design" }
+        );
+    }
+
+    /// Toggle between Show Mode (operator-safe) and Design Mode. Stashes the
+    /// current workspace layout into the slot it belongs to, then swaps in the
+    /// other mode's saved layout. Both layouts persist independently.
+    pub fn set_show_mode(&mut self, show: bool) {
+        if self.show_mode == show {
+            return;
+        }
+        // Save the layout we're leaving into its own slot before swapping.
+        if self.show_mode {
+            self.show_dock_state = self.dock_state.clone();
+        } else {
+            self.design_dock_state = self.dock_state.clone();
+        }
+        self.show_mode = show;
+        self.dock_state = if show {
+            self.show_dock_state.clone()
+        } else {
+            self.design_dock_state.clone()
+        };
+        // Clear transient UI state that shouldn't leak across modes.
+        self.ui_state.command_input.clear();
+        self.ui_state.goto_mode = false;
+        self.ui_state.script_follow_on_fade_complete = None;
+        // Leaving edit mode means the script can't stay in marker-editing mode.
+        if show {
+            self.script_viewer.edit_mode = false;
+        }
+        self.layout_persist_dirty = true;
+        log::info!("Switched to {} mode", if show { "SHOW" } else { "DESIGN" });
     }
 
     /// Load a show file and populate the cue list
@@ -1698,6 +1797,8 @@ impl EasyCueApp {
             self.cue_list.set_current_index(Some(next_idx));
             log::info!("GO → cue {:.1} '{}'", cue.number, cue.label);
             self.follow_cue_in_script_view(cue.id);
+            self.ui_state.pending_cue_scroll = self.cue_list.next_any_index();
+            self.arm_script_follow_on_deck(&cue);
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
                 self.autofollow_timer = Some((std::time::Instant::now(), delay));
                 log::info!("  autofollow armed: {:.1}s", delay);
@@ -1735,6 +1836,8 @@ impl EasyCueApp {
             self.cue_list.set_current_index(Some(prev_idx));
             log::info!("BACK → cue {:.1} '{}'", cue.number, cue.label);
             self.follow_cue_in_script_view(cue.id);
+            self.ui_state.pending_cue_scroll = self.cue_list.next_any_index();
+            self.arm_script_follow_on_deck(&cue);
         }
         fired
     }
@@ -1838,6 +1941,11 @@ impl EasyCueApp {
             self.cue_list.set_current_index(Some(abs_idx));
             log::info!("GO→ cue {:.1} '{}'", cue.number, cue.label);
             self.follow_cue_in_script_view(cue.id);
+            self.ui_state.pending_cue_scroll = self.cue_list.next_any_index();
+            // Instant jumps (record, etc.) don't arm the deferred on-deck follow.
+            if !instant {
+                self.arm_script_follow_on_deck(&cue);
+            }
             if let Some(delay) = cue.autofollow.filter(|&d| d > 0.0) {
                 self.autofollow_timer = Some((std::time::Instant::now(), delay));
                 log::info!("  autofollow armed: {:.1}s", delay);
@@ -2058,6 +2166,43 @@ impl EasyCueApp {
                 cue_id,
                 m.page_index + 1
             );
+        }
+    }
+
+    /// Point the script viewer at the on-deck cue's marker page. Called once a
+    /// fired cue's fade completes (see [`Self::arm_script_follow_on_deck`]) so
+    /// the page always advances to where the show is heading next.
+    fn follow_on_deck_cue_in_script_view(&mut self) {
+        if !self.script_viewer.is_loaded() {
+            return;
+        }
+        if let Some(idx) = self.cue_list.next_any_index() {
+            if let Some(cue) = self.cue_list.get_cue(idx) {
+                self.follow_cue_in_script_view(cue.id);
+            }
+        }
+    }
+
+    /// After a cue fires, decide when the script viewer should advance to the
+    /// on-deck cue's page:
+    ///
+    /// - Cues that fade (lighting with `fade_up > 0`) defer the advance until
+    ///   their fade actually completes — the script keeps showing where the
+    ///   fired cue landed until the fade finishes.
+    /// - Instant / audio / adjust cues advance immediately (there's no fade to
+    ///   wait for).
+    ///
+    /// Must be called *after* the playback engine has started the cue's fade, so
+    /// `current_fade_id()` refers to the fade we just began.
+    fn arm_script_follow_on_deck(&mut self, cue: &crate::cue::Cue) {
+        let fades = cue
+            .lighting_data()
+            .map(|d| d.fade_up > 0.0)
+            .unwrap_or(false);
+        if fades {
+            self.ui_state.script_follow_on_fade_complete = Some(self.playback.current_fade_id());
+        } else {
+            self.follow_on_deck_cue_in_script_view();
         }
     }
 
@@ -2714,25 +2859,39 @@ impl eframe::App for EasyCueApp {
         let keyboard_busy = ctx.memory(|m| m.focused().is_some())
             || ctx.memory(|m| m.any_popup_open())
             || self.script_viewer.pending_add.is_some();
-        let (go, stop, record, ctrl_g, escape, arrow_up, arrow_down, update) = ctx.input(|i| {
-            (
-                i.key_pressed(egui::Key::Space) && !i.modifiers.any() && !keyboard_busy,
-                i.key_pressed(egui::Key::S) && !i.modifiers.any() && !keyboard_busy,
-                i.key_pressed(egui::Key::R) && i.modifiers.ctrl,
-                i.key_pressed(egui::Key::G) && i.modifiers.ctrl && !keyboard_busy,
-                // Escape is a safety/pause key — works even when a text field has focus.
-                i.key_pressed(egui::Key::Escape),
-                i.key_pressed(egui::Key::ArrowUp) && !keyboard_busy,
-                i.key_pressed(egui::Key::ArrowDown) && !keyboard_busy,
-                i.key_pressed(egui::Key::U) && i.modifiers.ctrl && !keyboard_busy,
-            )
-        });
+        let (go, back, stop, record, ctrl_g, escape, arrow_up, arrow_down, update) =
+            ctx.input(|i| {
+                (
+                    i.key_pressed(egui::Key::Space) && !i.modifiers.any() && !keyboard_busy,
+                    // Shift+Space = BACK (the "reverse GO"). Deliberately Shift and
+                    // not Ctrl: Ctrl+Space is grabbed by OS input-method toggles.
+                    i.key_pressed(egui::Key::Space)
+                        && i.modifiers.shift
+                        && !i.modifiers.command
+                        && !i.modifiers.ctrl
+                        && !i.modifiers.alt
+                        && !keyboard_busy,
+                    i.key_pressed(egui::Key::S) && !i.modifiers.any() && !keyboard_busy,
+                    i.key_pressed(egui::Key::R) && i.modifiers.ctrl,
+                    i.key_pressed(egui::Key::G) && i.modifiers.ctrl && !keyboard_busy,
+                    // Escape is a safety/pause key — works even when a text field has focus.
+                    i.key_pressed(egui::Key::Escape),
+                    i.key_pressed(egui::Key::ArrowUp) && !keyboard_busy,
+                    i.key_pressed(egui::Key::ArrowDown) && !keyboard_busy,
+                    i.key_pressed(egui::Key::U) && i.modifiers.ctrl && !keyboard_busy,
+                )
+            });
 
         if stop {
             self.playback.stop();
             #[cfg(feature = "audio")]
             self.audio_playback.stop_all();
             self.autofollow_timer = None;
+        }
+        if back {
+            if self.go_back() {
+                self.ui_state.status_message = "BACK".to_string();
+            }
         }
         if record {
             let id = self.record_cue();
@@ -2794,6 +2953,8 @@ impl eframe::App for EasyCueApp {
                     self.cue_list.set_current_index(prev_idx);
                     self.select_cue(id);
                     self.ui_state.go_cue_input = format!("{:.1}", num);
+                    // Keep the on-deck row in view as the operator arrow-scrolls.
+                    self.ui_state.pending_cue_scroll = Some(new_idx);
                 }
             }
         }
@@ -2891,6 +3052,20 @@ impl eframe::App for EasyCueApp {
         }
 
         self.playback.update(&mut self.universes);
+
+        // Script viewer "advance to on-deck" follow-up: when a fading cue fires
+        // we arm `script_follow_on_fade_complete` with that fade's id. Consume it
+        // here as soon as the matching fade actually completes, so the script
+        // page moves to where the show is heading next. A completion with a
+        // different id (blackout, a frozen fade that was superseded) just clears
+        // the arm without jumping.
+        if let Some(completed) = self.playback.take_completed_fade() {
+            if let Some(expected) = self.ui_state.script_follow_on_fade_complete.take() {
+                if completed == expected {
+                    self.follow_on_deck_cue_in_script_view();
+                }
+            }
+        }
 
         // Keep VirtualIntensity state in sync with whatever the playback engine wrote to the
         // universes this frame, so that intensity reads in the UI panels are never stale.
@@ -3144,6 +3319,7 @@ impl eframe::App for EasyCueApp {
             || self.preferred_dmx_backend != self.last_persisted_dmx_backend
             || (self.script_viewer.zoom - self.script_viewer_zoom).abs() > 0.001
             || self.script_viewer.dark_mode != self.script_viewer_dark_mode
+            || self.layout_persist_dirty
             || remote_settings_dirty
         {
             if let Some(storage) = frame.storage_mut() {
@@ -3157,6 +3333,7 @@ impl eframe::App for EasyCueApp {
                 self.last_persisted_dmx_backend = self.preferred_dmx_backend.clone();
                 self.script_viewer_zoom = self.script_viewer.zoom;
                 self.script_viewer_dark_mode = self.script_viewer.dark_mode;
+                self.layout_persist_dirty = false;
                 #[cfg(feature = "remote")]
                 {
                     self.last_persisted_remote_settings = self.remote_settings.clone();
@@ -3177,7 +3354,16 @@ impl eframe::App for EasyCueApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, "dock_state", &self.dock_state);
+        // Mirror the live workspace into the slot it belongs to so both layouts
+        // persist independently (the dock area mutates `dock_state` every frame).
+        if self.show_mode {
+            self.show_dock_state = self.dock_state.clone();
+        } else {
+            self.design_dock_state = self.dock_state.clone();
+        }
+        eframe::set_value(storage, "dock_state", &self.design_dock_state);
+        eframe::set_value(storage, "show_dock_state", &self.show_dock_state);
+        eframe::set_value(storage, "show_mode", &self.show_mode);
         eframe::set_value(
             storage,
             "preferred_dmx_backend",

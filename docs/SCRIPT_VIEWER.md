@@ -37,6 +37,12 @@ Working first pass, feature-complete against the spec:
 - ✅ Firing a cue anywhere (GO/BACK/goto/autofollow) brings its marker into
   view — **unless it is already visible on screen** (no jump). Jumping to a
   different page always re-centres the marker.
+- ✅ **On-deck follow-up:** once a fired lighting cue's fade completes, the
+  panel advances to the page containing the *on-deck* cue (the next one to
+  fire), so the operator is always looking at what's coming next. Instant /
+  audio / adjust cues advance immediately. The follow is armed against the
+  specific fade (`PlaybackEngine` fade id) so a blackout or frozen/resumed
+  fade can't trigger it by mistake.
 
 ## Files
 

@@ -50,4 +50,12 @@ to save context tokens, I'll run manual tests myself. You can stop after doing a
 
 ## Docs
 
-- `docs/EFFECTS.md`, `docs/VIRTUAL_INTENSITY.md`, `docs/REMOTE.md` (incl. env overrides + testing), `docs/AUDIO_DEVICES.md` (Linux `~/.asoundrc` multi-channel setup, `channels N` must be pinned), `docs/MAGIC_SHEET.md`, `docs/SCRIPT_VIEWER.md`.
+- `docs/EFFECTS.md`, `docs/VIRTUAL_INTENSITY.md`, `docs/REMOTE.md` (incl. env overrides + testing), `docs/AUDIO_DEVICES.md` (Linux `~/.asoundrc` multi-channel setup, `channels N` must be pinned), `docs/MAGIC_SHEET.md`, `docs/SCRIPT_VIEWER.md`, `docs/SHOW_MODE.md`.
+
+## Show Mode (operator-safe)
+
+- Toggled from View menu; swaps the whole dock layout to a separate persisted
+  `show_dock_state` (default: Cues + Script Viewer only) and restricts actions
+  to GO/BACK/STOP/goto, cuelist scrolling and script page-turning. Two dock
+  layouts persist independently (keys `dock_state` / `show_dock_state`).
+- Back key is **Shift+Space** (not `B`). See `docs/SHOW_MODE.md`.

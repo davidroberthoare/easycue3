@@ -1,5 +1,31 @@
 # Release Notes
 
+## v0.8.8
+
+- **Show Mode.** Toggle from **View → Show Mode** for an operator-safe workspace.
+  The whole dock layout swaps to a minimal two-panel layout (Cue list + Script
+  Viewer) that saves independently of your design layout. Only transport
+  operations remain: GO / BACK / STOP / goto, cue-list scrolling and script
+  page-turning. The Cue list shows a big GO/BACK/STOP transport row with larger
+  read-only text, inline label editing / context menus / drag-and-drop / masters
+  disappear, the Script Viewer locks to Playback mode, and the command line is
+  restricted to goto/on-deck commands. See `docs/SHOW_MODE.md`.
+- **BACK is now Shift+Space.** The old `B` shortcut never actually worked;
+  Shift+Space is the "reverse GO" (Ctrl+Space is grabbed by OS input-method
+  toggles). Shortcuts help, README and docs updated.
+- **Cue list keeps your place.** GO / BACK / goto / arrows now scroll the cue
+  list so the on-deck cue stays in view, centred — the active cue stays visible
+  above it and at least one row below the on-deck is shown too.
+- **Script follows the on-deck page after each fade.** When a cue fires, the
+  script still jumps to that cue's marker; once its fade actually completes, it
+  advances to the page of the *next* (on-deck) cue, so you're always reading
+  the part of the script that's coming up. The follow is keyed to the specific
+  fade so a blackout or a frozen fade can't trigger it by mistake.
+- **Magic sheet selection consistency.** Group shapes now behave exactly like
+  fixture shapes: a plain click (or click-drag) on a group replaces the
+  selection with that group's fixtures; Ctrl/Cmd/right-click toggles a group as
+  a unit; click-dragging an already-selected group adjusts all selected groups.
+
 ## v0.8.7
 
 - **Audio cues: start time, looping, and a live progress readout.**

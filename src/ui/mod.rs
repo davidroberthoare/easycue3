@@ -191,6 +191,35 @@ fn handle_global_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Command-line input filtering
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Whether `ch` may be appended to the show-mode command buffer `cmd`. Show Mode
+/// only accepts transport navigation: `go<num>` / `goto<num>`, `q<num>` on-deck
+/// arming, and the bare `go` / `back` / `stop` keywords. Anything else is
+/// rejected (design-time operations), even though `execute_show_mode_command`
+/// re-validates the whole string on Enter.
+fn show_mode_key_allowed(cmd: &str, ch: char) -> bool {
+    // q<num> on-deck command.
+    if cmd.starts_with('q') {
+        return ch.is_ascii_digit() || ch == '.';
+    }
+    // go/goto<num> command ('o','t' build "goto").
+    if cmd.starts_with('g')
+        && cmd
+            .chars()
+            .all(|c| c == 'g' || c == 'o' || c == 't' || c.is_ascii_digit() || c == '.')
+    {
+        return ch.is_ascii_digit() || ch == '.' || ch == 'o' || ch == 't';
+    }
+    // Bare keywords "go" / "back" / "stop" — only while still a valid prefix.
+    let candidate = format!("{cmd}{ch}");
+    ["go", "back", "stop"]
+        .iter()
+        .any(|kw| kw.starts_with(&candidate))
+}
+
 /// Handle keyboard input for command-line operations
 fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
     // Suppress command-line capture while any text field has focus, a
@@ -252,9 +281,13 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
         for event in &i.events {
             if let egui::Event::Text(text) = event {
                 for ch in text.chars().map(|c| c.to_ascii_lowercase()) {
-                    // Cue commands (q<num>, go<num>, goto<num>, l, i<time>) work from
-                    // any context so they're usable from every panel.
-                    let is_cue_cmd = {
+                    // Show Mode restricts the command line to transport
+                    // navigation only: goto numbers, on-deck arming and the
+                    // go/back/stop keywords. Channel edits and label/fade
+                    // commands are design-time operations and are rejected.
+                    let is_cue_cmd = if app.show_mode {
+                        show_mode_key_allowed(&app.ui_state.command_input, ch)
+                    } else {
                         let cmd = &app.ui_state.command_input;
                         // Start a new cue command ('l' = label edit, 'i' = fade edit).
                         (cmd.is_empty() && (ch == 'q' || ch == 'g' || ch == 'l' || ch == 'i'))
@@ -275,10 +308,12 @@ fn handle_keyboard_input(ctx: &Context, app: &mut EasyCueApp) {
                     }
 
                     // Lighting channel commands — Lighting context only.
-                    if matches!(
-                        app.ui_state.command_context,
-                        crate::command::CommandContext::Lighting
-                    ) && (ch.is_ascii_digit()
+                    if !app.show_mode
+                        && matches!(
+                            app.ui_state.command_context,
+                            crate::command::CommandContext::Lighting
+                        )
+                        && (ch.is_ascii_digit()
                             || ch == 'a' || ch == '@'  // "at" operator
                             || ch == '+' || ch == ','  // addition
                             || ch == '-'               // range
@@ -507,13 +542,15 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             });
 
             // Edit menu
-            ui.menu_button("Edit", |ui| {
-                if ui.button("Re-number Cues…").clicked() {
-                    app.open_renumber_dialog();
-                    ui.close_menu();
-                }
-                // (future Edit-menu items go here)
-            });
+            if !app.show_mode {
+                ui.menu_button("Edit", |ui| {
+                    if ui.button("Re-number Cues…").clicked() {
+                        app.open_renumber_dialog();
+                        ui.close_menu();
+                    }
+                    // (future Edit-menu items go here)
+                });
+            }
 
             // View menu - add panels to dock
             ui.menu_button("View", |ui| {
@@ -582,6 +619,29 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                 }
 
                 ui.separator();
+                ui.label(egui::RichText::new("Mode:").strong());
+
+                let mut show_mode = app.show_mode;
+                if ui
+                    .checkbox(
+                        &mut show_mode,
+                        format!("{} Show Mode — only GO/BACK/STOP/goto", ph::MONITOR_PLAY),
+                    )
+                    .on_hover_text(
+                        "Operator-safe: the workspace swaps to the Show layout \
+                         (Cues + Script Viewer) and editing toolbars disappear.",
+                    )
+                    .changed()
+                {
+                    app.set_show_mode(show_mode);
+                    app.ui_state.status_message = if app.show_mode {
+                        "Show Mode — GO/BACK/STOP/goto only".to_string()
+                    } else {
+                        "Design Mode — full workspace".to_string()
+                    };
+                }
+
+                ui.separator();
                 ui.label(egui::RichText::new("Layout:").strong());
 
                 if ui.button("↺ Reset Layout").clicked() {
@@ -605,33 +665,35 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
             });
 
             // Settings menu
-            ui.menu_button("Settings", |ui| {
-                if ui.button("DMX Device...").clicked() {
-                    app.ui_state.show_device_selector = true;
-                    ui.close_menu();
-                }
-
-                ui.separator();
-                if ui.button("Colours...").clicked() {
-                    app.ui_state.show_colour_settings = true;
-                    ui.close_menu();
-                }
-
-                ui.separator();
-                if ui.button("Fixture Profiles...").clicked() {
-                    app.ui_state.show_fixture_editor = true;
-                    ui.close_menu();
-                }
-
-                #[cfg(feature = "remote")]
-                {
-                    ui.separator();
-                    if ui.button("Remote Control...").clicked() {
-                        app.ui_state.show_remote_settings = true;
+            if !app.show_mode {
+                ui.menu_button("Settings", |ui| {
+                    if ui.button("DMX Device...").clicked() {
+                        app.ui_state.show_device_selector = true;
                         ui.close_menu();
                     }
-                }
-            });
+
+                    ui.separator();
+                    if ui.button("Colours...").clicked() {
+                        app.ui_state.show_colour_settings = true;
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+                    if ui.button("Fixture Profiles...").clicked() {
+                        app.ui_state.show_fixture_editor = true;
+                        ui.close_menu();
+                    }
+
+                    #[cfg(feature = "remote")]
+                    {
+                        ui.separator();
+                        if ui.button("Remote Control...").clicked() {
+                            app.ui_state.show_remote_settings = true;
+                            ui.close_menu();
+                        }
+                    }
+                });
+            }
 
             // Help menu
             ui.menu_button("Help", |ui| {
@@ -694,7 +756,7 @@ fn render_help_shortcuts(ctx: &Context, app: &mut EasyCueApp) {
             ui.vertical(|ui| {
                 ui.label(egui::RichText::new("Transport").strong());
                 ui.label("Space — GO (next cue)");
-                ui.label("B — BACK");
+                ui.label("Shift+Space — BACK (previous cue)");
                 ui.label("S — STOP");
                 ui.label("Escape — Pause: freeze lighting, fade out audio");
                 ui.add_space(8.0);
@@ -1483,11 +1545,88 @@ fn split_cue_edit_suffix(tail: &str) -> (String, Option<(crate::app::CueEditFiel
     (tail.to_string(), None)
 }
 
+/// Execute a command-line input in Show Mode, where only transport navigation
+/// is allowed: go/goto numbers, the go/back/stop keywords, and plain `q<num>`
+/// on-deck arming. Everything else (channel levels, label/fade edits, groups)
+/// is a design-time operation and is rejected.
+fn execute_show_mode_command(app: &mut EasyCueApp, input: &str) {
+    // Goto-and-play: go<number> / goto<number>.
+    let goto_num = input
+        .strip_prefix("goto")
+        .or_else(|| input.strip_prefix("go"));
+    if let Some(num_str) = goto_num {
+        if !num_str.is_empty() {
+            if let Ok(num) = num_str.parse::<f32>() {
+                app.goto_cue_by_number(num);
+                app.ui_state.command_input.clear();
+                return;
+            }
+        }
+    }
+
+    match input {
+        "go" => {
+            app.go_next();
+            app.ui_state.status_message = "GO".to_string();
+            app.ui_state.command_input.clear();
+            return;
+        }
+        "back" => {
+            app.go_back();
+            app.ui_state.status_message = "BACK".to_string();
+            app.ui_state.command_input.clear();
+            return;
+        }
+        "stop" => {
+            app.playback.stop();
+            #[cfg(feature = "audio")]
+            app.audio_playback.stop_all();
+            app.ui_state.status_message = "STOP".to_string();
+            app.ui_state.command_input.clear();
+            return;
+        }
+        _ => {}
+    }
+
+    // Plain q<num>: arm a standby cue without firing it.
+    if let Some(num_str) = input.strip_prefix('q') {
+        if !num_str.is_empty() && num_str.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            if let Ok(num) = num_str.parse::<f32>() {
+                let abs_idx = app
+                    .cue_list
+                    .cues()
+                    .iter()
+                    .position(|c| (c.number - num).abs() < 0.005);
+                if let Some(abs_idx) = abs_idx {
+                    let prev_idx = if abs_idx > 0 { Some(abs_idx - 1) } else { None };
+                    app.cue_list.set_current_index(prev_idx);
+                    app.ui_state.go_cue_input = format!("{:.1}", num);
+                    app.ui_state.pending_cue_scroll = Some(abs_idx);
+                    app.ui_state.status_message = format!("Q{:.1} on deck", num);
+                } else {
+                    app.ui_state.status_message = format!("Cue {:.1} not found", num);
+                }
+                app.ui_state.command_input.clear();
+                return;
+            }
+        }
+    }
+
+    app.ui_state.status_message = "Not available in Show Mode".to_string();
+    app.ui_state.command_input.clear();
+}
+
 /// Execute the current command line input
 pub fn execute_command_line(app: &mut EasyCueApp) {
     let input = app.ui_state.command_input.trim().to_string();
 
     if input.is_empty() {
+        return;
+    }
+
+    // Show Mode restricts the command line to transport navigation only.
+    if app.show_mode {
+        execute_show_mode_command(app, &input);
         return;
     }
 
@@ -1596,6 +1735,7 @@ pub fn execute_command_line(app: &mut EasyCueApp) {
                                 let prev_idx = if abs_idx > 0 { Some(abs_idx - 1) } else { None };
                                 app.cue_list.set_current_index(prev_idx);
                                 app.ui_state.go_cue_input = format!("{:.1}", num);
+                                app.ui_state.pending_cue_scroll = Some(abs_idx);
                             }
                         }
                     } else {

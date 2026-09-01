@@ -29,6 +29,12 @@ enum HitTarget {
 
 /// Entry point called by the tab viewer.
 pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
+    let show_mode = app.show_mode;
+    // Show Mode forces Playback mode: markers are fire-only, never editable.
+    if show_mode {
+        app.script_viewer.edit_mode = false;
+    }
+
     // ── Lazy-load the PDF referenced by the show file, if any ────────────────
     // Loading needs the egui context for texture upload; the show file's
     // `pdf_path` is only restored here, so this runs once per document.
@@ -55,40 +61,45 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
 
     // ── Toolbar ──────────────────────────────────────────────────────────────
     ui.horizontal(|ui| {
-        if ui.button("Open PDF…").clicked() {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("PDF Script", &["pdf"])
-                .set_title("Open PDF Script")
-                .pick_file()
-            {
-                match app.script_viewer.load_pdf(&path, ui.ctx()) {
-                    Ok(_) => {
-                        app.ui_state.status_message = format!("Loaded script: {}", path.display());
-                    }
-                    Err(e) => {
-                        app.script_viewer.error = Some(e.to_string());
-                        app.ui_state.status_message = format!("Script load failed: {}", e);
+        // Loading / editing a different script is a design-time operation —
+        // hidden in Show Mode so the operator can't swap the running script.
+        if !show_mode {
+            if ui.button("Open PDF…").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("PDF Script", &["pdf"])
+                    .set_title("Open PDF Script")
+                    .pick_file()
+                {
+                    match app.script_viewer.load_pdf(&path, ui.ctx()) {
+                        Ok(_) => {
+                            app.ui_state.status_message =
+                                format!("Loaded script: {}", path.display());
+                        }
+                        Err(e) => {
+                            app.script_viewer.error = Some(e.to_string());
+                            app.ui_state.status_message = format!("Script load failed: {}", e);
+                        }
                     }
                 }
             }
-        }
 
-        // Mode toggle.
-        let edit_mode = app.script_viewer.edit_mode;
-        let label = if edit_mode {
-            "✏ Edit"
-        } else {
-            "▶ Playback"
-        };
-        if ui
-            .toggle_value(&mut app.script_viewer.edit_mode, label)
-            .changed()
-        {
-            app.ui_state.status_message = if app.script_viewer.edit_mode {
-                "Edit mode: double-click to add a cue marker".to_string()
+            // Mode toggle.
+            let edit_mode = app.script_viewer.edit_mode;
+            let label = if edit_mode {
+                "✏ Edit"
             } else {
-                "Playback mode: click a marker to fire its cue".to_string()
+                "▶ Playback"
             };
+            if ui
+                .toggle_value(&mut app.script_viewer.edit_mode, label)
+                .changed()
+            {
+                app.ui_state.status_message = if app.script_viewer.edit_mode {
+                    "Edit mode: double-click to add a cue marker".to_string()
+                } else {
+                    "Playback mode: click a marker to fire its cue".to_string()
+                };
+            }
         }
 
         // Dark mode: invert the page (white text on black). Re-rasterizes the
@@ -276,6 +287,16 @@ pub fn render_script_viewer_panel(ui: &mut Ui, app: &mut EasyCueApp) {
                 app.script_viewer.pending_focus = None;
             }
         }
+    }
+
+    // A cross-page focus left `pending_focus` set (above) because the new page
+    // is rasterized on the *next* frame. Nothing else is animating once a fade
+    // completes, so without a repaint request here the app would sleep and the
+    // jump would only appear after the next mouse move. Keep the loop alive —
+    // `pending_focus` is cleared by the block above once the jump is resolved,
+    // so this self-terminates.
+    if app.script_viewer.pending_focus.is_some() {
+        ui.ctx().request_repaint();
     }
 
     // ── Pan & zoom input ─────────────────────────────────────────────────────

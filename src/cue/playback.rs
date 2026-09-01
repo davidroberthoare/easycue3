@@ -16,6 +16,13 @@ pub struct PlaybackEngine {
     /// One 512-channel block per universe (0-indexed; block 0 = universe 1).
     previous_values: Vec<[u8; 512]>,
     target_values: Vec<[u8; 512]>,
+    /// Monotonic identifier of the most recently started fade. Lets callers
+    /// (e.g. the script viewer's "follow on-deck after fade completes" logic)
+    /// arm a one-shot callback against a *specific* fade and ignore completions
+    /// from unrelated fades (blackouts, frozen fades later resumed, …).
+    fade_seq: u64,
+    /// The `fade_seq` of the fade that completed since it was last consumed.
+    completed_fade: Option<u64>,
 }
 
 impl PlaybackEngine {
@@ -27,6 +34,8 @@ impl PlaybackEngine {
             fade_duration: 0.0,
             previous_values: vec![[0; 512]],
             target_values: vec![[0; 512]],
+            fade_seq: 0,
+            completed_fade: None,
         }
     }
 
@@ -77,6 +86,8 @@ impl PlaybackEngine {
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
         self.current_cue_id = Some(cue.id);
+        self.fade_seq += 1;
+        self.completed_fade = None;
 
         log::info!(
             "Starting cue {}: {} (fade: {}s)",
@@ -117,6 +128,8 @@ impl PlaybackEngine {
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
         self.current_cue_id = cue_id;
+        self.fade_seq += 1;
+        self.completed_fade = None;
         log::info!("Jump: fading to tracked state ({:.1}s)", fade_time);
     }
 
@@ -159,6 +172,8 @@ impl PlaybackEngine {
         self.fade_start = Some(Instant::now());
         self.state = CueState::Fading { progress: 0.0 };
         self.current_cue_id = None;
+        self.fade_seq += 1;
+        self.completed_fade = None;
         log::info!("Fading to black over {:.1}s", fade_seconds);
     }
 
@@ -188,6 +203,7 @@ impl PlaybackEngine {
 
                     if progress >= 1.0 {
                         self.state = CueState::Active;
+                        self.completed_fade = Some(self.fade_seq);
                         for (i, target) in self.target_values.iter().enumerate() {
                             if let Some(prev) = self.previous_values.get_mut(i) {
                                 *prev = *target;
@@ -226,6 +242,19 @@ impl PlaybackEngine {
             CueState::Fading { progress } => Some(progress),
             _ => None,
         }
+    }
+
+    /// Identifier of the fade most recently started. A caller that just fired a
+    /// fading cue can arm a follow-up against this id and then consume it when
+    /// [`Self::take_completed_fade`] reports it back, so unrelated later fades
+    /// (blackouts, frozen fades resumed) can't trigger the follow-up by mistake.
+    pub fn current_fade_id(&self) -> u64 {
+        self.fade_seq
+    }
+
+    /// The id of the fade that completed since the last call, if any.
+    pub fn take_completed_fade(&mut self) -> Option<u64> {
+        self.completed_fade.take()
     }
 }
 
