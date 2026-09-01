@@ -610,13 +610,11 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         .push_to_focused_leaf(TabKind::Effects);
                     ui.close_menu();
                 }
-                if !app.show_mode {
-                    if ui.button("Submasters").clicked() {
-                        app.dock_state
-                            .main_surface_mut()
-                            .push_to_focused_leaf(TabKind::Submasters);
-                        ui.close_menu();
-                    }
+                if ui.button("Submasters").clicked() {
+                    app.dock_state
+                        .main_surface_mut()
+                        .push_to_focused_leaf(TabKind::Submasters);
+                    ui.close_menu();
                 }
                 if ui.button("Script Viewer").clicked() {
                     app.dock_state

@@ -1072,17 +1072,17 @@ impl EasyCueApp {
         dock_state
     }
 
-    /// The operator-safe layout used in Show Mode: just the Cue list and the
-    /// Script Viewer, side by side. Everything else is hidden so a clumsy click
-    /// can't land on an editing panel.
+    /// The operator-safe layout used in Show Mode: Cue list and Submasters on
+    /// the left, with the Script Viewer on the right.
     fn create_default_show_layout() -> DockState<TabKind> {
         let mut dock_state = DockState::new(vec![TabKind::Cues]);
         let tree = dock_state.main_surface_mut();
-        let _ = tree.split_right(
+        let [cue_node, _] = tree.split_right(
             egui_dock::NodeIndex::root(),
             0.55,
             vec![TabKind::ScriptViewer],
         );
+        let _ = tree.split_below(cue_node, 0.7, vec![TabKind::Submasters]);
         dock_state
     }
 
