@@ -29,6 +29,7 @@ pub enum TabKind {
     InstrumentProperties,
     MagicSheet,
     Effects,
+    Submasters,
     ScriptViewer,
     Hotkeys, // Ctrl+0…9 cue hotkeys
     // Legacy variants kept for saved dock state deserialization — never shown
@@ -47,6 +48,7 @@ impl std::fmt::Display for TabKind {
             TabKind::InstrumentProperties => write!(f, "Fixture Properties"),
             TabKind::MagicSheet => write!(f, "Magic Sheet"),
             TabKind::Effects => write!(f, "Effects"),
+            TabKind::Submasters => write!(f, "Submasters"),
             TabKind::ScriptViewer => write!(f, "Script Viewer"),
             TabKind::Hotkeys => write!(f, "Hotkeys"),
             TabKind::Unknown => write!(f, "?"),
@@ -127,6 +129,17 @@ impl Default for MagicSheetState {
             autonumber_target: AutonumberTarget::Fixtures,
             autonumber_next: 1,
         }
+    }
+}
+
+/// Ephemeral per-session state for the submasters panel.
+pub struct SubmasterPanelState {
+    pub edit_mode: bool,
+}
+
+impl Default for SubmasterPanelState {
+    fn default() -> Self {
+        Self { edit_mode: false }
     }
 }
 
@@ -343,7 +356,7 @@ impl Default for UiState {
 impl UiState {
     pub fn update_command_context(&mut self) {
         self.command_context = match self.active_pane {
-            Some(TabKind::Channels) | Some(TabKind::Cues) | Some(TabKind::MagicSheet) => {
+            Some(TabKind::Channels) | Some(TabKind::Cues) | Some(TabKind::MagicSheet) | Some(TabKind::Submasters) => {
                 CommandContext::Lighting
             }
             _ => CommandContext::General,
@@ -486,6 +499,10 @@ pub struct EasyCueApp {
     pub magic_sheet: crate::magic_sheet::MagicSheet,
     /// Ephemeral magic sheet panel state (not saved).
     pub magic_sheet_state: MagicSheetState,
+    /// Persisted submaster snapshots.
+    pub submasters: Vec<crate::submasters::Submaster>,
+    /// Ephemeral submaster panel state (not saved).
+    pub submaster_state: SubmasterPanelState,
     /// Script viewer: persisted annotations + runtime PDF/texture state.
     pub script_viewer: crate::scriptviewer::ScriptViewer,
     pub show_title: String,
@@ -886,6 +903,8 @@ impl EasyCueApp {
             groups_state: crate::ui::GroupsPanelState::default(),
             magic_sheet: crate::magic_sheet::MagicSheet::default(),
             magic_sheet_state: MagicSheetState::default(),
+            submasters: Vec::new(),
+            submaster_state: SubmasterPanelState::default(),
             script_viewer: crate::scriptviewer::ScriptViewer::default(),
             show_title: "Example Show".to_string(),
             current_file_path: None,
@@ -1105,6 +1124,7 @@ impl EasyCueApp {
         // Leaving edit mode means the script can't stay in marker-editing mode.
         if show {
             self.script_viewer.edit_mode = false;
+            self.submaster_state.edit_mode = false;
         }
         self.layout_persist_dirty = true;
         log::info!("Switched to {} mode", if show { "SHOW" } else { "DESIGN" });
@@ -1159,6 +1179,8 @@ impl EasyCueApp {
 
         self.groups = show.groups;
         self.magic_sheet = show.magic_sheet;
+        self.submasters = show.submasters;
+        self.submaster_state = SubmasterPanelState::default();
         self.cue_colors = show.cue_colors;
         self.hotkeys = show.hotkeys;
         self.hotkey_runtime = crate::hotkeys::HotkeyRuntime::default();
@@ -1217,6 +1239,7 @@ impl EasyCueApp {
         show.patch = self.fixtures.patch_list().patches().to_vec();
         show.groups = self.groups.clone();
         show.magic_sheet = self.magic_sheet.clone();
+        show.submasters = self.submasters.clone();
         show.cue_colors = self.cue_colors.clone();
         show.effects = self.effect_list.effects().to_vec();
         show.next_effect_id = self.effect_list.next_id();
@@ -1265,6 +1288,34 @@ impl EasyCueApp {
                 output
             })
             .collect()
+    }
+
+    /// Apply all submasters after effects and before the lighting master. Each
+    /// submaster contributes its captured level scaled by its fader, and channel
+    /// output uses highest-takes-precedence over the current look.
+    pub fn apply_submasters(&self, universes: &mut [Universe]) {
+        for submaster in &self.submasters {
+            submaster.apply_to(universes);
+        }
+    }
+
+    /// Capture the clean live cue-stage state into a submaster. Output-only
+    /// effects and existing submaster contributions are deliberately excluded.
+    pub fn record_submaster(&mut self, index: usize) -> bool {
+        let values = crate::submasters::Submaster::capture(&self.universes);
+        let Some(submaster) = self.submasters.get_mut(index) else {
+            return false;
+        };
+        submaster.channel_values = values;
+        self.ui_state.status_message = format!("Recorded {}", submaster.name);
+        true
+    }
+
+    pub fn add_submaster(&mut self) {
+        let number = self.submasters.len() + 1;
+        self.submasters
+            .push(crate::submasters::Submaster::new(number));
+        self.ui_state.status_message = format!("Added Sub {}", number);
     }
 
     pub fn switch_to_virtual(&mut self) {
@@ -3123,6 +3174,7 @@ impl eframe::App for EasyCueApp {
         let output_universes = if self.effect_engine.is_active() {
             let mut staged = self.universes.clone();
             let footprint = self.effect_engine.apply(&mut staged, &self.effect_list);
+            self.apply_submasters(&mut staged);
             let output = self.apply_masters(&staged);
             // Keep the pre-master staged look for UI readouts (panels always
             // show pre-master values, so FX display matches that convention).
@@ -3133,7 +3185,9 @@ impl eframe::App for EasyCueApp {
             output
         } else {
             self.effect_display = None;
-            self.apply_masters(&self.universes)
+            let mut staged = self.universes.clone();
+            self.apply_submasters(&mut staged);
+            self.apply_masters(&staged)
         };
         if let Err(e) = self.dmx_backend.send_universes(&output_universes) {
             log::error!("DMX output error: {}", e);

@@ -68,7 +68,7 @@ impl DmxBackend for VirtualBackend {
                 .collect();
             
             if !non_zero.is_empty() {
-                log::debug!("Universe {} (intensity@DMX): {:?}", universe.id(), 
+                log::info!("Universe {} (intensity@DMX): {:?}", universe.id(),
                     non_zero.iter().map(|(ch, int, dmx)| format!("{}:{}@{}", ch, int, dmx)).collect::<Vec<_>>());
             }
 

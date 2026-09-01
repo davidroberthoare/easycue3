@@ -14,6 +14,7 @@ mod pan_tilt_gizmo;
 mod patching;
 mod properties;
 mod script_viewer;
+mod submasters;
 
 use crate::app::{EasyCueApp, TabKind};
 use egui::Context;
@@ -33,6 +34,7 @@ pub use properties::{
     render_cue_properties_panel, render_instrument_properties_panel, render_update_from_stage_modal,
 };
 pub use script_viewer::render_script_viewer_panel;
+pub use submasters::render_submasters_panel;
 
 /// Render the main UI
 pub fn render(ctx: &Context, app: &mut EasyCueApp) {
@@ -404,6 +406,7 @@ impl<'a> egui_dock::TabViewer for MyTabViewer<'a> {
             TabKind::InstrumentProperties => render_instrument_properties_panel(ui, self.app),
             TabKind::MagicSheet => render_magic_sheet_panel(ui, self.app),
             TabKind::Effects => render_effects_panel(ui, self.app),
+            TabKind::Submasters => render_submasters_panel(ui, self.app),
             TabKind::ScriptViewer => render_script_viewer_panel(ui, self.app),
             TabKind::Hotkeys => render_hotkeys_panel(ui, self.app),
             TabKind::Unknown => {
@@ -433,6 +436,8 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                     app.playback.stop();
                     app.effect_engine.clear();
                     app.effect_list.clear();
+                    app.submasters.clear();
+                    app.submaster_state = crate::app::SubmasterPanelState::default();
                     app.ui_state.selected_effect_id = None;
                     app.ui_state.cue_props_effect_choice = None;
                     app.show_title = "New Show".to_string();
@@ -604,6 +609,14 @@ fn render_menu_bar(ctx: &Context, app: &mut EasyCueApp) {
                         .main_surface_mut()
                         .push_to_focused_leaf(TabKind::Effects);
                     ui.close_menu();
+                }
+                if !app.show_mode {
+                    if ui.button("Submasters").clicked() {
+                        app.dock_state
+                            .main_surface_mut()
+                            .push_to_focused_leaf(TabKind::Submasters);
+                        ui.close_menu();
+                    }
                 }
                 if ui.button("Script Viewer").clicked() {
                     app.dock_state

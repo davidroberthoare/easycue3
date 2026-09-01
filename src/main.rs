@@ -9,6 +9,7 @@ mod hotkeys;
 mod magic_sheet;
 mod media;
 mod scriptviewer;
+mod submasters;
 mod ui;
 mod fixtures;
 mod show;
@@ -49,7 +50,7 @@ fn main() -> eframe::Result<()> {
         .with_title("EasyCue3 - Theatrical Lighting Console")
         .with_inner_size([1280.0, 720.0])
         .with_min_inner_size([800.0, 600.0]);
-    
+
     // Set icon if loaded successfully
     if let Some(icon_data) = icon {
         viewport = viewport.with_icon(icon_data);
@@ -80,7 +81,7 @@ fn main() -> eframe::Result<()> {
             );
         }
     }
-    
+
     let native_options = eframe::NativeOptions {
         viewport,
         persist_window: true,  // Save window position
@@ -92,7 +93,7 @@ fn main() -> eframe::Result<()> {
     // Run the application with persistence enabled
     log::info!("[startup] Entering eframe::run_native at {:.2}ms", process_start.elapsed().as_secs_f64() * 1000.0);
     let run_result = eframe::run_native(
-        "EasyCue3",  // App ID used for storing persistent data
+        "EasyCue3", // App ID used for storing persistent data
         native_options,
         Box::new(|cc| Ok(Box::new(EasyCueApp::new(cc)))),
     );
@@ -124,7 +125,7 @@ fn load_icon() -> Option<egui::IconData> {
         Ok(img) => {
             let rgba = img.to_rgba8();
             let (width, height) = rgba.dimensions();
-            
+
             Some(egui::IconData {
                 rgba: rgba.into_raw(),
                 width: width as u32,

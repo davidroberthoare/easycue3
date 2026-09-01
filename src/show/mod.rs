@@ -83,6 +83,16 @@ pub struct ShowFile {
     #[serde(default)]
     pub magic_sheet: MagicSheet,
 
+    /// Lighting submaster snapshots. The singular key is retained as the show
+    /// file section name used by the feature specification.
+    #[serde(
+        default,
+        rename = "submaster",
+        alias = "submasters",
+        alias = "subgroups"
+    )]
+    pub submasters: Vec<crate::submasters::Submaster>,
+
     /// UI color settings for cue status/base colors.
     #[serde(default)]
     pub cue_colors: CueColorSettings,
@@ -129,6 +139,7 @@ impl ShowFile {
             patch: Vec::new(),
             groups: GroupList::default(),
             magic_sheet: MagicSheet::default(),
+            submasters: Vec::new(),
             cue_colors: CueColorSettings::default(),
             script_viewer: crate::scriptviewer::ScriptViewerData::default(),
             hotkeys: crate::hotkeys::HotkeyMap::default(),
@@ -266,5 +277,23 @@ mod tests {
         let empty = ShowFile::new();
         let json = serde_json::to_string(&empty).unwrap();
         assert!(!json.contains("hotkeys"));
+    }
+
+    #[test]
+    fn submasters_round_trip_and_default_when_missing() {
+        let old = r#"{"description":"","created":"x","modified":"x","cues":[]}"#;
+        let show: ShowFile = serde_json::from_str(old).unwrap();
+        assert!(show.submasters.is_empty());
+
+        let mut show = ShowFile::new();
+        let mut sub = crate::submasters::Submaster::new(1);
+        sub.level = 40;
+        sub.channel_values.insert(513, 75);
+        show.submasters.push(sub);
+        let json = serde_json::to_string(&show).unwrap();
+        assert!(json.contains("\"submaster\""));
+        let back: ShowFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.submasters[0].level, 40);
+        assert_eq!(back.submasters[0].channel_values.get(&513), Some(&75));
     }
 }

@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.8.9
+
+- **Submasters.** Add persistent submaster snapshots with horizontal faders,
+  editable names, live stage recording, and highest-takes-precedence output after
+  effects and before the lighting master. Submaster levels are excluded from cue
+  recording and cue updates.
+
 ## v0.8.8
 
 - **Show Mode.** Toggle from **View → Show Mode** for an operator-safe workspace.
